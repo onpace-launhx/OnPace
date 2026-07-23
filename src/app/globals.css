@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #4F46E5;
+  --color-brand-hover: #4338CA;
+  --color-brand-light: #EEF2FF;
+  --color-brand-dark: #312E81;
+  
+  --color-accent: #06B6D4;
+  --color-accent-hover: #0891B2;
+  
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f9fafb;
+  --color-surface-dark: #111827;
+  --color-surface-dark-secondary: #1F2937;
+  
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+
+  --font-sans: var(--font-inter);
+}
+
+:root {
+  --background: var(--color-surface-secondary);
+  --foreground: var(--color-surface-dark);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--color-surface-dark);
+    --foreground: var(--color-surface-secondary);
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@layer utilities {
+  .text-h1 {
+    @apply text-4xl md:text-5xl font-bold tracking-tight;
+  }
+  .text-h2 {
+    @apply text-3xl md:text-4xl font-semibold tracking-tight;
+  }
+  .text-h3 {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  .text-body {
+    @apply text-base font-normal;
+  }
+  .text-small {
+    @apply text-sm font-medium;
+  }
+}
+
+/* Hide Netlify collaborative preview floating feedback badges */
+#netlify-preview-toolbar, 
+.netlify-preview-toolbar, 
+netlify-drawer, 
+#netlify-drawer, 
+#netlify-panel-root,
+.netlify-panel-root,
+#netlify-notification-center,
+[id*="netlify"],
+[class*="netlify"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
