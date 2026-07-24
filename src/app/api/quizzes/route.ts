@@ -69,7 +69,7 @@ Do not output markdown code fences, do not output any surrounding text. Return r
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: "gpt-5.4-mini",
           messages: [{ role: "user", content: prompt }],
           temperature: 0.3
         }),

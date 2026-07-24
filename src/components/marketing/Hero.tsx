@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
+import { getTranslations } from "@/lib/translations";
 import {
   ArrowRight,
   BrainCircuit,
@@ -18,10 +19,19 @@ import {
 } from "lucide-react";
 
 export function Hero() {
-  // Interactive mock dashboard states inside Hero
   const [mockTaskDone, setMockTaskDone] = useState(false);
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerVal, setTimerVal] = useState("25:00");
+  const [lang, setLang] = useState("en");
+
+  useEffect(() => {
+    const updateLang = () => {
+      setLang(localStorage.getItem("language") || "en");
+    };
+    updateLang();
+    window.addEventListener("language-change", updateLang);
+    return () => window.removeEventListener("language-change", updateLang);
+  }, []);
 
   const handleStartTimer = () => {
     if (timerRunning) {
@@ -32,6 +42,8 @@ export function Hero() {
       setTimerVal("24:59");
     }
   };
+
+  const t = getTranslations(lang);
 
   return (
     <section className="relative overflow-hidden bg-surface-secondary pt-24 pb-20 sm:pt-32 sm:pb-28">
@@ -44,17 +56,19 @@ export function Hero() {
         <div className="mx-auto max-w-3xl space-y-6">
           <div className="hidden sm:mb-4 sm:flex sm:justify-center">
             <div className="relative rounded-full px-4 py-1 text-xs font-semibold leading-6 text-gray-500 bg-white border border-gray-150 shadow-sm">
-              Meet your new AI study assistant. <Link href="/register" className="font-bold text-brand hover:underline">Read more &rarr;</Link>
+              {t.marketing?.heroBadge || "AI-Powered Exam Prep"}
             </div>
           </div>
           
-          <h1 className="text-4xl font-extrabold tracking-tight text-surface-dark sm:text-6xl leading-tight">
-            Stop procrastinating.<br />
-            Start staying <span className="text-transparent bg-clip-text bg-gradient-to-tr from-brand to-brand-dark">OnPace.</span>
-          </h1>
+          <h1 
+            className="text-4xl font-extrabold tracking-tight text-surface-dark sm:text-6xl leading-tight"
+            dangerouslySetInnerHTML={{
+              __html: (t.marketing?.heroTitle || "Stop procrastinating.<br />Start staying <span class='text-transparent bg-clip-text bg-gradient-to-tr from-brand to-brand-dark'>OnPace.</span>")
+            }}
+          />
           
           <p className="mt-4 text-base leading-relaxed text-gray-500 max-w-2xl mx-auto font-medium">
-            The smart study productivity platform designed for students. Manage tasks, block distractions, and let AI build your perfect study schedule so you can ace your exams and get your life back.
+            {t.marketing?.heroSub || "The smart study productivity platform designed for students. Manage tasks, block distractions, and let AI build your perfect study schedule so you can ace your exams and get your life back."}
           </p>
           
           <div className="mt-8 flex items-center justify-center gap-x-4">
@@ -62,11 +76,11 @@ export function Hero() {
               href="/register"
               className="rounded-xl bg-brand px-6 py-3.5 text-xs font-bold text-white shadow-md hover:bg-brand-hover hover:shadow-lg active:scale-95 transition-all flex items-center gap-2"
             >
-              Start for free <ArrowRight className="h-4 w-4" />
+              {t.marketing?.heroStart || "Start Studying Free"} <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href="#features" className="text-xs font-bold leading-6 text-gray-700 hover:text-brand transition-colors">
-              Learn more <span aria-hidden="true">→</span>
-            </Link>
+            <a href="#features" className="text-xs font-bold leading-6 text-gray-700 hover:text-brand transition-colors">
+              {t.marketing?.navFeatures || "Features"} <span aria-hidden="true">→</span>
+            </a>
           </div>
         </div>
         

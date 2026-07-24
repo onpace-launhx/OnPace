@@ -25,7 +25,7 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
 
   // Step 1 Form Data
-  const [learningStyle, setLearningStyle] = useState("");
+  const [learningStyles, setLearningStyles] = useState<string[]>(["visual"]);
   const [dailyGoal, setDailyGoal] = useState("60");
 
   // Step 2 Form Data
@@ -96,6 +96,7 @@ export default function OnboardingPage() {
       .update({
         has_onboarded: true,
         daily_study_goal_minutes: parseInt(dailyGoal),
+        learning_styles: learningStyles
       })
       .eq("id", profile.id);
 
@@ -151,22 +152,36 @@ export default function OnboardingPage() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700">What is your learning style?</label>
+                  <label className="block text-sm font-semibold text-gray-700">
+                    What are your learning styles? <span className="text-xs text-gray-400 font-normal">(Select all that apply)</span>
+                  </label>
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     {[
-                      { val: "visual", label: "Visual (Images/Diagrams)" },
-                      { val: "auditory", label: "Auditory (Lectures/Podcasts)" },
-                      { val: "reading", label: "Reading & Writing notes" },
-                      { val: "kinesthetic", label: "Hands-on (Solving problems)" },
-                    ].map(style => (
-                      <button
-                        key={style.val}
-                        onClick={() => setLearningStyle(style.val)}
-                        className={`p-3.5 border rounded-xl text-xs font-semibold text-center transition-all cursor-pointer ${learningStyle === style.val ? "bg-brand/10 border-brand text-brand" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
-                      >
-                        {style.label}
-                      </button>
-                    ))}
+                      { val: "visual", label: "👁️ Visual (Images/Diagrams)" },
+                      { val: "auditory", label: "🎧 Auditory (Lectures/Podcasts)" },
+                      { val: "reading", label: "📖 Reading & Writing notes" },
+                      { val: "kinesthetic", label: "✍️ Kinesthetic (Hands-on problem solving)" },
+                    ].map(style => {
+                      const isSelected = learningStyles.includes(style.val);
+                      return (
+                        <button
+                          key={style.val}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setLearningStyles(learningStyles.filter(s => s !== style.val));
+                            } else {
+                              setLearningStyles([...learningStyles, style.val]);
+                            }
+                          }}
+                          className={`p-3.5 border rounded-xl text-xs font-semibold text-center transition-all cursor-pointer ${
+                            isSelected ? "bg-brand/10 border-brand text-brand font-bold shadow-xs" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                          }`}
+                        >
+                          {style.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -178,10 +193,10 @@ export default function OnboardingPage() {
                     onChange={(e) => setDailyGoal(e.target.value)}
                     className="block w-full mt-2 px-3 py-3 border border-gray-200 rounded-xl sm:text-sm bg-white text-surface-dark outline-none cursor-pointer"
                   >
-                    <option value="30">30 minutes / day</option>
-                    <option value="60">60 minutes / day (Standard)</option>
-                    <option value="90">90 minutes / day (AP Target)</option>
-                    <option value="120">120 minutes / day (Intense)</option>
+                    <option value="30">0.5 Hour (30 mins / day)</option>
+                    <option value="60">1 Hour (60 mins / day - Standard)</option>
+                    <option value="120">2 Hours (120 mins / day - AP Target)</option>
+                    <option value="240">4 Hours (240 mins / day - Intense)</option>
                   </select>
                 </div>
               </div>

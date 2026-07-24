@@ -34,8 +34,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Task title is too short to break down." }, { status: 400 });
     }
 
+    const { data: userProfile } = await supabase
+      .from("profiles")
+      .select("language")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const userLang = userProfile?.language || "en";
+
     // AI prompt for JSON array of subtasks
     const prompt = `Break down the student study task: "${title}" into exactly 3 smaller, highly actionable study sub-tasks (maximum 8 words each).
+The target response language is '${userLang}' (e.g. if 'zh' write in Chinese, if 'tr' write in Turkish, if 'es' in Spanish, if 'en' in English).
 Return ONLY a raw valid JSON array of strings. Example output format:
 ["First subtask details", "Second subtask details", "Third subtask details"]
 
@@ -51,7 +60,7 @@ Do not output markdown code fences, do not output any surrounding text. Return r
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: "gpt-5.4-mini",
           messages: [{ role: "user", content: prompt }],
           temperature: 0.3
         }),

@@ -38,6 +38,46 @@ export default function BillingPage() {
   // Custom Alert Popups
   const [customAlert, setCustomAlert] = useState<string | null>(null);
 
+  // Promocode States
+  const [promoCode, setPromoCode] = useState("");
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoSuccessMsg, setPromoSuccessMsg] = useState<string | null>(null);
+  const [applyingPromo, setApplyingPromo] = useState(false);
+
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) return;
+    setApplyingPromo(true);
+    setPromoError(null);
+    setPromoSuccessMsg(null);
+
+    try {
+      const res = await fetch("/api/promocode/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: promoCode })
+      });
+      const data = await res.json();
+      if (data.error) {
+        setPromoError(data.error);
+      } else {
+        setPromoSuccessMsg(data.message);
+        // Refresh profile data
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: updatedProfile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .single();
+          setProfile(updatedProfile);
+        }
+      }
+    } catch {
+      setPromoError("Network error applying promo code.");
+    }
+    setApplyingPromo(false);
+  };
+
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
 
@@ -73,17 +113,16 @@ export default function BillingPage() {
   }, [router, supabase]);
 
   const handleOpenCheckout = (plan: any) => {
-    setSelectedPlan(plan);
-    setCheckoutSuccess(false);
-    if (profile) {
-      setCardName(profile.full_name || "");
-    }
+    setCustomAlert("Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir.");
   };
 
   const handleSimulatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPlan) return;
     setCheckingOut(true);
+
+    const discount = profile?.discount_percent || 0;
+    const finalAmount = discount > 0 ? parseFloat((selectedPlan.price * (1 - discount / 100)).toFixed(2)) : selectedPlan.price;
 
     try {
       const response = await fetch("/api/billing/checkout", {
@@ -92,7 +131,7 @@ export default function BillingPage() {
         body: JSON.stringify({
           plan_type: selectedPlan.type,
           billing_cycle: selectedPlan.cycle,
-          amount: selectedPlan.price
+          amount: finalAmount
         })
       });
 
@@ -292,7 +331,7 @@ export default function BillingPage() {
       )}
 
       {/* Locked message if expired */}
-      {profile?.subscription_status === "expired" && (
+      {profile?.plan === "free" && profile?.subscription_status === "expired" && (
         <div className="bg-red-50 border border-red-100 p-5 rounded-2xl flex items-start gap-3">
           <AlertCircle className="text-red-500 shrink-0 mt-0.5" />
           <div>
@@ -391,7 +430,21 @@ export default function BillingPage() {
                   <p className="text-xs font-bold text-gray-500 uppercase">{t.billing.selectedPlan}</p>
                   <p className="text-sm font-bold text-surface-dark mt-0.5">{selectedPlan.title}</p>
                 </div>
-                <p className="text-xl font-extrabold text-surface-dark">${selectedPlan.price}</p>
+                <div className="text-right">
+                  {profile?.discount_percent > 0 ? (
+                    <>
+                      <p className="text-xs text-gray-400 line-through">${selectedPlan.price}</p>
+                      <p className="text-xl font-extrabold text-brand">
+                        ${parseFloat((selectedPlan.price * (1 - profile.discount_percent / 100)).toFixed(2))}
+                      </p>
+                      <span className="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-200">
+                        {profile.discount_percent}% Off Applied
+                      </span>
+                    </>
+                  ) : (
+                    <p className="text-xl font-extrabold text-surface-dark">${selectedPlan.price}</p>
+                  )}
+                </div>
               </div>
 
               {checkoutSuccess ? (
@@ -451,13 +504,44 @@ export default function BillingPage() {
                         <input
                           type="text"
                           required
-                          maxLength={3}
                           value={cardCvc}
                           onChange={(e) => setCardCvc(e.target.value)}
                           placeholder="424"
                           className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
                         />
                       </div>
+                    </div>
+
+                    {/* Promo Code Input */}
+                    <div className="border-t border-gray-100 pt-3">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Promo Code</label>
+                      <div className="flex gap-2 mt-1.5">
+                        <input
+                          type="text"
+                          value={promoCode}
+                          onChange={(e) => {
+                            setPromoCode(e.target.value);
+                            setPromoError(null);
+                            setPromoSuccessMsg(null);
+                          }}
+                          placeholder="TRIAL30"
+                          className="block flex-1 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyPromo}
+                          disabled={applyingPromo || !promoCode.trim()}
+                          className="px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 text-gray-700 font-bold rounded-xl text-xs active:scale-95 transition-all cursor-pointer flex items-center justify-center min-w-[60px]"
+                        >
+                          {applyingPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
+                        </button>
+                      </div>
+                      {promoError && (
+                        <p className="text-[9px] text-red-500 font-semibold mt-1">{promoError}</p>
+                      )}
+                      {promoSuccessMsg && (
+                        <p className="text-[9px] text-green-500 font-bold mt-1">{promoSuccessMsg}</p>
+                      )}
                     </div>
 
                     <div>

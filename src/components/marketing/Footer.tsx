@@ -1,7 +1,24 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
+import { getTranslations } from "@/lib/translations";
 
 export function Footer() {
+  const [lang, setLang] = useState("en");
+
+  useEffect(() => {
+    const updateLang = () => {
+      setLang(localStorage.getItem("language") || "en");
+    };
+    updateLang();
+    window.addEventListener("language-change", updateLang);
+    return () => window.removeEventListener("language-change", updateLang);
+  }, []);
+
+  const t = getTranslations(lang);
+
   return (
     <footer className="bg-white border-t border-gray-100" aria-labelledby="footer-heading">
       <h2 id="footer-heading" className="sr-only">
@@ -17,37 +34,44 @@ export function Footer() {
               <span className="text-xl font-bold tracking-tight text-surface-dark">OnPace</span>
             </Link>
             <p className="text-sm leading-6 text-gray-600 max-w-xs">
-              The premium study productivity platform for high school students. Stop procrastinating and get your life back.
+              {lang === "zh" ? "面向学生的优质智能高效备战复习工作台。远离拖延，重夺生活掌控权。" : 
+               lang === "es" ? "La plataforma premium de productividad de estudio para estudiantes. Deja de procrastinar y recupera tu vida." : 
+               lang === "tr" ? "Öğrenciler için birinci sınıf çalışma verimliliği platformu. Ertelemeyi bırakın ve hayatınızı geri kazanın." : 
+               "The premium study productivity platform for students. Stop procrastinating and get your life back."}
             </p>
           </div>
           <div className="mt-16 grid grid-cols-2 gap-8 xl:col-span-2 xl:mt-0">
             <div className="md:grid md:grid-cols-2 md:gap-8">
               <div>
-                <h3 className="text-sm font-semibold leading-6 text-surface-dark">Product</h3>
+                <h3 className="text-sm font-semibold leading-6 text-surface-dark">
+                  {lang === "zh" ? "产品服务" : lang === "es" ? "Producto" : lang === "tr" ? "Ürün" : "Product"}
+                </h3>
                 <ul role="list" className="mt-6 space-y-4">
                   <li>
                     <Link href="#features" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
-                      Features
+                      {t.marketing?.navFeatures || "Features"}
                     </Link>
                   </li>
                   <li>
                     <Link href="#pricing" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
-                      Pricing
+                      {t.marketing?.navPricing || "Pricing"}
                     </Link>
                   </li>
                 </ul>
               </div>
               <div className="mt-10 md:mt-0">
-                <h3 className="text-sm font-semibold leading-6 text-surface-dark">Support</h3>
+                <h3 className="text-sm font-semibold leading-6 text-surface-dark">
+                  {lang === "zh" ? "客户服务" : lang === "es" ? "Soporte" : lang === "tr" ? "Destek" : "Support"}
+                </h3>
                 <ul role="list" className="mt-6 space-y-4">
                   <li>
                     <Link href="#" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
-                      Help Center
+                      {lang === "zh" ? "帮助中心" : lang === "es" ? "Centro de Ayuda" : lang === "tr" ? "Yardım Merkezi" : "Help Center"}
                     </Link>
                   </li>
                   <li>
                     <Link href="#" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
-                      Contact
+                      {lang === "zh" ? "联系我们" : lang === "es" ? "Contacto" : lang === "tr" ? "İletişim" : "Contact"}
                     </Link>
                   </li>
                 </ul>
@@ -55,31 +79,35 @@ export function Footer() {
             </div>
             <div className="md:grid md:grid-cols-2 md:gap-8">
               <div>
-                <h3 className="text-sm font-semibold leading-6 text-surface-dark">Company</h3>
+                <h3 className="text-sm font-semibold leading-6 text-surface-dark">
+                  {lang === "zh" ? "企业信息" : lang === "es" ? "Compañía" : lang === "tr" ? "Şirket" : "Company"}
+                </h3>
                 <ul role="list" className="mt-6 space-y-4">
                   <li>
                     <Link href="#" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
-                      About
+                      {lang === "zh" ? "关于我们" : lang === "es" ? "Acerca de" : lang === "tr" ? "Hakkımızda" : "About"}
                     </Link>
                   </li>
                   <li>
                     <Link href="#" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
-                      Blog
+                      {lang === "zh" ? "官方博客" : lang === "es" ? "Blog" : lang === "tr" ? "Blog" : "Blog"}
                     </Link>
                   </li>
                 </ul>
               </div>
               <div className="mt-10 md:mt-0">
-                <h3 className="text-sm font-semibold leading-6 text-surface-dark">Legal</h3>
+                <h3 className="text-sm font-semibold leading-6 text-surface-dark">
+                  {lang === "zh" ? "合规法律" : lang === "es" ? "Legal" : lang === "tr" ? "Yasal" : "Legal"}
+                </h3>
                 <ul role="list" className="mt-6 space-y-4">
                   <li>
                     <Link href="#" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
-                      Privacy Policy
+                      {lang === "zh" ? "隐私政策" : lang === "es" ? "Política de Privacidad" : lang === "tr" ? "Gizlilik Politikası" : "Privacy Policy"}
                     </Link>
                   </li>
                   <li>
                     <Link href="#" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
-                      Terms of Service
+                      {lang === "zh" ? "服务条款" : lang === "es" ? "Términos de Servicio" : lang === "tr" ? "Kullanım Şartları" : "Terms of Service"}
                     </Link>
                   </li>
                 </ul>
@@ -88,7 +116,7 @@ export function Footer() {
           </div>
         </div>
         <div className="mt-16 border-t border-gray-900/10 pt-8 sm:mt-20 lg:mt-24">
-          <p className="text-xs leading-5 text-gray-500">&copy; {new Date().getFullYear()} OnPace. All rights reserved.</p>
+          <p className="text-xs leading-5 text-gray-500">&copy; {new Date().getFullYear()} OnPace. {t.marketing?.footerText || "All rights reserved."}</p>
         </div>
       </div>
     </footer>

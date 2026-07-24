@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "OnPace",
+    "slug": "onpace",
+    "version": "0.1.0",
+    "sdkVersion": "54.0.0",
+    "platforms": ["android", "ios", "web"],
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "onpace",
+    "extra": {
+      "supabaseUrl": "https://dcnpabvaptjilinfyrwy.supabase.co",
+      "supabaseAnonKey": "sb_publishable_sFCTeO8wrgjQWakSLVeldg_gqBMPnWR"
+    }
+  }
+}

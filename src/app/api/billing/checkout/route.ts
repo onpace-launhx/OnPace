@@ -26,6 +26,16 @@ export async function POST(request: Request) {
       targetPlan = "founding";
     }
 
+    // Calculate next billing date
+    let nextBillingDate: Date | null = null;
+    if (billing_cycle === "monthly") {
+      nextBillingDate = new Date();
+      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+    } else if (billing_cycle === "yearly") {
+      nextBillingDate = new Date();
+      nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+    }
+
     // Mock stripe payment intent ID
     const mockPaymentIntent = "pi_" + Math.random().toString(36).substring(2, 15);
 
@@ -36,8 +46,9 @@ export async function POST(request: Request) {
         plan: targetPlan,
         billing_cycle,
         subscription_status: "active",
-        // Pro expires in 1 month, 1 year, or null for Founding lifetime
         trial_ends_at: null, // Clear trial state since they paid
+        next_billing_date: nextBillingDate ? nextBillingDate.toISOString() : null,
+        failed_payment_attempts: 0 // Reset any failures
       })
       .eq("id", user.id);
 
@@ -56,6 +67,8 @@ export async function POST(request: Request) {
           plan_type,
           billing_cycle,
           stripe_payment_intent_id: mockPaymentIntent,
+          status: "completed",
+          next_billing_date: nextBillingDate ? nextBillingDate.toISOString() : null
         },
       ]);
 

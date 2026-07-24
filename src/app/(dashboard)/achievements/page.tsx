@@ -175,6 +175,75 @@ export default function AchievementsPage() {
         </div>
       </div>
 
+      {/* Leaderboard Card (Item 22) */}
+      <div className="bg-white border border-gray-100 p-6 sm:p-8 rounded-3xl shadow-sm space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-extrabold text-surface-dark flex items-center gap-1.5">
+              <TrendingUp className="text-brand" size={18} />
+              {lang === "tr" ? "Haftalık Çalışma Liderlik Tablosu" : "Weekly Study Leaderboard"}
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">Compare completed tasks and deep study minutes with other top students.</p>
+          </div>
+          <span className="bg-brand/10 text-brand text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-md border border-brand/10">
+            Live Rankings
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-gray-100 text-gray-400 font-bold uppercase tracking-wider text-[10px]">
+                <th className="pb-3 w-16">Rank</th>
+                <th className="pb-3">Student</th>
+                <th className="pb-3 text-center">Streak</th>
+                <th className="pb-3 text-center">Tasks Completed</th>
+                <th className="pb-3 text-right">Focus Minutes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 font-medium">
+              {[
+                { name: "Ava Taylor", avatar: "AT", streak: 12, tasks: 15, minutes: 320, isUser: false },
+                { name: "Liam Rodriguez", avatar: "LR", streak: 8, tasks: 11, minutes: 240, isUser: false },
+                { 
+                  name: (profile?.full_name || "You") + " (You)", 
+                  avatar: "YO", 
+                  streak: currentStreak, 
+                  tasks: totalCompletedTasks, 
+                  minutes: totalStudySessions * 25, // estimate study time based on sessions
+                  isUser: true 
+                },
+                { name: "Lucas Wilson", avatar: "LW", streak: 5, tasks: 8, minutes: 180, isUser: false },
+                { name: "Mia Brown", avatar: "MB", streak: 3, tasks: 6, minutes: 130, isUser: false }
+              ]
+                .sort((a, b) => b.minutes - a.minutes)
+                .map((row, index) => (
+                  <tr key={index} className={`hover:bg-gray-50/50 transition-colors ${row.isUser ? "bg-brand/[0.02] border-brand/20" : ""}`}>
+                    <td className="py-3.5">
+                      <span className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-[11px] font-extrabold ${index === 0 ? "bg-amber-100 text-amber-700" : index === 1 ? "bg-slate-200 text-slate-700" : index === 2 ? "bg-orange-100 text-orange-700" : "bg-gray-100 text-gray-500"}`}>
+                        {index + 1}
+                      </span>
+                    </td>
+                    <td className="py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`h-7 w-7 rounded-lg font-bold text-[10px] flex items-center justify-center border ${row.isUser ? "bg-brand/10 text-brand border-brand/20" : "bg-gray-100 text-gray-500 border-gray-200"}`}>
+                          {row.avatar}
+                        </div>
+                        <span className={`text-surface-dark ${row.isUser ? "font-bold text-brand" : "font-semibold"}`}>
+                          {row.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-3.5 text-center text-gray-600">🔥 {row.streak}d</td>
+                    <td className="py-3.5 text-center text-gray-600">✓ {row.tasks} tasks</td>
+                    <td className="py-3.5 text-right font-bold text-surface-dark">{row.minutes} mins</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Badges Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {achievementsList.map((badge) => {
