@@ -103,8 +103,8 @@ export default function BillingPage() {
       const { data: sysData } = await supabase
         .from("system_settings")
         .select("*")
-        .eq("id", "default")
-        .single();
+        .limit(1)
+        .maybeSingle();
       if (sysData) {
         setSystemSettings(sysData);
       }

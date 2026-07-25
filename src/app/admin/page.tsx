@@ -297,7 +297,7 @@ export default function AdminPage() {
     const { data: sysData } = await supabase
       .from("system_settings")
       .select("*")
-      .eq("id", "default")
+      .limit(1)
       .maybeSingle();
 
     if (sysData) {
@@ -832,26 +832,37 @@ export default function AdminPage() {
 
   const handleSaveSystemSettings = async () => {
     setSavingSystemSettings(true);
+    const { data: existing } = await supabase
+      .from("system_settings")
+      .select("id")
+      .limit(1)
+      .maybeSingle();
+
+    const payload: any = {
+      payment_gateway_enabled: paymentGatewayEnabled,
+      payment_disabled_message: {
+        tr: disabledMsgTR || "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir.",
+        en: disabledMsgEN || "Plan changes can only be made using a promo code issued to you or by your system administrator.",
+        es: disabledMsgEN || "Los cambios de plan solo se pueden realizar utilizando un código de promoción.",
+        zh: disabledMsgEN || "仅能通过优惠码或管理员进行套餐变更。"
+      },
+      plan_prices: {
+        plus: parseFloat(String(plusPrice)) || 9,
+        pro: parseFloat(String(proPrice)) || 19,
+        founding: parseFloat(String(foundingPrice)) || 49
+      },
+      maintenance_mode: maintenanceMode,
+      resend_api_key: resendApiKey,
+      updated_at: new Date().toISOString()
+    };
+
+    if (existing?.id !== undefined) {
+      payload.id = existing.id;
+    }
+
     const { error } = await supabase
       .from("system_settings")
-      .upsert({
-        id: "default",
-        payment_gateway_enabled: paymentGatewayEnabled,
-        payment_disabled_message: {
-          tr: disabledMsgTR || "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir.",
-          en: disabledMsgEN || "Plan changes can only be made using a promo code issued to you or by your system administrator.",
-          es: disabledMsgEN || "Los cambios de plan solo se pueden realizar utilizando un código de promoción.",
-          zh: disabledMsgEN || "仅能通过优惠码或管理员进行套餐变更。"
-        },
-        plan_prices: {
-          plus: parseFloat(String(plusPrice)) || 9,
-          pro: parseFloat(String(proPrice)) || 19,
-          founding: parseFloat(String(foundingPrice)) || 49
-        },
-        maintenance_mode: maintenanceMode,
-        resend_api_key: resendApiKey,
-        updated_at: new Date().toISOString()
-      });
+      .upsert(payload);
 
     if (!error) {
       alert("System & Payment settings saved successfully!");

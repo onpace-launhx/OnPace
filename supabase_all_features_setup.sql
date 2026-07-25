@@ -1,21 +1,36 @@
 -- ============================================================
--- OnPace Complete Platform Upgrade Setup SQL (Robust Auto-Migration)
+-- OnPace Complete Platform Upgrade Setup SQL (Universal Compatible)
 -- Copy and run this entire script in Supabase SQL Editor
 -- ============================================================
 
--- 1. Create System Settings Table if not exists
+-- 1. Create System Settings Table if it does not exist
 CREATE TABLE IF NOT EXISTS public.system_settings (
-  id TEXT PRIMARY KEY DEFAULT 'default'
+  id SERIAL PRIMARY KEY,
+  payment_gateway_enabled BOOLEAN NOT NULL DEFAULT false,
+  payment_disabled_message JSONB DEFAULT '{
+    "tr": "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir.",
+    "en": "Plan changes can only be made using a promo code issued to you or by your system administrator.",
+    "es": "Los cambios de plan solo se pueden realizar utilizando un código de promoción emitido para usted o por su administrador del sistema.",
+    "zh": "仅能通过发放给您的优惠码或由系统管理员进行套餐变更。"
+  }'::jsonb,
+  plan_prices JSONB DEFAULT '{
+    "plus": 9,
+    "pro": 19,
+    "founding": 49
+  }'::jsonb,
+  maintenance_mode BOOLEAN NOT NULL DEFAULT false,
+  resend_api_key TEXT DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Ensure all required columns exist on system_settings (in case table already existed)
+-- Ensure all required columns exist on system_settings (in case table already existed with different columns)
 ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS payment_gateway_enabled BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS payment_disabled_message JSONB DEFAULT '{
   "tr": "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir.",
   "en": "Plan changes can only be made using a promo code issued to you or by your system administrator.",
   "es": "Los cambios de plan solo se pueden realizar utilizando un código de promoción emitido para usted o por su administrador del sistema.",
-  "zh": "仅能通过发放给您的优惠码或由系统管理员进行套餐变更。"
+  "zh": "仅能 ద్వారా发放给您的优惠码或由系统管理员进行套餐变更。"
 }'::jsonb;
 
 ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS plan_prices JSONB DEFAULT '{
@@ -30,10 +45,10 @@ ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS resend_api_key TEXT 
 
 ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
--- Insert initial row if not exists
-INSERT INTO public.system_settings (id, payment_gateway_enabled, maintenance_mode)
-VALUES ('default', false, false)
-ON CONFLICT (id) DO NOTHING;
+-- Insert initial row if system_settings is currently empty (works regardless of ID type)
+INSERT INTO public.system_settings (payment_gateway_enabled, maintenance_mode)
+SELECT false, false
+WHERE NOT EXISTS (SELECT 1 FROM public.system_settings);
 
 -- 2. Add email_notifications_enabled to profiles table
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email_notifications_enabled BOOLEAN DEFAULT true;
