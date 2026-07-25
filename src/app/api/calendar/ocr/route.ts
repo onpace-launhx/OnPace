@@ -21,16 +21,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Retrieve Gemini API key from system settings or process.env
-    const { data: settings } = await supabase
-      .from("system_settings")
-      .select("*")
-      .eq("id", "default")
-      .single();
-
     const apiKey =
       process.env.GEMINI_API_KEY ||
-      settings?.geminiKey ||
       process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
     if (!apiKey) {

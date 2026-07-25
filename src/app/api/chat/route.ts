@@ -30,12 +30,7 @@ export async function POST(request: Request) {
     }
 
     if (!apiKey) {
-      const { data: settings } = await supabase
-        .from("system_settings")
-        .select("*")
-        .limit(1)
-        .maybeSingle();
-      apiKey = settings?.resend_api_key || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     }
 
     const { message, history = [] } = await request.json();
@@ -237,7 +232,7 @@ CRITICAL FUNCTIONALITY: Before scheduling any new calendar event or study sessio
 
     // Fallback or Direct Call: Gemini 1.5 Flash
     if (!reply) {
-      const geminiKey = apiKey || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      const geminiKey = (provider === "gemini" ? apiKey : undefined) || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if (geminiKey) {
         const contents = [
           { role: "user", parts: [{ text: systemPrompt }] },

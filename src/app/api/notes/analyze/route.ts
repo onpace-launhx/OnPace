@@ -29,17 +29,21 @@ export async function POST(request: Request) {
     }
 
     if (!apiKey) {
-      const { data: settings } = await supabase
-        .from("system_settings")
-        .select("*")
-        .limit(1)
-        .maybeSingle();
-      apiKey = settings?.resend_api_key || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     }
 
     if (!apiKey) {
       return NextResponse.json(
         { error: "AI API credentials not configured in system settings." },
+        { status: 400 }
+      );
+    }
+
+    const geminiKey = (provider === "gemini" ? apiKey : undefined) || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+    if (!geminiKey) {
+      return NextResponse.json(
+        { error: "Gemini API credentials not configured." },
         { status: 400 }
       );
     }
@@ -65,7 +69,7 @@ Return ONLY a raw valid JSON object with "title" and "enhancedContent" propertie
 Return raw JSON only, no markdown code blocks or wrapper text.`;
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -128,7 +132,7 @@ Example format:
 Do not output markdown code fences, return raw JSON text only.`;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

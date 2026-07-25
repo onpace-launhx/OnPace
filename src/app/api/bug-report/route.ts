@@ -42,26 +42,25 @@ Return ONLY a valid raw JSON object with "categoryCode" (4-digit string, e.g. "5
     // Attempt AI categorization using active AI key
     try {
       let apiKey = process.env.GEMINI_API_KEY;
+      let provider = "gemini";
       const { data: config } = await supabase.rpc("get_active_ai_config");
       if (config) {
         const activeConfig = Array.isArray(config) ? config[0] : config;
         if (activeConfig?.api_key) {
           apiKey = activeConfig.api_key;
+          provider = activeConfig.provider || "gemini";
         }
       }
 
       if (!apiKey) {
-        const { data: settings } = await supabase
-          .from("system_settings")
-          .select("*")
-          .limit(1)
-          .maybeSingle();
-        apiKey = settings?.resend_api_key || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+        apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       }
 
-      if (apiKey) {
+      const geminiKey = (provider === "gemini" ? apiKey : undefined) || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+      if (geminiKey) {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
