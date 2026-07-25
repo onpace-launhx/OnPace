@@ -191,10 +191,15 @@ export function Sidebar() {
     setCapturingScreenshot(true);
 
     try {
-      const canvas = await html2canvas(document.body, {
+      const targetElement = document.documentElement || document.body;
+      const canvas = await html2canvas(targetElement, {
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        scale: 0.5,
         ignoreElements: (element) => element.id === "bug-report-modal"
       });
-      const dataUrl = canvas.toDataURL("image/png");
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
       setScreenshotBase64(dataUrl);
     } catch (err) {
       console.error("Screenshot capture failed:", err);

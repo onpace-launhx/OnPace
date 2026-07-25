@@ -113,6 +113,7 @@ export default function AdminPage() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [resendApiKey, setResendApiKey] = useState("");
   const [savingSystemSettings, setSavingSystemSettings] = useState(false);
+  const [saveSystemSettingsSuccess, setSaveSystemSettingsSuccess] = useState(false);
 
   // Email Broadcast Tool States
   const [emailSubject, setEmailSubject] = useState("");
@@ -319,6 +320,63 @@ export default function AdminPage() {
       setResendApiKey(sysData.resend_api_key || "");
     }
   }
+
+  const handleSaveSystemSettings = async () => {
+    setSavingSystemSettings(true);
+    setSaveSystemSettingsSuccess(false);
+
+    try {
+      const { data: existing } = await supabase
+        .from("system_settings")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+
+      const payload = {
+        payment_gateway_enabled: paymentGatewayEnabled,
+        maintenance_mode: maintenanceMode,
+        plan_prices: {
+          plus: Number(plusPrice),
+          pro: Number(proPrice),
+          founding: Number(foundingPrice)
+        },
+        payment_disabled_message: {
+          tr: disabledMsgTR.trim(),
+          en: disabledMsgEN.trim()
+        },
+        resend_api_key: resendApiKey.trim(),
+        updated_at: new Date().toISOString()
+      };
+
+      let saveError = null;
+
+      if (existing && existing.id) {
+        const { error } = await supabase
+          .from("system_settings")
+          .update(payload)
+          .eq("id", existing.id);
+        saveError = error;
+      } else {
+        const { error } = await supabase
+          .from("system_settings")
+          .insert([payload]);
+        saveError = error;
+      }
+
+      if (!saveError) {
+        setSaveSystemSettingsSuccess(true);
+        setTimeout(() => setSaveSystemSettingsSuccess(false), 3000);
+      } else {
+        console.error("Error saving system settings:", saveError);
+        alert("Failed to save system settings: " + saveError.message);
+      }
+    } catch (err: any) {
+      console.error("System settings save exception:", err);
+      alert("Error saving system settings: " + (err.message || err));
+    } finally {
+      setSavingSystemSettings(false);
+    }
+  };
 
   async function fetchLogs() {
     const { data, error } = await supabase
@@ -866,48 +924,6 @@ export default function AdminPage() {
     setSavingAnn(false);
   };
 
-  const handleSaveSystemSettings = async () => {
-    setSavingSystemSettings(true);
-    const { data: existing } = await supabase
-      .from("system_settings")
-      .select("id")
-      .limit(1)
-      .maybeSingle();
-
-    const payload: any = {
-      payment_gateway_enabled: paymentGatewayEnabled,
-      payment_disabled_message: {
-        tr: disabledMsgTR || "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir.",
-        en: disabledMsgEN || "Plan changes can only be made using a promo code issued to you or by your system administrator.",
-        es: disabledMsgEN || "Los cambios de plan solo se pueden realizar utilizando un código de promoción.",
-        zh: disabledMsgEN || "仅能通过优惠码或管理员进行套餐变更。"
-      },
-      plan_prices: {
-        plus: parseFloat(String(plusPrice)) || 9,
-        pro: parseFloat(String(proPrice)) || 19,
-        founding: parseFloat(String(foundingPrice)) || 49
-      },
-      maintenance_mode: maintenanceMode,
-      resend_api_key: resendApiKey,
-      updated_at: new Date().toISOString()
-    };
-
-    if (existing?.id !== undefined) {
-      payload.id = existing.id;
-    }
-
-    const { error } = await supabase
-      .from("system_settings")
-      .upsert(payload);
-
-    if (!error) {
-      alert("System & Payment settings saved successfully!");
-    } else {
-      alert("Error saving settings: " + error.message);
-    }
-    setSavingSystemSettings(false);
-  };
-
   const handleSendEmailBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailSubject.trim() || !emailContent.trim()) return;
@@ -1415,7 +1431,14 @@ export default function AdminPage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-end">
+                <div className="flex items-center justify-between">
+                  <div>
+                    {saveSystemSettingsSuccess && (
+                      <span className="text-green-500 text-xs font-semibold flex items-center gap-1 animate-pulse">
+                        <CheckCircle2 size={12} /> System settings & Resend API Key saved successfully!
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="submit"
                     disabled={savingSystemSettings}
