@@ -22,8 +22,13 @@ import {
   Loader2,
   CheckCircle2,
   User,
-  Users
+  Users,
+  AlertCircle,
+  Camera,
+  Tag,
+  Check
 } from "lucide-react";
+import html2canvas from "html2canvas";
 
 // Sidebar multi-language translations dictionary
 const translations: Record<string, Record<string, string>> = {
@@ -163,6 +168,103 @@ export function Sidebar() {
   const [googleConnected, setGoogleConnected] = useState(false);
   const [googleEmail, setGoogleEmail] = useState("");
   const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
+
+  // Bug Report Modal States
+  const [showBugModal, setShowBugModal] = useState(false);
+  const [bugDesc, setBugDesc] = useState("");
+  const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
+  const [capturingScreenshot, setCapturingScreenshot] = useState(false);
+  const [submittingBug, setSubmittingBug] = useState(false);
+  const [bugSuccessCode, setBugSuccessCode] = useState<string | null>(null);
+  const [bugSuccessCategory, setBugSuccessCategory] = useState<string | null>(null);
+
+  // Promocode Form States inside Profile Modal
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [applyingPromo, setApplyingPromo] = useState(false);
+  const [promoMsg, setPromoMsg] = useState<{ text: string; error: boolean } | null>(null);
+
+  const handleOpenBugModal = async () => {
+    setShowBugModal(true);
+    setBugSuccessCode(null);
+    setBugSuccessCategory(null);
+    setScreenshotBase64(null);
+    setCapturingScreenshot(true);
+
+    try {
+      const canvas = await html2canvas(document.body, {
+        ignoreElements: (element) => element.id === "bug-report-modal"
+      });
+      const dataUrl = canvas.toDataURL("image/png");
+      setScreenshotBase64(dataUrl);
+    } catch (err) {
+      console.error("Screenshot capture failed:", err);
+    } finally {
+      setCapturingScreenshot(false);
+    }
+  };
+
+  const handleSubmitBugReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bugDesc.trim()) return;
+    setSubmittingBug(true);
+
+    try {
+      const res = await fetch("/api/bug-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: bugDesc.trim(),
+          pageUrl: window.location.href,
+          screenshotBase64: screenshotBase64
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setBugSuccessCode(data.categoryCode || "9000");
+        setBugSuccessCategory(data.categoryName || "General Issue");
+        setBugDesc("");
+      } else {
+        alert("Failed to submit bug report: " + (data.error || ""));
+      }
+    } catch {
+      alert("Network error submitting bug report.");
+    } finally {
+      setSubmittingBug(false);
+    }
+  };
+
+  const handleApplyPromoCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!promoCodeInput.trim()) return;
+    setApplyingPromo(true);
+    setPromoMsg(null);
+
+    try {
+      const res = await fetch("/api/promocode/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: promoCodeInput.trim() })
+      });
+      const data = await res.json();
+      if (data.error) {
+        setPromoMsg({ text: data.error, error: true });
+      } else {
+        setPromoMsg({ text: data.message, error: false });
+        setPromoCodeInput("");
+        const { data: updated } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+        if (updated) setProfile(updated);
+      }
+    } catch {
+      setPromoMsg({ text: "Error validating promo code.", error: true });
+    } finally {
+      setApplyingPromo(false);
+    }
+  };
 
   useEffect(() => {
     // Load collapsed preference from local storage if exists
@@ -401,15 +503,24 @@ export function Sidebar() {
               </Link>
             )}
             
-            <button
-              onClick={handleToggleCollapse}
-              className={`p-1.5 rounded-lg text-gray-400 hover:text-surface-dark hover:bg-gray-100 transition-all cursor-pointer ${
-                isCollapsed ? "mx-auto mt-2" : ""
-              }`}
-              title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-            >
-              <Menu size={18} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleOpenBugModal}
+                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-all cursor-pointer"
+                title={lang === "tr" ? "Hata Bildir (Ekran Görüntülü & AI)" : "Report Bug (Auto-Screenshot & AI)"}
+              >
+                <AlertCircle size={19} className="animate-pulse" />
+              </button>
+              <button
+                onClick={handleToggleCollapse}
+                className={`p-1.5 rounded-lg text-gray-400 hover:text-surface-dark hover:bg-gray-100 transition-all cursor-pointer ${
+                  isCollapsed ? "mx-auto mt-2" : ""
+                }`}
+                title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              >
+                <Menu size={18} />
+              </button>
+            </div>
           </div>
           
           {/* Nav Links */}
@@ -666,12 +777,138 @@ export function Sidebar() {
                     </svg>
                     Connect Google Account
                   </button>
-                  <p className="text-[9px] text-gray-400 text-center leading-normal">
-                    Connects your Google Calendar. Any Google account works — even a different email.
-                  </p>
                 </div>
               )}
             </div>
+
+            {/* Promocode & Subscription Plan Section */}
+            <div className="border-t border-gray-100 pt-4 mt-2 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Plan & Promocode</span>
+                <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-extrabold bg-brand/10 text-brand">
+                  {profile?.plan || "Free"}
+                </span>
+              </div>
+
+              <form onSubmit={handleApplyPromoCode} className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={promoCodeInput}
+                    onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                    placeholder="ENTER PROMOCODE"
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand uppercase font-bold text-surface-dark bg-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={applyingPromo || !promoCodeInput.trim()}
+                    className="px-3 py-2 bg-brand text-white rounded-xl text-xs font-bold hover:bg-brand-hover active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+                  >
+                    {applyingPromo ? <Loader2 className="h-3 w-3 animate-spin" /> : "Redeem"}
+                  </button>
+                </div>
+                {promoMsg && (
+                  <p className={`text-[10px] font-bold ${promoMsg.error ? "text-red-500" : "text-green-600"}`}>
+                    {promoMsg.text}
+                  </p>
+                )}
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bug Report Modal */}
+      {showBugModal && (
+        <div id="bug-report-modal" className="fixed inset-0 bg-black/55 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="text-red-500 animate-pulse" size={20} />
+                <h3 className="font-extrabold text-sm text-surface-dark">
+                  {editLang === "tr" ? "Hata Bildir (AI İle Kategorize Edilir)" : "Report Bug (AI Categorization)"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowBugModal(false)}
+                className="text-xs text-gray-400 hover:text-surface-dark font-bold cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            {bugSuccessCode ? (
+              <div className="text-center py-6 space-y-3">
+                <div className="h-12 w-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto text-xl font-bold">
+                  <Check size={24} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-surface-dark">
+                    {editLang === "tr" ? "Hata Bildirimi İletildi!" : "Bug Report Submitted!"}
+                  </h4>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {editLang === "tr" ? "Yapay zeka sorununuzu otomatik analiz etti:" : "AI analyzed and categorized your report:"}
+                  </p>
+                  <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 text-xs font-extrabold">
+                    <Tag size={14} /> #{bugSuccessCode} - {bugSuccessCategory}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowBugModal(false)}
+                  className="w-full py-2.5 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover cursor-pointer active:scale-95 transition-all mt-4"
+                >
+                  {editLang === "tr" ? "Tamam" : "Got it!"}
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitBugReport} className="space-y-4">
+                {/* Screenshot Preview */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                    <Camera size={12} /> {editLang === "tr" ? "Otomatik Ekran Görüntüsü Önizleme" : "Auto Screen Capture Preview"}
+                  </label>
+                  {capturingScreenshot ? (
+                    <div className="h-28 bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400 gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-brand" />
+                      <span>Capturing screen...</span>
+                    </div>
+                  ) : screenshotBase64 ? (
+                    <img
+                      src={screenshotBase64}
+                      alt="Screen Preview"
+                      className="w-full h-28 object-cover rounded-xl border border-gray-200 shadow-xs"
+                    />
+                  ) : (
+                    <div className="h-28 bg-gray-50 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400">
+                      Screenshot ready
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                    {editLang === "tr" ? "Karşılaştığınız Sorun Nedir?" : "Describe the Issue"}
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={bugDesc}
+                    onChange={(e) => setBugDesc(e.target.value)}
+                    placeholder={editLang === "tr" ? "Örn: Yan menü açıkken yazılar üst üste bindi, ya da takvim ekleme yanıt vermiyor..." : "e.g. Navigation items overlap when sidebar expands..."}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submittingBug || capturingScreenshot || !bugDesc.trim()}
+                  className="w-full py-3 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  {submittingBug ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle size={15} />}
+                  {submittingBug ? (editLang === "tr" ? "AI Analiz Ediyor..." : "Analyzing with AI...") : (editLang === "tr" ? "Hayırlı Bildirim Gönder (AI)" : "Submit Bug Report")}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

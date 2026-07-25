@@ -100,6 +100,37 @@ CREATE POLICY "ai_chat_messages_all_own" ON public.ai_chat_messages
     session_id IN (SELECT id FROM public.ai_chat_sessions WHERE user_id = auth.uid())
   );
 
+-- 6. Bug Reports Table & AI Categorization
+CREATE TABLE IF NOT EXISTS public.bug_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+);
+
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS user_email TEXT DEFAULT '';
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS page_url TEXT DEFAULT '';
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS screenshot_url TEXT DEFAULT '';
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS ai_category_code TEXT DEFAULT '0000';
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS ai_category_name TEXT DEFAULT 'General Issue';
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open';
+ALTER TABLE public.bug_reports ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_bug_reports_user_id ON public.bug_reports(user_id);
+CREATE INDEX IF NOT EXISTS idx_bug_reports_category_code ON public.bug_reports(ai_category_code);
+
+ALTER TABLE public.bug_reports ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "bug_reports_insert_own" ON public.bug_reports;
+CREATE POLICY "bug_reports_insert_own" ON public.bug_reports
+  FOR INSERT WITH CHECK (auth.uid() = user_id OR auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "bug_reports_select_own" ON public.bug_reports;
+CREATE POLICY "bug_reports_select_own" ON public.bug_reports
+  FOR SELECT USING (
+    auth.uid() = user_id 
+    OR auth.uid() IN (SELECT id FROM public.profiles WHERE role IN ('admin', 'super_admin'))
+  );
+
 -- 5. Enable RLS on system_settings
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 
@@ -118,3 +149,4 @@ CREATE POLICY "system_settings_admin_insert" ON public.system_settings
   FOR INSERT WITH CHECK (
     auth.uid() IN (SELECT id FROM public.profiles WHERE role IN ('admin', 'super_admin'))
   );
+

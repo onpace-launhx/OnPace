@@ -32,14 +32,14 @@ export async function POST(request: Request) {
       const { data: settings } = await supabase
         .from("system_settings")
         .select("*")
-        .eq("id", "default")
-        .single();
-      apiKey = settings?.geminiKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+        .limit(1)
+        .maybeSingle();
+      apiKey = settings?.resend_api_key || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     }
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "AI API credentials not configured." },
+        { error: "AI API credentials not configured in system settings." },
         { status: 400 }
       );
     }

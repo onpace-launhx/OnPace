@@ -28,7 +28,8 @@ import {
   Square,
   Edit,
   Eye,
-  X
+  X,
+  AlertCircle
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -120,6 +121,12 @@ export default function AdminPage() {
   const [emailOnlyOptedIn, setEmailOnlyOptedIn] = useState(true);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailResult, setEmailResult] = useState<string | null>(null);
+
+  // Bug Reports Tab States
+  const [bugReports, setBugReports] = useState<any[]>([]);
+  const [loadingBugs, setLoadingBugs] = useState(false);
+  const [bugFilterCode, setBugFilterCode] = useState("all");
+  const [selectedBugScreenshot, setSelectedBugScreenshot] = useState<string | null>(null);
 
   // Adjust Plan Modal States
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
@@ -215,6 +222,7 @@ export default function AdminPage() {
       fetchPromocodes();
       fetchModerationPosts();
       fetchAnnouncementsData();
+      fetchBugReports();
       
       setLoading(false);
     }
@@ -323,6 +331,34 @@ export default function AdminPage() {
       setLogs(data);
     }
   }
+
+  async function fetchBugReports() {
+    setLoadingBugs(true);
+    const { data, error } = await supabase
+      .from("bug_reports")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setBugReports(data);
+    }
+    setLoadingBugs(false);
+  }
+
+  const handleUpdateBugStatus = async (reportId: string, newStatus: string) => {
+    const { error } = await supabase
+      .from("bug_reports")
+      .update({ status: newStatus })
+      .eq("id", reportId);
+
+    if (!error) {
+      setBugReports((prev) =>
+        prev.map((b) => (b.id === reportId ? { ...b, status: newStatus } : b))
+      );
+    } else {
+      alert("Failed to update status: " + error.message);
+    }
+  };
 
   async function fetchPromocodes() {
     const { data, error } = await supabase
@@ -1025,6 +1061,14 @@ export default function AdminPage() {
               📋 Audit Logs
             </button>
           )}
+          <button
+            onClick={() => setActiveTab("bugs")}
+            className={`pb-4 text-xs sm:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "bugs" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            🐞 Bug Reports & AI Analytics
+          </button>
           {isSuperAdmin && (
             <>
               <button
@@ -2171,6 +2215,145 @@ export default function AdminPage() {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Bug Reports & AI Analytics Tab */}
+        {activeTab === "bugs" && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-gray-150 p-6 rounded-3xl shadow-xs">
+              <div>
+                <h2 className="text-base font-extrabold text-surface-dark flex items-center gap-2">
+                  <AlertCircle className="text-red-500" size={20} /> 🐞 Bug Reports & AI Categorization
+                </h2>
+                <p className="text-xs text-gray-400 mt-1">
+                  User bug reports captured with auto-screenshots and classified by AI into 4-digit category codes.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={bugFilterCode}
+                  onChange={(e) => setBugFilterCode(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark font-semibold outline-none cursor-pointer"
+                >
+                  <option value="all">All AI Categories</option>
+                  <option value="5693">#5693 - Language & Translation</option>
+                  <option value="1204">#1204 - UI Layout & Styling</option>
+                  <option value="3301">#3301 - AI Assistant & Chat</option>
+                  <option value="4002">#4002 - Billing & Payments</option>
+                  <option value="2000">#2000 - Functional Features</option>
+                  <option value="9000">#9000 - General System Errors</option>
+                </select>
+                <button
+                  onClick={fetchBugReports}
+                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <RefreshCw size={13} /> Refresh
+                </button>
+              </div>
+            </div>
+
+            {loadingBugs ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-brand" />
+              </div>
+            ) : bugReports.length === 0 ? (
+              <div className="bg-white border border-gray-150 rounded-3xl p-12 text-center text-gray-400 text-xs font-medium">
+                No bug reports submitted yet. Users can report bugs using the red 🚨 icon in the sidebar.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {bugReports
+                  .filter((b) => bugFilterCode === "all" || b.ai_category_code === bugFilterCode)
+                  .map((bug) => (
+                    <div
+                      key={bug.id}
+                      className="bg-white border border-gray-150 p-5 rounded-3xl space-y-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="px-2.5 py-1 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-extrabold flex items-center gap-1">
+                            <Tag size={12} /> #{bug.ai_category_code || "9000"} - {bug.ai_category_name || "General Issue"}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                              bug.status === "resolved"
+                                ? "bg-green-50 text-green-600 border border-green-200"
+                                : bug.status === "in_progress"
+                                ? "bg-amber-50 text-amber-600 border border-amber-200"
+                                : "bg-red-50 text-red-600 border border-red-200"
+                            }`}
+                          >
+                            {bug.status || "open"}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-surface-dark font-medium leading-relaxed bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                          "{bug.description}"
+                        </p>
+
+                        {bug.screenshot_url && (
+                          <div className="relative group cursor-pointer" onClick={() => setSelectedBugScreenshot(bug.screenshot_url)}>
+                            <img
+                              src={bug.screenshot_url}
+                              alt="Bug screenshot"
+                              className="w-full h-32 object-cover rounded-2xl border border-gray-200"
+                            />
+                            <div className="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-all">
+                              Click to Enlarge 🔍
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="text-[10px] text-gray-400 space-y-0.5">
+                          <p>User: <span className="font-bold text-gray-700">{bug.user_email || bug.user_id}</span></p>
+                          <p className="truncate">URL: <span className="font-mono text-gray-600">{bug.page_url}</span></p>
+                          <p>Submitted: {new Date(bug.created_at).toLocaleString()}</p>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Status:</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleUpdateBugStatus(bug.id, "open")}
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${bug.status === "open" ? "bg-red-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                          >
+                            Open
+                          </button>
+                          <button
+                            onClick={() => handleUpdateBugStatus(bug.id, "in_progress")}
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${bug.status === "in_progress" ? "bg-amber-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                          >
+                            In Progress
+                          </button>
+                          <button
+                            onClick={() => handleUpdateBugStatus(bug.id, "resolved")}
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${bug.status === "resolved" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                          >
+                            Resolved
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Screenshot View Modal */}
+        {selectedBugScreenshot && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedBugScreenshot(null)}>
+            <div className="max-w-4xl w-full bg-white rounded-3xl p-4 space-y-3 relative shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                <h4 className="text-xs font-bold text-surface-dark">Captured Bug Screenshot</h4>
+                <button onClick={() => setSelectedBugScreenshot(null)} className="text-gray-400 hover:text-surface-dark font-bold text-sm">
+                  &times; Close
+                </button>
+              </div>
+              <img src={selectedBugScreenshot} alt="Full Screenshot" className="w-full max-h-[75vh] object-contain rounded-2xl border border-gray-150" />
             </div>
           </div>
         )}

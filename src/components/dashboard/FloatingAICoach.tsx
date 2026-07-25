@@ -14,24 +14,24 @@ export function FloatingAICoach() {
   const [profile, setProfile] = useState<any>(null);
   const [proactiveMsg, setProactiveMsg] = useState<string | null>(null);
   const [showBubble, setShowBubble] = useState(false);
-  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
 
-  // Scroll to bottom
+  // Scroll to bottom when messages update
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (isOpen) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, isOpen]);
 
-  // Load Profile & Setup Personalized Proactive Tips
+  // Load Profile & Setup Session Sync
   useEffect(() => {
-    async function loadData() {
+    async function loadSessionAndHistory() {
       const { data: { session } } = await supabase.auth.getSession();
 
-      // If user is logged out (e.g. on landing/index page)
       if (!session?.user) {
         const guestTip =
           lang === "tr"
@@ -54,7 +54,7 @@ export function FloatingAICoach() {
       if (prof) {
         setProfile(prof);
 
-        // Fetch or create persistent AI chat session
+        // Fetch or create active persistent AI chat session
         try {
           const { data: sessions } = await supabase
             .from("ai_chat_sessions")
@@ -63,14 +63,24 @@ export function FloatingAICoach() {
             .order("created_at", { ascending: false })
             .limit(1);
 
+          let sessId = "";
           if (sessions && sessions.length > 0) {
-            const activeId = sessions[0].id;
-            setActiveSessionId(activeId);
+            sessId = sessions[0].id;
+          } else {
+            const { data: newSess } = await supabase
+              .from("ai_chat_sessions")
+              .insert([{ user_id: session.user.id, title: "Study Assistant Chat" }])
+              .select("id")
+              .single();
+            if (newSess) sessId = newSess.id;
+          }
 
+          if (sessId) {
+            setActiveSessionId(sessId);
             const { data: dbMsgs } = await supabase
               .from("ai_chat_messages")
               .select("role, content")
-              .eq("session_id", activeId)
+              .eq("session_id", sessId)
               .order("created_at", { ascending: true });
 
             if (dbMsgs && dbMsgs.length > 0) {
@@ -81,19 +91,12 @@ export function FloatingAICoach() {
                 }))
               );
             }
-          } else {
-            const { data: newSess } = await supabase
-              .from("ai_chat_sessions")
-              .insert([{ user_id: session.user.id, title: "Study Assistant Chat" }])
-              .select("id")
-              .single();
-            if (newSess) setActiveSessionId(newSess.id);
           }
         } catch (err) {
-          console.error("Failed to load chat history:", err);
+          console.error("Failed to sync AI chat history:", err);
         }
 
-        // Fetch real DB tasks & study sessions to construct personalized advice
+        // Fetch real DB tasks & study sessions to construct personalized proactive advice
         const { data: userTasks } = await supabase
           .from("tasks")
           .select("*")
@@ -138,7 +141,6 @@ export function FloatingAICoach() {
           }
         }
 
-        // Show proactive bubble after 3.5 seconds
         setTimeout(() => {
           setProactiveMsg(tip);
           setShowBubble(true);
@@ -146,15 +148,7 @@ export function FloatingAICoach() {
       }
     }
 
-    loadData();
-  }, []);
-
-  // Check Google Calendar connection
-  useEffect(() => {
-    fetch("/api/calendar/list")
-      .then((r) => r.json())
-      .then((d) => setCalendarConnected(d.connected === true))
-      .catch(() => setCalendarConnected(false));
+    loadSessionAndHistory();
   }, []);
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -169,7 +163,7 @@ export function FloatingAICoach() {
     setLoading(true);
 
     try {
-      // Save user message to persistent DB if session exists
+      // Save user message to persistent DB session
       if (activeSessionId) {
         await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "user", content: userText },
@@ -180,19 +174,20 @@ export function FloatingAICoach() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: newMessages.map((m) => ({
-            role: m.sender === "user" ? "user" : "assistant",
-            content: m.text,
+          message: userText,
+          history: messages.map((m) => ({
+            sender: m.sender,
+            text: m.text,
           })),
         }),
       });
 
       const data = await response.json();
-      const reply = data.text || "I'm here to help you stay on pace with your studies!";
+      const reply = data.reply || data.text || (lang === "tr" ? "Çalışmalarınızda yol kat etmenize yardımcı olmak için buradayım!" : "I'm here to help you stay on pace with your studies!");
 
       setMessages((prev) => [...prev, { sender: "coach", text: reply }]);
 
-      // Save assistant reply to persistent DB
+      // Save assistant reply to persistent DB session
       if (activeSessionId) {
         await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "assistant", content: reply },
@@ -203,7 +198,7 @@ export function FloatingAICoach() {
         ...prev,
         {
           sender: "coach",
-          text: "I encountered a network issue. Please check your connection and try again.",
+          text: lang === "tr" ? "Bir bağlantı hatası oluştu. Lütfen tekrar deneyin." : "Connection issue occurred. Please try again.",
         },
       ]);
     }
@@ -251,88 +246,86 @@ export function FloatingAICoach() {
         </button>
       )}
 
-      {/* Chat Panel Modal */}
+      {/* Floating Chat Modal Panel */}
       {isOpen && (
-        <div className="w-80 sm:w-96 h-[520px] bg-white rounded-3xl shadow-2xl border border-gray-150 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="w-[360px] sm:w-[400px] h-[520px] bg-white rounded-3xl shadow-2xl border border-gray-150 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
           {/* Header */}
-          <div className="p-4 bg-gradient-to-r from-brand to-brand-dark text-white flex items-center justify-between">
+          <div className="bg-gradient-to-r from-brand to-brand-dark p-4 text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-xl bg-white/20 flex items-center justify-center">
-                <Sparkles size={16} />
+              <div className="h-9 w-9 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                <Sparkles size={18} />
               </div>
               <div>
-                <h3 className="text-xs font-extrabold">OnPace AI Study Coach</h3>
-                <p className="text-[10px] opacity-80">Online & ready to assist</p>
+                <h3 className="text-sm font-bold leading-tight">OnPace AI Study Coach</h3>
+                <p className="text-[10px] text-white/80 font-medium">
+                  {lang === "tr" ? "Çevrimiçi & Yardıma Hazır" : "Online & ready to assist"}
+                </p>
               </div>
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="p-1 hover:bg-white/20 rounded-lg cursor-pointer transition-colors"
+              className="p-1.5 hover:bg-white/20 rounded-xl transition-all cursor-pointer"
             >
               <X size={16} />
             </button>
           </div>
 
-          {/* Messages Container */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-surface-secondary/40">
-            {messages.length === 0 && (
-              <div className="py-8 text-center text-xs text-gray-400 space-y-2">
-                <MessageSquare className="mx-auto h-8 w-8 text-gray-300" />
-                <p>Start a conversation with your AI Study Coach!</p>
+          {/* Messages Feed */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-gray-50/50">
+            {messages.length === 0 ? (
+              <div className="text-center py-12 space-y-2">
+                <MessageSquare className="h-8 w-8 text-gray-300 mx-auto" />
+                <p className="text-xs text-gray-400 font-medium">
+                  {lang === "tr" ? "Yapay Zeka Çalışma Koçunuz ile konuşmaya başlayın!" : "Start a conversation with your AI Study Coach!"}
+                </p>
               </div>
-            )}
-
-            {messages.map((m, idx) => (
-              <div
-                key={idx}
-                className={`flex gap-2.5 ${
-                  m.sender === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                {m.sender === "coach" && (
-                  <div className="h-7 w-7 rounded-xl bg-brand/10 text-brand flex items-center justify-center shrink-0 mt-0.5">
-                    <Sparkles size={13} />
-                  </div>
-                )}
+            ) : (
+              messages.map((m, idx) => (
                 <div
-                  className={`max-w-[80%] p-3 rounded-2xl text-xs leading-relaxed ${
-                    m.sender === "user"
-                      ? "bg-brand text-white rounded-br-none"
-                      : "bg-white border border-gray-150 text-surface-dark rounded-bl-none shadow-2xs"
-                  }`}
+                  key={idx}
+                  className={`flex ${m.sender === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  {m.text}
+                  <div
+                    className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
+                      m.sender === "user"
+                        ? "bg-brand text-white font-medium rounded-br-none shadow-sm"
+                        : "bg-white border border-gray-150 text-surface-dark font-medium rounded-bl-none shadow-xs"
+                    }`}
+                  >
+                    {m.text}
+                  </div>
                 </div>
-              </div>
-            ))}
-
+              ))
+            )}
             {loading && (
-              <div className="flex gap-2 justify-start items-center text-xs text-gray-400">
-                <Loader2 className="h-4 w-4 animate-spin text-brand" />
-                <span>AI Coach is thinking...</span>
+              <div className="flex justify-start">
+                <div className="bg-white border border-gray-150 px-3.5 py-2.5 rounded-2xl rounded-bl-none text-xs text-gray-400 flex items-center gap-2 shadow-xs">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
+                  <span>{lang === "tr" ? "Düşünüyor..." : "Thinking..."}</span>
+                </div>
               </div>
             )}
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input Box */}
+          {/* Input Footer */}
           <form
             onSubmit={handleSendMessage}
-            className="p-3 bg-white border-t border-gray-100 flex items-center gap-2"
+            className="p-3 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0"
           >
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={t.aiChat?.placeholderChat || "Ask anything about your studies..."}
+              placeholder={lang === "tr" ? "Bir şey sorun veya komut verin..." : "Ask anything about your studies..."}
               className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
             />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="p-2.5 bg-brand text-white rounded-xl hover:bg-brand-hover active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
+              className="p-2.5 bg-brand text-white rounded-xl hover:bg-brand-hover active:scale-95 disabled:opacity-40 cursor-pointer transition-all shrink-0"
             >
-              <Send size={15} />
+              <Send size={14} />
             </button>
           </form>
         </div>

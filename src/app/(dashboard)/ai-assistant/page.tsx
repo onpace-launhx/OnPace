@@ -38,8 +38,10 @@ export default function AiAssistantPage() {
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
 
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
+
   useEffect(() => {
-    async function loadProfile() {
+    async function loadProfileAndChat() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/login");
@@ -60,9 +62,52 @@ export default function AiAssistantPage() {
         .eq("user_id", user.id);
       if (coursesData) setCourses(coursesData);
 
+      // Sync active chat session & messages
+      try {
+        const { data: sessions } = await supabase
+          .from("ai_chat_sessions")
+          .select("id")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        let sessId = "";
+        if (sessions && sessions.length > 0) {
+          sessId = sessions[0].id;
+        } else {
+          const { data: newSess } = await supabase
+            .from("ai_chat_sessions")
+            .insert([{ user_id: user.id, title: "Study Assistant Chat" }])
+            .select("id")
+            .single();
+          if (newSess) sessId = newSess.id;
+        }
+
+        if (sessId) {
+          setActiveSessionId(sessId);
+          const { data: dbMsgs } = await supabase
+            .from("ai_chat_messages")
+            .select("role, content")
+            .eq("session_id", sessId)
+            .order("created_at", { ascending: true });
+
+          if (dbMsgs && dbMsgs.length > 0) {
+            setMessages(
+              dbMsgs.map((m, idx) => ({
+                id: idx.toString(),
+                sender: m.role === "user" ? "user" : "ai",
+                text: m.content,
+              }))
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Error loading chat history:", err);
+      }
+
       setLoading(false);
     }
-    loadProfile();
+    loadProfileAndChat();
   }, [router, supabase]);
 
   // Set localized welcome message once translation loader completes
@@ -124,6 +169,12 @@ export default function AiAssistantPage() {
     setSending(true);
 
     try {
+      if (activeSessionId) {
+        await supabase.from("ai_chat_messages").insert([
+          { session_id: activeSessionId, role: "user", content: fullMessageText }
+        ]);
+      }
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -131,21 +182,24 @@ export default function AiAssistantPage() {
         },
         body: JSON.stringify({
           message: fullMessageText,
-          history: messages.slice(1) // omit welcome message
+          history: messages.map((m) => ({
+            sender: m.sender,
+            text: m.text
+          }))
         }),
       });
 
       const data = await response.json();
+      const reply = data.reply || data.text || "I'm here to help you stay on pace with your studies!";
 
-      if (data.reply) {
-        setMessages((prev) => [
-          ...prev,
-          { id: Date.now().toString(), sender: "ai", text: data.reply }
-        ]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { id: Date.now().toString(), sender: "ai", text: `⚠️ Error: ${data.error || "Failed to reach AI."}` }
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now().toString(), sender: "ai", text: reply }
+      ]);
+
+      if (activeSessionId) {
+        await supabase.from("ai_chat_messages").insert([
+          { session_id: activeSessionId, role: "assistant", content: reply }
         ]);
       }
     } catch {

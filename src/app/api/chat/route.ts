@@ -350,7 +350,7 @@ Do not output code blocks unless asked.`;
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-5.4-mini",
+          model: "gpt-4o-mini",
           messages,
           tools,
           tool_choice: "auto"
@@ -390,7 +390,7 @@ Do not output code blocks unless asked.`;
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5.4-mini",
+            model: "gpt-4o-mini",
             messages
           }),
         });
