@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isMandatory && onlyOptedIn) {
-      query = query.neq("email_notifications_enabled", false);
+      query = query.or("email_notifications_enabled.eq.true,email_notifications_enabled.is.null");
     }
 
     const { data: recipients, error: recipientsErr } = await query;
