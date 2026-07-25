@@ -18,7 +18,13 @@ import {
   Settings,
   HelpCircle,
   FileText,
-  Lock
+  Lock,
+  Upload,
+  Camera,
+  Check,
+  MessageSquare,
+  Trash2,
+  X
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 
@@ -34,19 +40,18 @@ export default function CalendarPage() {
   // Month navigation
   const [currentDate, setCurrentDate] = useState(new Date());
 
-  // Form states for scheduling study session
-  const [sessionOpen, setSessionOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [courseId, setCourseId] = useState("");
-  const [dateStr, setDateStr] = useState("");
-  const [startTime, setStartTime] = useState("09:00");
-  const [duration, setDuration] = useState("60");
-  const [savingSession, setSavingSession] = useState(false);
-
   // Google Calendar Integration States
   const [googleConnected, setGoogleConnected] = useState(false);
   const [googleEmail, setGoogleEmail] = useState("");
   const [showLinkPrompt, setShowLinkPrompt] = useState(false);
+
+  // Session Modal State
+  const [sessionOpen, setSessionOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [courseId, setCourseId] = useState("");
+  const [dateStr, setDateStr] = useState(new Date().toISOString().split("T")[0]);
+  const [startTime, setStartTime] = useState("14:00");
+  const [duration, setDuration] = useState("60");
   const [isSyncing, setIsSyncing] = useState(false);
 
   // AI Planner States
@@ -54,7 +59,7 @@ export default function CalendarPage() {
   const [proposedSessions, setProposedSessions] = useState<any[]>([]);
   const [isPlanning, setIsPlanning] = useState(false);
 
-  // Custom Alert Popups replacing native alerts
+  // Custom Alert Popups
   const [customAlert, setCustomAlert] = useState<string | null>(null);
 
   // Edit / Details Modal States
@@ -67,25 +72,27 @@ export default function CalendarPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingSession, setDeletingSession] = useState(false);
 
+  // ── Vision OCR Schedule Upload States ──────────────────────────────────────
+  const [ocrModalOpen, setOcrModalOpen] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrPreviewEvents, setOcrPreviewEvents] = useState<any[]>([]);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+
+  // ── Plan My Day Interactive AI States ─────────────────────────────────────
+  const [planMyDayOpen, setPlanMyDayOpen] = useState(false);
+  const [isPlanningDay, setIsPlanningDay] = useState(false);
+  const [dayPlanBlocks, setDayPlanBlocks] = useState<any[]>([]);
+  const [dayPlanNote, setDayPlanNote] = useState("");
+
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
 
-  const localizedMonths = lang === "zh"
-    ? ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"]
-    : lang === "es"
-    ? ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    : [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-      ];
-
-  const localizedDays = lang === "zh"
-    ? ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
-    : lang === "es"
-    ? ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
-    : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
 
   const loadAllData = async () => {
+    setLoading(true);
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -132,30 +139,42 @@ export default function CalendarPage() {
     let fetchedGoogleEvents: any[] = [];
     if (isGConnected) {
       try {
-        const calRes = await fetch("/api/calendar/list");
-        const calData = await calRes.json();
-        if (calData && calData.connected && calData.events) {
-          fetchedGoogleEvents = calData.events.map((e: any) => ({
-            id: e.id,
-            user_id: user.id,
-            title: `📅 [Google] ${e.summary}`,
-            start_time: e.start,
-            end_time: e.end,
-            is_ai_scheduled: false
-          }));
+        const res = await fetch("/api/calendar/list");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.events && Array.isArray(data.events)) {
+            fetchedGoogleEvents = data.events.map((ev: any) => {
+              const startObj = new Date(ev.start);
+              const endObj = new Date(ev.end);
+              const durationMins = Math.round((endObj.getTime() - startObj.getTime()) / (1000 * 60)) || 60;
+              const formattedTime = startObj.toTimeString().substring(0, 5);
+
+              return {
+                id: "google_" + ev.id,
+                google_event_id: ev.id,
+                user_id: user.id,
+                title: `📅 [Google] ${ev.summary}`,
+                start_time: ev.start,
+                duration: durationMins,
+                formattedTime: formattedTime,
+                isGoogleEvent: true,
+                description: ev.description,
+                htmlLink: ev.htmlLink,
+                courses: { name: "Google Calendar", color: "#4285F4" }
+              };
+            });
+          }
         }
       } catch (err) {
         console.error("Failed to load Google Calendar events:", err);
       }
     }
 
-    // Filter out cached google sessions from local sessions to avoid duplication
     const cleanLocalSessions = localSessions.filter(s => !s.title.startsWith("📅 [Google]"));
     setStudySessions([...cleanLocalSessions, ...fetchedGoogleEvents]);
-
     setLoading(false);
 
-    // If not connected, show the popup prompt to connect
+    // If not connected, show the popup prompt to connect ONLY if !isGConnected
     if (!isGConnected) {
       setShowLinkPrompt(true);
     }
@@ -165,338 +184,334 @@ export default function CalendarPage() {
     loadAllData();
   }, [router, supabase]);
 
-  // Listen to profile/settings modal Google connection changes in Sidebar
-  useEffect(() => {
-    const handleSync = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: googleToken } = await supabase
-        .from("user_google_tokens")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const isGConnected = !!googleToken;
-      const gEmail = isGConnected ? (user.email || "Google Connected") : "";
-      setGoogleConnected(isGConnected);
-      setGoogleEmail(gEmail);
-
-      const { data: sessionsData } = await supabase
-        .from("study_sessions")
-        .select("*, courses(name, color)")
-        .eq("user_id", user.id);
-
-      let localSessions = sessionsData || [];
-
-      let fetchedGoogleEvents: any[] = [];
-      if (isGConnected) {
-        try {
-          const calRes = await fetch("/api/calendar/list");
-          const calData = await calRes.json();
-          if (calData && calData.connected && calData.events) {
-            fetchedGoogleEvents = calData.events.map((e: any) => ({
-              id: e.id,
-              user_id: user.id,
-              title: `📅 [Google] ${e.summary}`,
-              start_time: e.start,
-              end_time: e.end,
-              is_ai_scheduled: false
-            }));
-          }
-        } catch (err) {
-          console.error("Failed to load Google Calendar events:", err);
-        }
-      }
-
-      const cleanLocalSessions = localSessions.filter(s => !s.title.startsWith("📅 [Google]"));
-      setStudySessions([...cleanLocalSessions, ...fetchedGoogleEvents]);
-    };
-
-    window.addEventListener("calendar-sync", handleSync);
-    return () => window.removeEventListener("calendar-sync", handleSync);
-  }, [supabase]);
-
-  // Export iCalendar (.ics) Feed
   const handleExportICS = () => {
-    let icsContent = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//OnPace//Study Calendar//EN\r\n";
-    studySessions.forEach(session => {
-      const start = new Date(session.start_time).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-      const end = new Date(session.end_time).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-      icsContent += `BEGIN:VEVENT\r\nUID:${session.id}@onpace.app\r\nDTSTAMP:${start}\r\nDTSTART:${start}\r\nDTEND:${end}\r\nSUMMARY:${session.title}\r\nDESCRIPTION:Study block scheduled on OnPace\r\nEND:VEVENT\r\n`;
+    let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//OnPace//Study Calendar//EN\n";
+    studySessions.forEach(s => {
+      const dt = new Date(s.start_time);
+      const dtStr = dt.toISOString().replace(/-|:|\.\d\d\d/g, "");
+      icsContent += `BEGIN:VEVENT\nSUMMARY:${s.title}\nDTSTART:${dtStr}\nDURATION:PT${s.duration || 60}M\nEND:VEVENT\n`;
     });
-    
+    icsContent += "END:VCALENDAR";
+
     const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "onpace_study_schedule.ics";
+    link.href = url;
+    link.setAttribute("download", "onpace_study_calendar.ics");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // AI Auto-Planner Logic
-  const handleInitAIPlanner = () => {
-    const pendingTasks = tasks.filter(t => t.status !== "completed");
-    if (pendingTasks.length === 0) {
-      setCustomAlert(lang === "zh" ? "没有待完成的任务来生成学习计划！" : lang === "es" ? "¡No hay tareas pendientes para planificar!" : "No pending tasks found to plan study blocks!");
-      return;
-    }
-    
-    const baseDate = new Date();
-    const proposed = pendingTasks.map((task, idx) => {
-      const targetDate = new Date(baseDate);
-      if (task.due_date) {
-        const due = new Date(task.due_date);
-        targetDate.setDate(due.getDate() - 1);
-        if (targetDate < baseDate) {
-          targetDate.setDate(baseDate.getDate() + idx);
-        }
-      } else {
-        targetDate.setDate(baseDate.getDate() + idx + 1);
-      }
-      
-      const hours = [14, 16, 18];
-      const startHour = hours[idx % hours.length];
-      targetDate.setHours(startHour, 0, 0, 0);
-      
-      const endTime = new Date(targetDate);
-      endTime.setHours(startHour + 1, 0, 0, 0);
-      
-      return {
-        id: `temp-${idx}`,
-        user_id: profile?.id,
-        course_id: task.course_id,
-        courseName: task.courses?.name || "General",
-        courseColor: task.courses?.color || "#9CA3AF",
-        title: `🪄 AI Plan: Study ${task.title}`,
-        start_time: targetDate.toISOString(),
-        end_time: endTime.toISOString(),
-        is_ai_scheduled: true
-      };
-    });
-    
-    setProposedSessions(proposed);
-    setAiPlannerOpen(true);
-  };
-
-  const handleConfirmAIPlanner = async () => {
-    setIsPlanning(true);
-    const blocksToInsert = proposedSessions.map(({ id, courseName, courseColor, ...rest }) => rest);
-    
-    const { data, error } = await supabase
-      .from("study_sessions")
-      .insert(blocksToInsert)
-      .select("*, courses(name, color)");
-      
-    if (!error && data) {
-      setStudySessions(prev => [...prev, ...data]);
-
-      // If Google Calendar is connected, push these new sessions to Google Calendar
-      if (googleConnected) {
-        try {
-          await Promise.all(
-            data.map(session =>
-              fetch("/api/calendar/add", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  summary: session.title,
-                  start: session.start_time,
-                  end: session.end_time,
-                  description: "Scheduled via OnPace AI Planner"
-                })
-              })
-            )
-          );
-        } catch (err) {
-          console.error("Failed to add events to Google Calendar:", err);
-        }
-      }
-
-      setAiPlannerOpen(false);
-      setProposedSessions([]);
-    } else {
-      setCustomAlert("AI planner failed to schedule study sessions.");
-    }
-    setIsPlanning(false);
-  };
-
-  const handleAddSession = async (e: React.FormEvent) => {
+  const handleSaveSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !dateStr) return;
-    setSavingSession(true);
+    if (!title.trim()) return;
+    setIsSyncing(true);
 
-    const start = new Date(`${dateStr}T${startTime}`);
-    const end = new Date(start.getTime() + parseInt(duration) * 60 * 1000);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-    const newSession = {
-      user_id: profile.id,
+    const startDateTime = new Date(`${dateStr}T${startTime}:00`).toISOString();
+
+    const newSessionPayload = {
+      user_id: user.id,
       course_id: courseId || null,
       title: title.trim(),
-      start_time: start.toISOString(),
-      end_time: end.toISOString(),
-      is_ai_scheduled: false
+      start_time: startDateTime,
+      duration: parseInt(duration) || 60
     };
 
     const { data, error } = await supabase
       .from("study_sessions")
-      .insert([newSession])
+      .insert([newSessionPayload])
       .select("*, courses(name, color)")
       .single();
 
     if (!error && data) {
-      setStudySessions([...studySessions, data]);
+      setStudySessions(prev => [...prev, data]);
+      setSessionOpen(false);
+      setTitle("");
+      setCourseId("");
 
-      // If Google Calendar is connected, push this new session to Google Calendar
       if (googleConnected) {
         try {
           await fetch("/api/calendar/add", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              summary: data.title,
-              start: data.start_time,
-              end: data.end_time,
-              description: "Scheduled via OnPace Calendar"
+              title: data.title,
+              startTime: data.start_time,
+              durationMinutes: data.duration,
+              description: "Created via OnPace Study Calendar"
             })
           });
         } catch (err) {
           console.error("Failed to add event to Google Calendar:", err);
         }
       }
-
-      setTitle("");
-      setCourseId("");
-      setDateStr("");
-      setStartTime("09:00");
-      setSessionOpen(false);
+    } else {
+      setCustomAlert("Error saving session: " + (error?.message || ""));
     }
-    setSavingSession(false);
+    setIsSyncing(false);
   };
 
-  const handleOpenEventDetails = (session: any) => {
-    setSelectedSession(session);
-    setEditTitle(session.title.replace("📅 [Google] ", "").replace("🪄 AI Plan: ", ""));
-    setEditCourseId(session.course_id || "");
-    
-    const start = new Date(session.start_time);
-    const end = new Date(session.end_time);
-    
-    // Format date as YYYY-MM-DD
-    const dateStr = start.toISOString().split("T")[0];
-    setEditDateStr(dateStr);
-    
-    // Format time as HH:MM
-    const hours = String(start.getHours()).padStart(2, "0");
-    const minutes = String(start.getMinutes()).padStart(2, "0");
-    setEditStartTime(`${hours}:${minutes}`);
-    
-    // Calculate duration in minutes
-    const diffMs = end.getTime() - start.getTime();
-    const diffMins = Math.round(diffMs / 60000);
-    setEditDuration(String(diffMins));
+  const handleInitAIPlanner = async () => {
+    setAiPlannerOpen(true);
+    setIsPlanning(true);
+
+    const todoTasks = tasks.filter(t => t.status === "todo");
+    if (todoTasks.length === 0) {
+      setProposedSessions([]);
+      setIsPlanning(false);
+      return;
+    }
+
+    const proposed: any[] = [];
+    const today = new Date();
+
+    todoTasks.slice(0, 5).forEach((t, idx) => {
+      const pDate = new Date(today);
+      pDate.setDate(today.getDate() + (idx % 3) + 1);
+      const dateString = pDate.toISOString().split("T")[0];
+      const hour = 14 + (idx % 4) * 2;
+      const startT = `${hour < 10 ? '0' : ''}${hour}:00`;
+
+      proposed.push({
+        title: `Deep Focus: ${t.title}`,
+        course_id: t.course_id,
+        course_name: t.courses?.name || "General",
+        dateStr: dateString,
+        startTime: startT,
+        duration: t.estimated_minutes || 60
+      });
+    });
+
+    setProposedSessions(proposed);
+    setIsPlanning(false);
   };
 
-  const handleSaveEditSession = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSession || !editTitle.trim() || !editDateStr) return;
-    setSavingEdit(true);
+  const handleConfirmAIPlan = async () => {
+    setIsPlanning(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-    const start = new Date(`${editDateStr}T${editStartTime}`);
-    const end = new Date(start.getTime() + parseInt(editDuration) * 60 * 1000);
+    const insertPayloads = proposedSessions.map(p => ({
+      user_id: user.id,
+      course_id: p.course_id || null,
+      title: p.title,
+      start_time: new Date(`${p.dateStr}T${p.startTime}:00`).toISOString(),
+      duration: p.duration
+    }));
 
-    const updatedSession = {
-      title: editTitle.trim(),
-      course_id: editCourseId || null,
-      start_time: start.toISOString(),
-      end_time: end.toISOString()
-    };
-
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("study_sessions")
-      .update(updatedSession)
-      .eq("id", selectedSession.id);
+      .insert(insertPayloads)
+      .select("*, courses(name, color)");
 
-    if (!error) {
-      // Fetch course details for local display
-      const selectedCourse = courses.find(c => c.id === editCourseId);
-      setStudySessions(prev => prev.map(s => s.id === selectedSession.id ? { 
-        ...s, 
-        ...updatedSession,
-        courses: selectedCourse ? { name: selectedCourse.name, color: selectedCourse.color } : null
-      } : s));
-      setSelectedSession(null);
-    } else {
-      setCustomAlert("Failed to update session details.");
+    if (!error && data) {
+      setStudySessions(prev => [...prev, ...data]);
+      setAiPlannerOpen(false);
     }
-    setSavingEdit(false);
+    setIsPlanning(false);
   };
 
-  const handleDeleteSession = async () => {
-    if (!selectedSession) return;
-    setDeletingSession(true);
+  // ── Vision OCR Image Upload Handler ──────────────────────────────────────
+  const handleOcrImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const isGoogle = selectedSession.title.startsWith("📅 [Google]") || selectedSession.is_from_google_api;
+    setOcrLoading(true);
+    setOcrError(null);
+    setOcrPreviewEvents([]);
 
-    if (isGoogle) {
-      // Delete from Google Calendar API
-      try {
-        const res = await fetch("/api/calendar/delete", {
-          method: "DELETE",
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result as string;
+        const res = await fetch("/api/calendar/ocr", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eventId: selectedSession.id })
+          body: JSON.stringify({
+            imageBase64: base64Data,
+            mimeType: file.type,
+          }),
         });
-        const data = await res.json();
-        if (data.success) {
-          setStudySessions(prev => prev.filter(s => s.id !== selectedSession.id));
-          setSelectedSession(null);
-        } else {
-          setCustomAlert("Failed to delete Google Calendar event: " + (data.error || ""));
-        }
-      } catch (err) {
-        console.error(err);
-        setCustomAlert("Failed to delete Google Calendar event.");
-      }
-    } else {
-      // Delete from local Supabase DB
-      const { error } = await supabase
-        .from("study_sessions")
-        .delete()
-        .eq("id", selectedSession.id);
 
-      if (!error) {
-        setStudySessions(prev => prev.filter(s => s.id !== selectedSession.id));
-        setSelectedSession(null);
-      } else {
-        setCustomAlert("Failed to delete study session.");
-      }
+        const data = await res.json();
+        if (data.events && Array.isArray(data.events)) {
+          setOcrPreviewEvents(data.events);
+        } else {
+          setOcrError(data.error || "No events found in schedule image.");
+        }
+        setOcrLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setOcrError("Failed to read image file.");
+      setOcrLoading(false);
     }
-    setDeletingSession(false);
   };
 
+  const handleConfirmOcrEvents = async () => {
+    if (ocrPreviewEvents.length === 0) return;
+    setOcrLoading(true);
 
-  if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-surface-secondary">
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent"></div>
-          <p className="text-sm font-medium text-gray-500">{t.common.loading}</p>
-        </div>
-      </div>
-    );
-  }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-  // Calendar Math
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
+    const today = new Date();
+    const insertSessions: any[] = [];
+    const insertTasks: any[] = [];
 
+    ocrPreviewEvents.forEach((ev) => {
+      let targetDate = new Date(today);
+      if (ev.dateStr) {
+        targetDate = new Date(ev.dateStr);
+      } else if (typeof ev.dayOfWeek === "number") {
+        const currentDay = today.getDay();
+        const diff = (ev.dayOfWeek + 7 - currentDay) % 7;
+        targetDate.setDate(today.getDate() + diff);
+      }
+
+      const sTime = ev.startTime || "09:00";
+      const startDateTime = new Date(`${targetDate.toISOString().split("T")[0]}T${sTime}:00`).toISOString();
+
+      if (ev.type === "task") {
+        insertTasks.push({
+          user_id: user.id,
+          title: ev.title,
+          status: "todo",
+          priority: "medium",
+          estimated_minutes: ev.durationMinutes || 30,
+          due_date: startDateTime,
+        });
+      } else {
+        insertSessions.push({
+          user_id: user.id,
+          title: ev.title,
+          start_time: startDateTime,
+          duration: ev.durationMinutes || 60,
+        });
+      }
+    });
+
+    if (insertSessions.length > 0) {
+      const { data: addedSessions } = await supabase
+        .from("study_sessions")
+        .insert(insertSessions)
+        .select("*, courses(name, color)");
+      if (addedSessions) setStudySessions((prev) => [...prev, ...addedSessions]);
+    }
+
+    if (insertTasks.length > 0) {
+      const { data: addedTasks } = await supabase
+        .from("tasks")
+        .insert(insertTasks)
+        .select("*, courses(name, color)");
+      if (addedTasks) setTasks((prev) => [...prev, ...addedTasks]);
+    }
+
+    setOcrModalOpen(false);
+    setOcrPreviewEvents([]);
+    setOcrLoading(false);
+  };
+
+  // ── Plan My Day Interactive AI Handler ──────────────────────────────────
+  const handleOpenPlanMyDay = () => {
+    setPlanMyDayOpen(true);
+    setIsPlanningDay(true);
+
+    const incompleteTasks = tasks.filter((t) => t.status === "todo");
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const blocks: any[] = [];
+    let startHour = 9;
+
+    if (incompleteTasks.length > 0) {
+      incompleteTasks.slice(0, 4).forEach((task) => {
+        const sTime = `${startHour < 10 ? "0" : ""}${startHour}:00`;
+        const dur = task.estimated_minutes || 60;
+        blocks.push({
+          title: `Focus: ${task.title}`,
+          dateStr: todayStr,
+          startTime: sTime,
+          duration: dur,
+          task_id: task.id,
+        });
+        startHour += Math.ceil(dur / 60);
+      });
+      setDayPlanNote("I've analyzed your active task list and arranged focus blocks for today!");
+    } else {
+      blocks.push({
+        title: "Deep Study & Revision Session",
+        dateStr: todayStr,
+        startTime: "10:00",
+        duration: 90,
+      });
+      blocks.push({
+        title: "Practice Flashcards & Quiz",
+        dateStr: todayStr,
+        startTime: "14:00",
+        duration: 45,
+      });
+      setDayPlanNote("No pending tasks! Recommended a structured study & practice routine for today.");
+    }
+
+    setDayPlanBlocks(blocks);
+    setIsPlanningDay(false);
+  };
+
+  const handleConfirmDayPlan = async () => {
+    if (dayPlanBlocks.length === 0) return;
+    setIsPlanningDay(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const payloads = dayPlanBlocks.map((b) => ({
+      user_id: user.id,
+      title: b.title,
+      start_time: new Date(`${b.dateStr}T${b.startTime}:00`).toISOString(),
+      duration: b.duration,
+    }));
+
+    const { data, error } = await supabase
+      .from("study_sessions")
+      .insert(payloads)
+      .select("*, courses(name, color)");
+
+    if (!error && data) {
+      setStudySessions((prev) => [...prev, ...data]);
+      setPlanMyDayOpen(false);
+    }
+    setIsPlanningDay(false);
+  };
+
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const totalDays = getDaysInMonth(year, month);
   const firstDayIndex = new Date(year, month, 1).getDay();
-  const totalDays = new Date(year, month + 1, 0).getDate();
 
-  const cells: Date[] = [];
+  const localizedMonths = [
+    lang === "tr" ? "Ocak" : "January",
+    lang === "tr" ? "Şubat" : "February",
+    lang === "tr" ? "Mart" : "March",
+    lang === "tr" ? "Nisan" : "April",
+    lang === "tr" ? "Mayıs" : "May",
+    lang === "tr" ? "Haziran" : "June",
+    lang === "tr" ? "Temmuz" : "July",
+    lang === "tr" ? "Ağustos" : "August",
+    lang === "tr" ? "Eylül" : "September",
+    lang === "tr" ? "Ekim" : "October",
+    lang === "tr" ? "Kasım" : "November",
+    lang === "tr" ? "Aralık" : "December"
+  ];
+
+  const cells: (Date | null)[] = [];
   for (let i = 0; i < firstDayIndex; i++) {
-    const prevDate = new Date(year, month, -firstDayIndex + i + 1);
+    const prevDate = new Date(year, month, 0 - (firstDayIndex - 1 - i));
     cells.push(prevDate);
   }
   for (let i = 1; i <= totalDays; i++) {
@@ -540,33 +555,33 @@ export default function CalendarPage() {
           <p className="text-sm text-gray-500 mt-1">{t.calendar.subtitle}</p>
         </div>
         
-        <div className="flex gap-2 flex-wrap">
-          {googleConnected && (
-            <button
-              onClick={handleExportICS}
-              className="rounded-xl bg-white border border-gray-200 hover:bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-600 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shadow-sm"
-            >
-              📤 {lang === "zh" ? "导出日历 (.ics)" : lang === "es" ? "Exportar (.ics)" : "Export (.ics)"}
-            </button>
-          )}
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* Vision OCR Schedule Button */}
+          <button
+            onClick={() => setOcrModalOpen(true)}
+            className="rounded-xl bg-purple-50 text-purple-700 border border-purple-200 px-3.5 py-2.5 text-xs font-bold hover:bg-purple-100 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            <Camera size={15} /> {t.calendar.uploadScheduleImage || "Görselden Program Yükle"}
+          </button>
+
+          {/* Plan My Day AI Button */}
+          <button
+            onClick={handleOpenPlanMyDay}
+            className="rounded-xl bg-gradient-to-r from-brand to-brand-dark text-white px-3.5 py-2.5 text-xs font-bold shadow-md hover:opacity-95 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Sparkles size={15} className="animate-pulse" /> {t.calendar.planMyDay || "Benim İçin Bugünümü Planla"}
+          </button>
 
           <button
-            onClick={handleInitAIPlanner}
-            className="rounded-xl bg-brand-light border border-brand/10 px-4 py-2.5 text-sm font-semibold text-brand hover:bg-brand-light/70 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Sparkles size={16} /> {lang === "zh" ? "🪄 AI 智能排程" : lang === "es" ? "🪄 AI Auto-Planificación" : "🪄 AI Auto-Plan"}
-          </button>
-          
-          <button
             onClick={() => setSessionOpen(true)}
-            className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-hover active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+            className="rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-hover active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <Plus size={16} /> {t.calendar.addSession}
           </button>
         </div>
       </div>
 
-      {/* Calendar Shell */}
+      {/* Calendar Grid Shell */}
       <div className="bg-white border border-gray-100 rounded-3xl shadow-sm overflow-hidden flex flex-col">
         
         {/* Month selector toolbar */}
@@ -582,6 +597,12 @@ export default function CalendarPage() {
               <ChevronLeft size={16} />
             </button>
             <button
+              onClick={() => setCurrentDate(new Date())}
+              className="px-3 py-1.5 border border-gray-200 hover:bg-gray-50 text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
+            >
+              {t.calendar.today}
+            </button>
+            <button
               onClick={() => navigateMonth("next")}
               className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl cursor-pointer transition-all active:scale-95"
             >
@@ -591,78 +612,83 @@ export default function CalendarPage() {
         </div>
 
         {/* Days of Week Header */}
-        <div className="grid grid-cols-7 text-center border-b border-gray-100 bg-gray-50 text-xs font-bold text-gray-500 py-3">
-          {localizedDays.map((d, index) => (
-            <div key={index}>{d}</div>
-          ))}
+        <div className="grid grid-cols-7 border-b border-gray-100 bg-surface-secondary/50 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider py-2.5">
+          <div>{lang === "tr" ? "Paz" : "Sun"}</div>
+          <div>{lang === "tr" ? "Pzt" : "Mon"}</div>
+          <div>{lang === "tr" ? "Sal" : "Tue"}</div>
+          <div>{lang === "tr" ? "Çar" : "Wed"}</div>
+          <div>{lang === "tr" ? "Per" : "Thu"}</div>
+          <div>{lang === "tr" ? "Cum" : "Fri"}</div>
+          <div>{lang === "tr" ? "Cmt" : "Sat"}</div>
         </div>
 
-        {/* Grid Cells */}
-        <div className="grid grid-cols-7 auto-rows-[100px] sm:auto-rows-[120px] divide-x divide-y divide-gray-100 bg-gray-100">
+        {/* Month Grid Cells */}
+        <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-gray-100 text-xs">
           {cells.map((date, idx) => {
+            if (!date) return <div key={idx} className="h-32 bg-gray-50/30" />;
+
             const isCurrentMonth = date.getMonth() === month;
-            const { tasks: dayTasks, sessions: daySessions } = getEventsForDay(date);
             const isToday = date.toDateString() === new Date().toDateString();
+            const { tasks: dayTasks, sessions: daySessions } = getEventsForDay(date);
 
             return (
               <div
                 key={idx}
-                className={`p-2 bg-white flex flex-col justify-between overflow-hidden group ${
-                  isCurrentMonth ? "text-surface-dark" : "text-gray-300"
-                }`}
+                className={`min-h-[120px] p-2 flex flex-col justify-between transition-colors ${
+                  isCurrentMonth ? "bg-white" : "bg-gray-50/40 text-gray-300"
+                } ${isToday ? "ring-2 ring-brand/30 bg-brand/5" : ""}`}
               >
-                <div className="flex justify-between items-center">
-                  <span className={`text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center ${
-                    isToday ? "bg-brand text-white" : ""
-                  }`}>
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold ${
+                      isToday
+                        ? "bg-brand text-white shadow-sm"
+                        : isCurrentMonth
+                        ? "text-surface-dark"
+                        : "text-gray-400"
+                    }`}
+                  >
                     {date.getDate()}
                   </span>
                 </div>
-                
-                {/* Events list inside cell */}
-                <div className="space-y-1 overflow-y-auto pr-0.5 mt-1 flex-1">
-                  {dayTasks.map(task => (
+
+                <div className="space-y-1 my-1 overflow-y-auto max-h-24">
+                  {daySessions.map(s => (
                     <div
-                      key={task.id}
-                      className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white truncate shadow-sm"
-                      style={{ backgroundColor: task.courses?.color || "#9CA3AF" }}
-                      title={`Task: ${task.title}`}
+                      key={s.id}
+                      onClick={() => {
+                        setSelectedSession(s);
+                        setEditTitle(s.title.replace(/^📅 \[Google\] /, ""));
+                        setEditCourseId(s.course_id || "");
+                        setEditDuration(String(s.duration || 60));
+                      }}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-white truncate cursor-pointer transition-all hover:opacity-90 shadow-2xs"
+                      style={{ backgroundColor: s.courses?.color || "#4F46E5" }}
                     >
-                      ✏️ {task.title}
+                      {s.formattedTime || (s.start_time ? new Date(s.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "")} {s.title}
                     </div>
                   ))}
-                  {daySessions.map(session => {
-                    const isGoogle = session.title.startsWith("📅 [Google]");
-                    const isAi = session.title.startsWith("🪄 AI Plan:");
-                    let bg = session.courses?.color || "#4F46E5";
-                    if (isGoogle) bg = "#10B981"; // Emerald for google
-                    if (isAi) bg = "#8B5CF6"; // Purple for AI plan
-                    
-                    return (
-                      <div
-                        key={session.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenEventDetails(session);
-                        }}
-                        className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white truncate shadow-sm cursor-pointer hover:brightness-90 active:scale-95 transition-all"
-                        style={{ backgroundColor: bg }}
-                        title={session.title}
-                      >
-                        {isGoogle ? "🗓️" : isAi ? "🪄" : "📖"} {session.title.replace("📅 [Google] ", "").replace("🪄 AI Plan: ", "")}
-                      </div>
-                    );
-                  })}
+                  {dayTasks.map(t => (
+                    <div
+                      key={t.id}
+                      className="px-2 py-1 rounded-lg text-[10px] font-medium bg-gray-100 text-gray-700 truncate border border-gray-200/50"
+                    >
+                      ✓ {t.title}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-[9px] text-gray-400 text-right">
+                  {daySessions.length > 0 && `${daySessions.length} sess`}
                 </div>
               </div>
             );
           })}
         </div>
-
       </div>
 
-      {/* Modal: Google Calendar Link Prompt Popup */}
-      {showLinkPrompt && (
+      {/* Modal: Google Calendar Link Prompt Popup (ONLY if !googleConnected) */}
+      {showLinkPrompt && !googleConnected && (
         <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full space-y-6 relative border border-gray-100 shadow-xl text-center">
             <div className="h-14 w-14 rounded-full bg-brand/10 text-brand flex items-center justify-center mx-auto shadow-sm">
@@ -670,14 +696,11 @@ export default function CalendarPage() {
             </div>
             <div className="space-y-2">
               <h3 className="text-lg font-bold text-surface-dark">
-                {lang === "zh" ? "建议连接 Google 日历" : lang === "es" ? "Conectar Google Calendar" : "Sync Google Calendar"}
+                {t.calendar.googleSyncNoticeTitle || "Google Takviminizi Bağlayın"}
               </h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                {lang === "zh"
-                  ? "关联您的 Google 账号以开启实时日程同步、智能排课及防止时间冲突。"
-                  : lang === "es"
-                  ? "Vincula tu cuenta de Google en Ajustes para sincronizar en tiempo real, optimizar tareas y evitar solapamientos."
-                  : "Link your Google account in Settings to enable real-time calendar syncing, exam scheduler optimizations, and prevent scheduling overlaps."}
+                {t.calendar.googleSyncNoticeDesc ||
+                  "Google hesabınızı bağlamadığınız için takvim verileriniz sadece bu platformda yerel olarak saklanır. Gerçek zamanlı senkronizasyon, çakışma önleme ve otomatik planlama için Google Takviminizi bağlayabilirsiniz."}
               </p>
             </div>
             
@@ -685,371 +708,251 @@ export default function CalendarPage() {
               <button
                 onClick={() => {
                   setShowLinkPrompt(false);
-                  // Open settings sidebar modal
                   window.dispatchEvent(new CustomEvent("open-settings", { detail: "google" }));
                 }}
                 className="w-full py-3 bg-brand text-white text-xs font-semibold rounded-xl hover:bg-brand-hover shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                ⚙️ {lang === "zh" ? "前往设置" : lang === "es" ? "Ir a Ajustes" : "Go to Settings"}
+                ⚙️ {lang === "tr" ? "Ayarlara Git" : lang === "zh" ? "前往设置" : lang === "es" ? "Ir a Ajustes" : "Go to Settings"}
               </button>
               <button
                 onClick={() => setShowLinkPrompt(false)}
                 className="w-full py-2.5 bg-gray-50 border border-gray-150 text-gray-500 text-xs font-bold rounded-xl hover:bg-gray-100 active:scale-95 transition-all cursor-pointer"
               >
-                {lang === "zh" ? "稍后连接" : lang === "es" ? "Continuar sin Google" : "Continue without Google"}
+                {t.calendar.continueWithoutGoogle || "Google Olmadan Devam Et"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: AI Auto-Planner Preview */}
-      {aiPlannerOpen && (
-        <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6 relative border border-gray-100 shadow-xl">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-lg font-bold text-surface-dark flex items-center gap-2">
-                  <Sparkles className="text-brand animate-pulse" size={20} /> {lang === "zh" ? "AI 智能自动排表" : lang === "es" ? "AI Auto-Planificador de Estudio" : "AI Auto-Planner Scheduler"}
+      {/* Modal: Vision OCR Schedule Image Upload */}
+      {ocrModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-5 border border-gray-100 shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Camera size={20} className="text-purple-600" />
+                <h3 className="text-base font-bold text-surface-dark">
+                  {t.calendar.uploadScheduleImage || "Görselden Program Yükle (Vision AI)"}
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">{lang === "zh" ? "根据您的未完成任务及截止日期自动分派学习时段：" : lang === "es" ? "Hemos planificado bloques de estudio para tus tareas pendientes:" : "We scheduled study blocks based on your upcoming school tasks:"}</p>
               </div>
-              <button onClick={() => setAiPlannerOpen(false)} className="text-gray-400 hover:text-gray-600 text-lg font-bold cursor-pointer">
-                &times;
+              <button onClick={() => setOcrModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-              {proposedSessions.map((session) => (
-                <div key={session.id} className="p-3 border border-gray-100 rounded-xl bg-gray-50/50 flex items-center justify-between text-xs">
-                  <div>
-                    <p className="font-bold text-surface-dark">{session.title.replace("🪄 AI Plan: ", "")}</p>
-                    <p className="text-[10px] text-gray-500 font-medium mt-0.5">
-                      📅 {new Date(session.start_time).toLocaleDateString()} @ {new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                  <span
-                    className="px-2 py-0.5 rounded text-[8px] font-bold text-white uppercase shrink-0"
-                    style={{ backgroundColor: session.courseColor }}
-                  >
-                    {session.courseName}
-                  </span>
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Ders programınızın, yapılacaklar listenizin veya takviminizin ekran görüntüsünü yükleyin. Yapay Zeka görseldeki etkinlikleri okuyup otomatik takviminize ekleyecektir!
+            </p>
+
+            <div className="border-2 border-dashed border-purple-200 rounded-2xl p-6 text-center hover:bg-purple-50/50 transition-all cursor-pointer relative">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleOcrImageUpload}
+                disabled={ocrLoading}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+              <Upload size={28} className="mx-auto text-purple-600 mb-2" />
+              <p className="text-xs font-bold text-purple-700">Görsel Seçin veya Buraya Sürükleyin</p>
+              <p className="text-[10px] text-gray-400 mt-1">PNG, JPG, WEBP desteklenmektedir</p>
+            </div>
+
+            {ocrLoading && (
+              <div className="p-4 rounded-xl bg-purple-50 border border-purple-100 text-purple-700 text-xs font-bold flex items-center gap-2 animate-pulse">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Yapay Zeka Görseli Okuyor ve Etkinlikleri Ayrıştırıyor...
+              </div>
+            )}
+
+            {ocrError && (
+              <div className="p-3 rounded-xl bg-red-50 text-red-600 text-xs font-semibold">
+                {ocrError}
+              </div>
+            )}
+
+            {ocrPreviewEvents.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-surface-dark">
+                  Bulunan Etkinlikler ({ocrPreviewEvents.length}):
+                </p>
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                  {ocrPreviewEvents.map((ev, i) => (
+                    <div key={i} className="p-2.5 bg-gray-50 rounded-xl border border-gray-150 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-bold text-surface-dark">{ev.title}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {ev.startTime} • {ev.durationMinutes} min • {ev.type}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                        {ev.type}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-
-            <div className="pt-2 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setAiPlannerOpen(false)}
-                className="flex-1 py-2.5 border border-gray-200 text-xs font-semibold rounded-xl text-gray-600 hover:bg-gray-50 cursor-pointer"
-              >
-                {t.common.close}
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmAIPlanner}
-                disabled={isPlanning}
-                className="flex-1 py-2.5 bg-brand text-xs font-semibold rounded-xl text-white hover:bg-brand-hover cursor-pointer flex justify-center items-center gap-1.5 shadow-md"
-              >
-                {isPlanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles size={14} />}
-                {lang === "zh" ? "确认并排课" : lang === "es" ? "Confirmar y Planificar" : "Confirm Schedule"}
-              </button>
-            </div>
+                <button
+                  onClick={handleConfirmOcrEvents}
+                  disabled={ocrLoading}
+                  className="w-full py-3 bg-purple-600 text-white rounded-xl text-xs font-bold hover:bg-purple-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Check size={16} /> Etkinlikleri Takvime Ekle
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Custom Alert Modal Dialog (Replaces native alert popups) */}
-      {customAlert && (
-        <div className="fixed inset-0 z-55 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full space-y-4 relative border border-gray-100 shadow-2xl text-center">
-            <div className="h-12 w-12 rounded-full bg-brand-light text-brand flex items-center justify-center mx-auto shadow-sm">
-              <HelpCircle size={24} />
+      {/* Modal: Plan My Day Interactive AI */}
+      {planMyDayOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-5 border border-gray-100 shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles size={20} className="text-brand animate-pulse" />
+                <h3 className="text-base font-bold text-surface-dark">
+                  {t.calendar.planMyDay || "Benim İçin Bugünümü Planla"}
+                </h3>
+              </div>
+              <button onClick={() => setPlanMyDayOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-surface-dark">{lang === "zh" ? "系统提示" : lang === "es" ? "Aviso" : "Notification"}</h4>
-              <p className="text-xs text-gray-500 mt-2 leading-relaxed">{customAlert}</p>
-            </div>
-            <button
-              onClick={() => setCustomAlert(null)}
-              className="w-full py-2.5 bg-brand text-white text-xs font-semibold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer"
-            >
-              {lang === "zh" ? "我知道了" : lang === "es" ? "Entendido" : "Dismiss"}
-            </button>
+
+            {isPlanningDay ? (
+              <div className="py-12 text-center space-y-3">
+                <Loader2 className="h-8 w-8 animate-spin text-brand mx-auto" />
+                <p className="text-xs font-bold text-gray-500">Bugünkü görevleriniz analiz ediliyor...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-3 bg-brand/5 border border-brand/10 rounded-2xl text-xs text-brand-dark font-semibold">
+                  {dayPlanNote}
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {dayPlanBlocks.map((block, idx) => (
+                    <div key={idx} className="p-3 bg-gray-50 rounded-xl border border-gray-150 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-bold text-surface-dark">{block.title}</p>
+                        <p className="text-[10px] text-gray-400">{block.startTime} ({block.duration} mins)</p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+                        Today
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setPlanMyDayOpen(false)}
+                    className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-50 cursor-pointer"
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    onClick={handleConfirmDayPlan}
+                    className="flex-1 py-2.5 bg-brand text-white rounded-xl text-xs font-bold hover:bg-brand-hover active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Check size={16} /> Günümü Bu Şekilde Planla
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Modal Dialog for Scheduling Study Session */}
+      {/* Modal: New Session Manual Form */}
       {sessionOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full space-y-6 relative border border-gray-100 shadow-xl">
-            <div className="flex justify-between items-start">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-5 border border-gray-100 shadow-xl">
+            <h3 className="text-base font-bold text-surface-dark">{t.calendar.addSession}</h3>
+            <form onSubmit={handleSaveSession} className="space-y-4">
               <div>
-                <h3 className="text-lg font-bold text-surface-dark flex items-center gap-2">
-                  <Clock className="text-brand" /> {t.calendar.addSession}
-                </h3>
-                <p className="text-xs text-gray-400 mt-1">Commit to a study slot on your calendar.</p>
-              </div>
-              <button onClick={() => setSessionOpen(false)} className="text-gray-400 hover:text-gray-600 text-lg font-bold cursor-pointer">
-                &times;
-              </button>
-            </div>
-
-            <form onSubmit={handleAddSession} className="space-y-4">
-              <div>
-                <label htmlFor="sTitle" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.sessionTitle}</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.sessionTitle}</label>
                 <input
-                  id="sTitle"
                   type="text"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder={t.calendar.placeholderSession}
-                  className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark placeholder-gray-400 outline-none focus:ring-2 focus:ring-brand focus:border-brand transition-all"
+                  className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
                 />
               </div>
 
               <div>
-                <label htmlFor="sCourse" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.course}</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.course}</label>
                 <select
-                  id="sCourse"
                   value={courseId}
                   onChange={(e) => setCourseId(e.target.value)}
-                  className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none cursor-pointer"
+                  className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none cursor-pointer"
                 >
-                  <option value="">{t.calendar.noCourse}</option>
-                  {courses.map(course => (
-                    <option key={course.id} value={course.id}>{course.name}</option>
+                  <option value="">-- {t.calendar.noCourse} --</option>
+                  {courses.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>
 
-              <div>
-                <label htmlFor="sDate" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.date}</label>
-                <input
-                  id="sDate"
-                  type="date"
-                  required
-                  value={dateStr}
-                  onChange={(e) => setDateStr(e.target.value)}
-                  className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none cursor-pointer"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="sTime" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.startTime}</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.date}</label>
                   <input
-                    id="sTime"
+                    type="date"
+                    required
+                    value={dateStr}
+                    onChange={(e) => setDateStr(e.target.value)}
+                    className="block w-full mt-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none text-surface-dark bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.startTime}</label>
+                  <input
                     type="time"
                     required
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none cursor-pointer"
+                    className="block w-full mt-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none text-surface-dark bg-white"
                   />
-                </div>
-                <div>
-                  <label htmlFor="sDuration" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.duration}</label>
-                  <select
-                    id="sDuration"
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                    className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none cursor-pointer"
-                  >
-                    <option value="30">30 {t.common.minutes}</option>
-                    <option value="60">60 {t.common.minutes}</option>
-                    <option value="90">90 {t.common.minutes}</option>
-                    <option value="120">120 {t.common.minutes}</option>
-                  </select>
                 </div>
               </div>
 
-              <div className="pt-2 flex gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.duration}</label>
+                <input
+                  type="number"
+                  required
+                  min={15}
+                  max={480}
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none text-surface-dark bg-white"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setSessionOpen(false)}
-                  className="flex-1 py-2.5 border border-gray-200 text-xs font-semibold rounded-xl text-gray-600 hover:bg-gray-50 cursor-pointer"
+                  className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-50 cursor-pointer"
                 >
-                  {t.common.close}
+                  Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={savingSession}
-                  className="flex-1 py-2.5 bg-brand text-xs font-semibold rounded-xl text-white hover:bg-brand-hover cursor-pointer flex justify-center items-center gap-1.5"
+                  disabled={isSyncing}
+                  className="flex-1 py-2.5 bg-brand text-white rounded-xl text-xs font-bold hover:bg-brand-hover active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                 >
-                  {savingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : t.calendar.saveSession}
+                  {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : t.calendar.saveSession}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {/* Modal Dialog for Editing or Viewing Session Details */}
-      {selectedSession && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full space-y-6 relative border border-gray-100 shadow-xl">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-lg font-bold text-surface-dark flex items-center gap-2">
-                  <Clock className="text-brand" /> 
-                  {selectedSession.title.startsWith("📅 [Google]") || selectedSession.is_from_google_api 
-                    ? (lang === "tr" ? "Google Takvim Etkinliği" : "Google Calendar Event") 
-                    : (lang === "tr" ? "Çalışma Oturumu Detayı" : "Study Session Details")}
-                </h3>
-                <p className="text-xs text-gray-400 mt-1">
-                  {selectedSession.title.startsWith("📅 [Google]") || selectedSession.is_from_google_api 
-                    ? (lang === "tr" ? "Bu etkinlik takviminizden çekildi (Salt Okunur)." : "This event is pulled from your Google account (Read-Only).")
-                    : (lang === "tr" ? "Bu oturumu düzenleyebilir veya silebilirsiniz." : "You can modify or remove this local study session.")}
-                </p>
-              </div>
-              <button onClick={() => setSelectedSession(null)} className="text-gray-400 hover:text-gray-600 text-lg font-bold cursor-pointer">
-                &times;
-              </button>
-            </div>
-
-            {selectedSession.title.startsWith("📅 [Google]") || selectedSession.is_from_google_api ? (
-              // Google Event detail layout (Read-Only)
-              <div className="space-y-4 text-sm text-surface-dark">
-                <div>
-                  <span className="block text-xs font-bold text-gray-400 uppercase">{lang === "tr" ? "Başlık" : "Title"}</span>
-                  <p className="font-semibold text-base mt-0.5">{editTitle}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="block text-xs font-bold text-gray-400 uppercase">{lang === "tr" ? "Tarih" : "Date"}</span>
-                    <p className="font-medium mt-0.5">{new Date(selectedSession.start_time).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <span className="block text-xs font-bold text-gray-400 uppercase">{lang === "tr" ? "Saat" : "Time"}</span>
-                    <p className="font-medium mt-0.5">
-                      {new Date(selectedSession.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(selectedSession.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="pt-4 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedSession(null)}
-                    className="flex-1 py-2.5 border border-gray-200 text-xs font-semibold rounded-xl text-gray-600 hover:bg-gray-50 cursor-pointer"
-                  >
-                    {t.common.close}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteSession}
-                    disabled={deletingSession}
-                    className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-xs font-semibold rounded-xl text-white cursor-pointer flex justify-center items-center gap-1.5 active:scale-95 transition-all"
-                  >
-                    {deletingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : "🗑️"}
-                    {lang === "tr" ? "Google'dan Sil" : "Delete from Google"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              // Local event edit/details layout
-              <form onSubmit={handleSaveEditSession} className="space-y-4">
-                <div>
-                  <label htmlFor="editTitleInput" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.sessionTitle}</label>
-                  <input
-                    id="editTitleInput"
-                    type="text"
-                    required
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none focus:ring-2 focus:ring-brand focus:border-brand transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="editCourseSelect" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.course}</label>
-                  <select
-                    id="editCourseSelect"
-                    value={editCourseId}
-                    onChange={(e) => setEditCourseId(e.target.value)}
-                    className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none cursor-pointer"
-                  >
-                    <option value="">{t.calendar.noCourse}</option>
-                    {courses.map(course => (
-                      <option key={course.id} value={course.id}>{course.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="editDateInput" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.date}</label>
-                  <input
-                    id="editDateInput"
-                    type="date"
-                    required
-                    value={editDateStr}
-                    onChange={(e) => setEditDateStr(e.target.value)}
-                    className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none cursor-pointer"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="editTimeInput" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.startTime}</label>
-                    <input
-                      id="editTimeInput"
-                      type="time"
-                      required
-                      value={editStartTime}
-                      onChange={(e) => setEditStartTime(e.target.value)}
-                      className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="editDurationSelect" className="block text-xs font-bold text-gray-500 uppercase">{t.calendar.duration}</label>
-                    <select
-                      id="editDurationSelect"
-                      value={editDuration}
-                      onChange={(e) => setEditDuration(e.target.value)}
-                      className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark outline-none cursor-pointer"
-                    >
-                      <option value="30">30 {t.common.minutes}</option>
-                      <option value="60">60 {t.common.minutes}</option>
-                      <option value="90">90 {t.common.minutes}</option>
-                      <option value="120">120 {t.common.minutes}</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleDeleteSession}
-                    disabled={deletingSession || savingEdit}
-                    className="py-2.5 px-3 bg-red-50 hover:bg-red-100 text-red-500 font-bold rounded-xl active:scale-95 transition-all cursor-pointer flex items-center justify-center"
-                    title="Delete study session"
-                  >
-                    {deletingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : "🗑️"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedSession(null)}
-                    className="flex-1 py-2.5 border border-gray-200 text-xs font-semibold rounded-xl text-gray-600 hover:bg-gray-50 cursor-pointer"
-                  >
-                    {t.common.close}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={savingEdit || deletingSession}
-                    className="flex-1 py-2.5 bg-brand text-xs font-semibold rounded-xl text-white hover:bg-brand-hover cursor-pointer flex justify-center items-center gap-1.5"
-                  >
-                    {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : t.common.save}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
-
     </main>
   );
 }

@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { NotificationBell } from "@/components/dashboard/NotificationBell";
+import { MaintenanceScreen } from "@/components/dashboard/MaintenanceScreen";
+import { createClient } from "@/lib/supabase/client";
 import { X, Megaphone, Loader2, CheckCircle } from "lucide-react";
 
 export default function DashboardLayout({
@@ -11,6 +14,12 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const supabase = createClient();
+
+  // Maintenance & Auth state
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  const [isAdminUser, setIsAdminUser] = useState(false);
+  const [userLang, setUserLang] = useState("en");
 
   // Announcement state
   const [pinnedAnnouncements, setPinnedAnnouncements] = useState<any[]>([]);
@@ -23,6 +32,38 @@ export default function DashboardLayout({
   const isFullscreenPage = pathname === "/onboarding";
 
   useEffect(() => {
+    async function checkMaintenanceAndUser() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("role, language")
+            .eq("id", user.id)
+            .single();
+
+          if (prof) {
+            setUserLang(prof.language || "en");
+            if (["admin", "super_admin"].includes(prof.role)) {
+              setIsAdminUser(true);
+            }
+          }
+        }
+
+        const { data: settings } = await supabase
+          .from("system_settings")
+          .select("maintenance_mode")
+          .eq("id", "default")
+          .maybeSingle();
+
+        if (settings?.maintenance_mode) {
+          setIsMaintenanceMode(true);
+        }
+      } catch {
+        // Silently ignore
+      }
+    }
+
     async function loadAnnouncements() {
       try {
         const res = await fetch("/api/announcements");
@@ -52,10 +93,12 @@ export default function DashboardLayout({
         // Silently ignore - announcements are non-critical
       }
     }
+
+    checkMaintenanceAndUser();
     if (!isFullscreenPage) {
       loadAnnouncements();
     }
-  }, [isFullscreenPage]);
+  }, [isFullscreenPage, supabase]);
 
   const handleDismissPin = (id: string) => {
     setDismissedPins((prev) => [...prev, id]);
@@ -96,6 +139,11 @@ export default function DashboardLayout({
     }
   };
 
+  // If System Maintenance is active AND user is not an Admin -> Render Maintenance Barrier Screen
+  if (isMaintenanceMode && !isAdminUser) {
+    return <MaintenanceScreen userLanguage={userLang} />;
+  }
+
   const visiblePins = pinnedAnnouncements.filter(
     (a) => !dismissedPins.includes(a.id)
   );
@@ -128,9 +176,13 @@ export default function DashboardLayout({
       ))}
 
       {/* Main content row */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         <Sidebar />
-        <div className="flex-1 h-full overflow-y-auto">
+        <div className="flex-1 h-full overflow-y-auto relative">
+          {/* Global Topbar Notification Bell */}
+          <div className="absolute top-4 right-6 z-30 pointer-events-auto">
+            <NotificationBell userLanguage={userLang} />
+          </div>
           {children}
         </div>
       </div>

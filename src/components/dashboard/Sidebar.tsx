@@ -155,6 +155,7 @@ export function Sidebar() {
   const [editGrade, setEditGrade] = useState("");
   const [editGoal, setEditGoal] = useState("60");
   const [editLang, setEditLang] = useState("en");
+  const [editEmailNotifications, setEditEmailNotifications] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -239,6 +240,7 @@ export function Sidebar() {
     setEditGrade(profile.grade_level || "");
     setEditGoal(String(profile.daily_study_goal_minutes || 60));
     setEditLang(profile.language || "en");
+    setEditEmailNotifications(profile.email_notifications_enabled !== false);
     setSaveSuccess(false);
     setShowProfileModal(true);
   };
@@ -266,7 +268,8 @@ export function Sidebar() {
         full_name: editName.trim(),
         grade_level: editGrade.trim(),
         daily_study_goal_minutes: parseInt(editGoal),
-        language: editLang
+        language: editLang,
+        email_notifications_enabled: editEmailNotifications
       })
       .eq("id", user.id);
 
@@ -277,7 +280,8 @@ export function Sidebar() {
         full_name: editName.trim(),
         grade_level: editGrade.trim(),
         daily_study_goal_minutes: parseInt(editGoal),
-        language: editLang
+        language: editLang,
+        email_notifications_enabled: editEmailNotifications
       });
       setTimeout(() => {
         setSaveSuccess(false);
@@ -576,6 +580,19 @@ export function Sidebar() {
                     <option value="zh">🇨🇳 中文 (简体)</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1.5 pb-1">
+                <input
+                  type="checkbox"
+                  id="emailNotifsToggle"
+                  checked={editEmailNotifications}
+                  onChange={(e) => setEditEmailNotifications(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand"
+                />
+                <label htmlFor="emailNotifsToggle" className="text-[11px] font-semibold text-gray-600 cursor-pointer">
+                  {editLang === "tr" ? "E-posta Duyurularına ve Kampanyalara İzin Ver" : "Receive Email Announcements & Updates"}
+                </label>
               </div>
 
               <div className="pt-2 flex items-center justify-between">

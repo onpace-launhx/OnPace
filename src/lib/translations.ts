@@ -104,7 +104,22 @@ export const translations: Record<string, Record<string, any>> = {
       startTime: "Start Time",
       duration: "Duration",
       saveSession: "Save Session",
-      noSessions: "No study sessions scheduled for this day."
+      noSessions: "No study sessions scheduled for this day.",
+      googleSyncNoticeTitle: "Sync Google Calendar",
+      googleSyncNoticeDesc: "Since your Google account is not linked, your calendar data is stored locally on this platform only. Link your Google Calendar for real-time synchronization, collision prevention, and automatic scheduling.",
+      continueWithoutGoogle: "Continue without Google",
+      uploadScheduleImage: "Upload Schedule Image (Vision AI)",
+      planMyDay: "Plan My Day with AI"
+    },
+    maintenance: {
+      title: "System Under Maintenance",
+      desc: "We are currently performing scheduled maintenance to upgrade OnPace with new features. Please check back shortly!",
+      backSoon: "We'll be back online soon!"
+    },
+    notifications: {
+      title: "Notifications",
+      noNotifications: "No new notifications",
+      markAllRead: "Mark all as read"
     },
     notes: {
       title: "Study Notes",
@@ -317,7 +332,22 @@ export const translations: Record<string, Record<string, any>> = {
       startTime: "Başlangıç Saati",
       duration: "Süre",
       saveSession: "Oturumu Kaydet",
-      noSessions: "Bu gün için planlanmış çalışma oturumu yok."
+      noSessions: "Bu gün için planlanmış çalışma oturumu yok.",
+      googleSyncNoticeTitle: "Google Takviminizi Bağlayın",
+      googleSyncNoticeDesc: "Google hesabınızı bağlamadığınız için takvim verileriniz sadece bu platformda yerel olarak saklanır. Gerçek zamanlı senkronizasyon, çakışma önleme ve otomatik planlama için Google Takviminizi bağlayabilirsiniz.",
+      continueWithoutGoogle: "Google Olmadan Devam Et",
+      uploadScheduleImage: "Görselden Program Yükle (Vision AI)",
+      planMyDay: "Benim İçin Bugünümü Planla"
+    },
+    maintenance: {
+      title: "Sistem Bakımdadır",
+      desc: "Platformumuzu yeni özelliklerle güncellemek için şu anda planlı bakım yapıyoruz. Lütfen kısa süre sonra tekrar kontrol edin!",
+      backSoon: "Yakında tekrar yayında olacağız!"
+    },
+    notifications: {
+      title: "Bildirimler",
+      noNotifications: "Yeni bildirim bulunmuyor",
+      markAllRead: "Tümünü okundu işaretle"
     },
     notes: {
       title: "Çalışma Notları",
@@ -530,7 +560,22 @@ export const translations: Record<string, Record<string, any>> = {
       startTime: "Hora de Inicio",
       duration: "Duración",
       saveSession: "Guardar Sesión",
-      noSessions: "No hay sesiones programadas para este día."
+      noSessions: "No hay sesiones programadas para este día.",
+      googleSyncNoticeTitle: "Vincular Google Calendar",
+      googleSyncNoticeDesc: "Dado que su cuenta de Google no está vinculada, sus datos de calendario se almacenan únicamente de forma local en esta plataforma. Vincule su Google Calendar para sincronización en tiempo real y optimización.",
+      continueWithoutGoogle: "Continuar sin Google",
+      uploadScheduleImage: "Cargar horario desde imagen (AI Vision)",
+      planMyDay: "Planificar mi día con IA"
+    },
+    maintenance: {
+      title: "Sistema en mantenimiento",
+      desc: "Estamos realizando un mantenimiento programado para actualizar la plataforma. Por favor vuelva a intentarlo en breve.",
+      backSoon: "¡Estaremos de vuelta pronto!"
+    },
+    notifications: {
+      title: "Notificaciones",
+      noNotifications: "Sin nuevas notificaciones",
+      markAllRead: "Marcar todas como leídas"
     },
     notes: {
       title: "Notas de Estudio",
@@ -743,7 +788,22 @@ export const translations: Record<string, Record<string, any>> = {
       startTime: "开始时间",
       duration: "持续时间",
       saveSession: "保存日程",
-      noSessions: "今天没有任何学习日程安排。"
+      noSessions: "今天没有任何学习日程安排。",
+      googleSyncNoticeTitle: "绑定 Google 日历",
+      googleSyncNoticeDesc: "由于您未绑定 Google 账号，您的日历数据仅在本地平台存储。绑定 Google 日历可开启实时同步与时间冲突优化。",
+      continueWithoutGoogle: "不绑定继续使用",
+      uploadScheduleImage: "上传课程表图片 (Vision AI)",
+      planMyDay: "使用 AI 规划今日日程"
+    },
+    maintenance: {
+      title: "系统维护中",
+      desc: "我们正在进行系统维护更新，请稍后再试！",
+      backSoon: "我们将很快恢复访问！"
+    },
+    notifications: {
+      title: "通知中心",
+      noNotifications: "暂无新通知",
+      markAllRead: "全部标记为已读"
     },
     notes: {
       title: "学习复习笔记",

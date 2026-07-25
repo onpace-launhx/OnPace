@@ -21,7 +21,8 @@ import {
   Upload,
   FileText,
   BrainCircuit,
-  Eye
+  Eye,
+  Check
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 
@@ -67,6 +68,38 @@ export default function NotesPage() {
   // Upload & AI analysis states
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+
+  // AI Note Enhancement states
+  const [enhancingAI, setEnhancingAI] = useState(false);
+  const [enhancedResult, setEnhancedResult] = useState<{ title?: string; enhancedContent: string } | null>(null);
+
+  const handleEnhanceNoteWithAI = async () => {
+    if (!content.trim() || content.trim().length < 5) {
+      alert(lang === "tr" ? "Not içeriği iyileştirilmeyecek kadar kısa." : "Note content is too short to enhance.");
+      return;
+    }
+    setEnhancingAI(true);
+    try {
+      const res = await fetch("/api/notes/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "enhance",
+          text: content,
+          title: title
+        })
+      });
+      const data = await res.json();
+      if (data.enhancedContent) {
+        setEnhancedResult(data);
+      } else {
+        alert(data.error || "Enhancement failed.");
+      }
+    } catch {
+      alert("Network error while enhancing note.");
+    }
+    setEnhancingAI(false);
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -521,6 +554,16 @@ export default function NotesPage() {
             </div>
 
             <button
+              onClick={handleEnhanceNoteWithAI}
+              disabled={enhancingAI || !content.trim()}
+              className="px-3.5 py-2.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold hover:bg-purple-100 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+              title="Enhance & structure note with AI"
+            >
+              {enhancingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles size={14} className="text-purple-600 animate-pulse" />}
+              {lang === "tr" ? "✨ AI ile İyileştir" : "✨ Enhance with AI"}
+            </button>
+
+            <button
               onClick={handleSaveNote}
               disabled={savingNote}
               className="px-4 py-2.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
@@ -829,6 +872,76 @@ export default function NotesPage() {
             )}
           </div>
         </aside>
+      )}
+
+      {/* Modal: AI Enhanced Comparison View */}
+      {enhancedResult && (
+        <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-3xl w-full max-h-[85vh] flex flex-col border border-gray-100 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4 shrink-0">
+              <div className="flex items-center gap-2">
+                <Sparkles className="text-purple-600 animate-pulse" size={20} />
+                <h3 className="text-base font-bold text-surface-dark">
+                  {lang === "tr" ? "AI ile İyileştirilmiş Not Karşılaştırması" : "AI-Enhanced Note Comparison"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setEnhancedResult(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 text-xl font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-y-auto py-4">
+              {/* Original Note */}
+              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-150 space-y-2 overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    {lang === "tr" ? "Orijinal Notunuz" : "Original Note"}
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-surface-dark">{title || "Untitled"}</h4>
+                <div className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-sans">
+                  {content}
+                </div>
+              </div>
+
+              {/* AI Enhanced Version */}
+              <div className="p-4 bg-purple-50/50 rounded-2xl border border-purple-200 space-y-2 overflow-y-auto">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles size={12} /> {lang === "tr" ? "AI Tarafından İyileştirilmiş Versiyon" : "AI Enhanced Version"}
+                  </span>
+                </div>
+                <h4 className="font-bold text-sm text-purple-950">{enhancedResult.title || title}</h4>
+                <div className="text-xs text-gray-700 leading-relaxed font-sans">
+                  <MarkdownPreview content={enhancedResult.enhancedContent} />
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3 pt-3 border-t border-gray-100 shrink-0">
+              <button
+                onClick={() => setEnhancedResult(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                {lang === "tr" ? "Orijinali Koru (Kapat)" : "Keep Original"}
+              </button>
+              <button
+                onClick={() => {
+                  if (enhancedResult.title) setTitle(enhancedResult.title);
+                  setContent(enhancedResult.enhancedContent);
+                  setEnhancedResult(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 active:scale-95 transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <Check size={16} /> {lang === "tr" ? "AI Versiyonunu Uygula" : "Apply AI Version"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </main>

@@ -78,6 +78,8 @@ export default function BillingPage() {
     setApplyingPromo(false);
   };
 
+  const [systemSettings, setSystemSettings] = useState<any>(null);
+
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
 
@@ -97,6 +99,16 @@ export default function BillingPage() {
         .single();
       setProfile(profileData);
 
+      // Fetch system settings for payment toggle & pricing
+      const { data: sysData } = await supabase
+        .from("system_settings")
+        .select("*")
+        .eq("id", "default")
+        .single();
+      if (sysData) {
+        setSystemSettings(sysData);
+      }
+
       // Fetch invoices
       const { data: historyData } = await supabase
         .from("purchase_history")
@@ -113,7 +125,18 @@ export default function BillingPage() {
   }, [router, supabase]);
 
   const handleOpenCheckout = (plan: any) => {
-    setCustomAlert("Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir.");
+    if (!systemSettings?.payment_gateway_enabled) {
+      const disabledMsg =
+        systemSettings?.payment_disabled_message?.[lang] ||
+        systemSettings?.payment_disabled_message?.en ||
+        (lang === "tr"
+          ? "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir."
+          : "Plan changes can only be made using a promo code issued to you or by your system administrator.");
+      setCustomAlert(disabledMsg);
+    } else {
+      const dynamicPrice = systemSettings?.plan_prices?.[plan.type] ?? plan.price;
+      setSelectedPlan({ ...plan, price: dynamicPrice });
+    }
   };
 
   const handleSimulatePayment = async (e: React.FormEvent) => {

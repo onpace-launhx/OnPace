@@ -27,7 +27,8 @@ import {
   CheckSquare,
   Square,
   Edit,
-  Eye
+  Eye,
+  X
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -100,6 +101,25 @@ export default function AdminPage() {
   const [endDate, setEndDate] = useState("");
   const [creatingPromo, setCreatingPromo] = useState(false);
   const [promoSuccess, setPromoSuccess] = useState(false);
+
+  // System Settings (Payment, Maintenance, Pricing, Resend)
+  const [paymentGatewayEnabled, setPaymentGatewayEnabled] = useState(false);
+  const [disabledMsgTR, setDisabledMsgTR] = useState("");
+  const [disabledMsgEN, setDisabledMsgEN] = useState("");
+  const [plusPrice, setPlusPrice] = useState(9);
+  const [proPrice, setProPrice] = useState(19);
+  const [foundingPrice, setFoundingPrice] = useState(49);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [resendApiKey, setResendApiKey] = useState("");
+  const [savingSystemSettings, setSavingSystemSettings] = useState(false);
+
+  // Email Broadcast Tool States
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailContent, setEmailContent] = useState("");
+  const [emailIsMandatory, setEmailIsMandatory] = useState(false);
+  const [emailOnlyOptedIn, setEmailOnlyOptedIn] = useState(true);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailResult, setEmailResult] = useState<string | null>(null);
 
   // Adjust Plan Modal States
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
@@ -273,15 +293,22 @@ export default function AdminPage() {
       setR2PublicUrl(settings?.public_url || "");
     }
 
-    // Fetch global billing settings directly from public.system_settings
-    const { data: billingData } = await supabase
+    // Fetch global system settings (Payment, Maintenance, Pricing, Resend)
+    const { data: sysData } = await supabase
       .from("system_settings")
-      .select("max_failed_payment_attempts, global_grace_days")
-      .eq("id", 1)
-      .single();
-    if (billingData) {
-      setMaxFailedAttempts(billingData.max_failed_payment_attempts ?? 3);
-      setGlobalGraceDays(billingData.global_grace_days ?? 3);
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
+
+    if (sysData) {
+      setPaymentGatewayEnabled(sysData.payment_gateway_enabled || false);
+      setDisabledMsgTR(sysData.payment_disabled_message?.tr || "");
+      setDisabledMsgEN(sysData.payment_disabled_message?.en || "");
+      setPlusPrice(sysData.plan_prices?.plus ?? 9);
+      setProPrice(sysData.plan_prices?.pro ?? 19);
+      setFoundingPrice(sysData.plan_prices?.founding ?? 49);
+      setMaintenanceMode(sysData.maintenance_mode || false);
+      setResendApiKey(sysData.resend_api_key || "");
     }
   }
 
@@ -803,6 +830,95 @@ export default function AdminPage() {
     setSavingAnn(false);
   };
 
+  const handleSaveSystemSettings = async () => {
+    setSavingSystemSettings(true);
+    const { error } = await supabase
+      .from("system_settings")
+      .upsert({
+        id: "default",
+        payment_gateway_enabled: paymentGatewayEnabled,
+        payment_disabled_message: {
+          tr: disabledMsgTR || "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir.",
+          en: disabledMsgEN || "Plan changes can only be made using a promo code issued to you or by your system administrator.",
+          es: disabledMsgEN || "Los cambios de plan solo se pueden realizar utilizando un código de promoción.",
+          zh: disabledMsgEN || "仅能通过优惠码或管理员进行套餐变更。"
+        },
+        plan_prices: {
+          plus: parseFloat(String(plusPrice)) || 9,
+          pro: parseFloat(String(proPrice)) || 19,
+          founding: parseFloat(String(foundingPrice)) || 49
+        },
+        maintenance_mode: maintenanceMode,
+        resend_api_key: resendApiKey,
+        updated_at: new Date().toISOString()
+      });
+
+    if (!error) {
+      alert("System & Payment settings saved successfully!");
+    } else {
+      alert("Error saving settings: " + error.message);
+    }
+    setSavingSystemSettings(false);
+  };
+
+  const handleSendEmailBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailSubject.trim() || !emailContent.trim()) return;
+    setSendingEmail(true);
+    setEmailResult(null);
+
+    try {
+      const res = await fetch("/api/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: emailSubject,
+          content: emailContent,
+          isMandatory: emailIsMandatory,
+          onlyOptedIn: emailOnlyOptedIn
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setEmailResult(`Email sent to ${data.sentCount} recipient(s) successfully! (${data.failedCount} failed)`);
+        setEmailSubject("");
+        setEmailContent("");
+      } else {
+        setEmailResult("Error sending email: " + (data.error || ""));
+      }
+    } catch {
+      setEmailResult("Network error sending emails.");
+    }
+    setSendingEmail(false);
+  };
+
+  const handleCancelUserSubscription = async (userId: string, userName: string) => {
+    const confirm = window.confirm(`Are you sure you want to cancel subscription for ${userName}? Their plan will be set to Free.`);
+    if (!confirm) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ plan: "free", pro_expires_at: null })
+      .eq("id", userId);
+
+    if (!error) {
+      await supabase.from("notifications").insert([
+        {
+          user_id: userId,
+          title: "Subscription Status Update",
+          content: "Your plan subscription has been cancelled by the system administrator.",
+          type: "alert"
+        }
+      ]);
+
+      alert(`Subscription for ${userName} cancelled successfully.`);
+      fetchProfiles();
+    } else {
+      alert("Failed to cancel subscription: " + error.message);
+    }
+  };
+
   const proUsers = profiles.filter(p => {
     const active = p.plan === "pro" && (p.pro_expires_at === null || new Date(p.pro_expires_at) > new Date());
     return active || p.plan === "founding";
@@ -1117,6 +1233,142 @@ export default function AdminPage() {
                       Save R2 Settings
                     </button>
                   </div>
+                </div>
+              </form>
+            </div>
+
+            {/* Payment Gateway, Maintenance Mode & Resend Settings Form */}
+            <div className="border-t border-gray-100 pt-8 space-y-6">
+              <div>
+                <h2 className="text-base font-bold text-surface-dark flex items-center gap-2">
+                  <CreditCard className="text-brand" size={18} /> Payment Gateway, Maintenance & Resend Settings
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Control payment acceptance, set custom plan prices, toggle maintenance mode, and configure Resend API Key.
+                </p>
+              </div>
+
+              <form onSubmit={(e) => { e.preventDefault(); handleSaveSystemSettings(); }} className="space-y-6">
+                {/* Payment Gateway Toggle & Maintenance Mode Toggle */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-150">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-surface-dark">💳 Accept Real Payments</p>
+                      <p className="text-[10px] text-gray-500">Enable online checkout for plan upgrades</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={paymentGatewayEnabled}
+                      onChange={(e) => setPaymentGatewayEnabled(e.target.checked)}
+                      className="h-5 w-5 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-surface-dark">🚨 System Maintenance Mode</p>
+                      <p className="text-[10px] text-gray-500">Redirect non-admin users to maintenance screen</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={maintenanceMode}
+                      onChange={(e) => setMaintenanceMode(e.target.checked)}
+                      className="h-5 w-5 rounded border-gray-300 text-amber-500 focus:ring-amber-500 cursor-pointer accent-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Plan Pricing Editors */}
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
+                    Dynamic Plan Pricing ($ / month)
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[10px] text-gray-500 font-semibold">Plus Plan Price ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={plusPrice}
+                        onChange={(e) => setPlusPrice(parseFloat(e.target.value) || 0)}
+                        className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-500 font-semibold">Pro Plan Price ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={proPrice}
+                        onChange={(e) => setProPrice(parseFloat(e.target.value) || 0)}
+                        className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none font-bold text-brand"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-500 font-semibold">Founding Plan Price ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={foundingPrice}
+                        onChange={(e) => setFoundingPrice(parseFloat(e.target.value) || 0)}
+                        className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment Disabled Custom Notice Message */}
+                <div className="space-y-3">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                    Custom Notice when Payment Gateway is OFF
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold">Türkçe Mesaj (TR):</span>
+                      <textarea
+                        rows={2}
+                        value={disabledMsgTR}
+                        onChange={(e) => setDisabledMsgTR(e.target.value)}
+                        placeholder="Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir."
+                        className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none resize-none"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold">English Message (EN):</span>
+                      <textarea
+                        rows={2}
+                        value={disabledMsgEN}
+                        onChange={(e) => setDisabledMsgEN(e.target.value)}
+                        placeholder="Plan changes can only be made using a promo code issued to you or by your system administrator."
+                        className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none resize-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Resend API Key */}
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                    Resend Email API Key
+                  </label>
+                  <input
+                    type="password"
+                    value={resendApiKey}
+                    onChange={(e) => setResendApiKey(e.target.value)}
+                    placeholder="re_123456789..."
+                    className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingSystemSettings}
+                    className="px-5 py-2.5 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    {savingSystemSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={12} />}
+                    {savingSystemSettings ? "Saving..." : "Save Payment & System Settings"}
+                  </button>
                 </div>
               </form>
             </div>
@@ -1498,6 +1750,16 @@ export default function AdminPage() {
                             >
                               <Clock size={12} /> History
                             </button>
+                            {profile.plan !== "free" && (
+                              <button
+                                disabled={updatingId !== null}
+                                onClick={() => handleCancelUserSubscription(profile.id, profile.full_name || profile.email || "User")}
+                                className="px-2.5 py-1.5 rounded-lg border border-red-200 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                                title="Cancel subscription and set plan to Free"
+                              >
+                                <X size={12} /> Cancel Sub
+                              </button>
+                            )}
                             <button
                               disabled={updatingId !== null}
                               onClick={() => handleOpenEditStudent(profile)}
@@ -1742,6 +2004,87 @@ export default function AdminPage() {
                 <button type="submit" disabled={creatingAnn} className="w-full py-3 rounded-xl bg-brand text-white text-xs font-bold hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm">
                   {creatingAnn ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlusCircle size={14} />}
                   {creatingAnn ? "Publishing..." : "Publish Announcement"}
+                </button>
+              </form>
+            </div>
+
+            {/* Resend Email Broadcast Tool */}
+            <div className="bg-white border border-gray-150 rounded-2xl shadow-sm p-6 space-y-4">
+              <div className="border-b border-gray-100 pb-3">
+                <h2 className="text-base font-bold text-surface-dark flex items-center gap-2">
+                  📧 Resend Email Broadcast Tool
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Send targeted emails for announcements, promo codes, feature updates, or mandatory system notices.
+                </p>
+              </div>
+
+              <form onSubmit={handleSendEmailBroadcast} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Email Subject</label>
+                  <input
+                    type="text"
+                    required
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder="e.g. Exclusive 50% Off Promo Code inside!"
+                    className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Email Content / Body</label>
+                  <textarea
+                    required
+                    rows={4}
+                    value={emailContent}
+                    onChange={(e) => setEmailContent(e.target.value)}
+                    placeholder="Write your email body message..."
+                    className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-blue-50/50 rounded-xl border border-blue-100">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="emailMandatoryToggle"
+                      checked={emailIsMandatory}
+                      onChange={(e) => setEmailIsMandatory(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand"
+                    />
+                    <label htmlFor="emailMandatoryToggle" className="text-xs font-semibold text-gray-700 cursor-pointer">
+                      Mandatory Email (Security/System notice)
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="emailOptedInToggle"
+                      checked={emailOnlyOptedIn}
+                      onChange={(e) => setEmailOnlyOptedIn(e.target.checked)}
+                      disabled={emailIsMandatory}
+                      className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand"
+                    />
+                    <label htmlFor="emailOptedInToggle" className="text-xs font-semibold text-gray-700 cursor-pointer">
+                      Only send to users who permitted email announcements
+                    </label>
+                  </div>
+                </div>
+
+                {emailResult && (
+                  <div className={`p-3 rounded-xl text-xs font-bold ${emailResult.includes("Error") ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
+                    {emailResult}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={sendingEmail}
+                  className="w-full py-3 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  {sendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : "🚀 Dispatch Email Broadcast"}
                 </button>
               </form>
             </div>

@@ -15,8 +15,8 @@ export function FloatingAICoach() {
   const [proactiveMsg, setProactiveMsg] = useState<string | null>(null);
   const [showBubble, setShowBubble] = useState(false);
   const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null);
-  const [activeConversationId, setActiveConversationId] = useState<string>("");
-  
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
@@ -26,11 +26,24 @@ export function FloatingAICoach() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
 
-  // Load Profile & Setup Proactive Tips
+  // Load Profile & Setup Personalized Proactive Tips
   useEffect(() => {
     async function loadData() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
+
+      // If user is logged out (e.g. on landing/index page)
+      if (!session?.user) {
+        const guestTip =
+          lang === "tr"
+            ? "OnPace'e hoş geldin! AI Çalışma Koçu ile notlarını analiz edebilir, sınavlarına %100 hazırlık yapabilirsin. 🚀"
+            : "Welcome to OnPace! I'm your AI Study Coach. Prepare for your exams with smart structure and instant quizzes. 🚀";
+
+        setTimeout(() => {
+          setProactiveMsg(guestTip);
+          setShowBubble(true);
+        }, 3000);
+        return;
+      }
 
       const { data: prof } = await supabase
         .from("profiles")
@@ -41,86 +54,95 @@ export function FloatingAICoach() {
       if (prof) {
         setProfile(prof);
 
-        // Fetch last persistent conversation session
+        // Fetch or create persistent AI chat session
         try {
-          const { data: conversations } = await supabase
-            .from("ai_chat_conversations")
+          const { data: sessions } = await supabase
+            .from("ai_chat_sessions")
             .select("id")
             .eq("user_id", session.user.id)
             .order("created_at", { ascending: false })
             .limit(1);
 
-          if (conversations && conversations.length > 0) {
-            const activeId = conversations[0].id;
-            setActiveConversationId(activeId);
+          if (sessions && sessions.length > 0) {
+            const activeId = sessions[0].id;
+            setActiveSessionId(activeId);
 
             const { data: dbMsgs } = await supabase
               .from("ai_chat_messages")
               .select("role, content")
-              .eq("conversation_id", activeId)
+              .eq("session_id", activeId)
               .order("created_at", { ascending: true });
 
             if (dbMsgs && dbMsgs.length > 0) {
-              setMessages(dbMsgs.map(m => ({
-                sender: m.role === "user" ? "user" : "coach",
-                text: m.content
-              })));
+              setMessages(
+                dbMsgs.map((m) => ({
+                  sender: m.role === "user" ? "user" : "coach",
+                  text: m.content,
+                }))
+              );
             }
+          } else {
+            const { data: newSess } = await supabase
+              .from("ai_chat_sessions")
+              .insert([{ user_id: session.user.id, title: "Study Assistant Chat" }])
+              .select("id")
+              .single();
+            if (newSess) setActiveSessionId(newSess.id);
           }
         } catch (err) {
-          console.error("Failed to load persistent conversation history:", err);
+          console.error("Failed to load chat history:", err);
         }
 
-        // Fetch tasks to construct a smart proactive message
-        const { data: tasks } = await supabase
+        // Fetch real DB tasks & study sessions to construct personalized advice
+        const { data: userTasks } = await supabase
           .from("tasks")
           .select("*")
           .eq("user_id", session.user.id)
           .eq("status", "todo");
 
-        // Fetch calendar sessions
-        const { data: sessions } = await supabase
+        const { data: userSessions } = await supabase
           .from("study_sessions")
           .select("*")
           .eq("user_id", session.user.id);
 
-        // Choose proactive tip contextually
         let tip = "";
-        if (prof.language === "tr") {
-          if (tasks && tasks.length > 0) {
-            const highTask = tasks.find(t => t.priority === "high");
+        const uLang = prof.language || "en";
+
+        if (uLang === "tr") {
+          if (userTasks && userTasks.length > 0) {
+            const highTask = userTasks.find((t) => t.priority === "high");
             if (highTask) {
               tip = `Yapılacak önemli bir görevin var: "${highTask.title}". Bitirmeyi unutma! 🎯`;
             } else {
-              tip = `Bugün yapılacak ${tasks.length} görev gözüküyor. Hepsini tamamlayalım! 💪`;
+              tip = `Bugün yapılacak ${userTasks.length} görev gözüküyor. Hepsini tamamlayalım! 💪`;
             }
           } else {
             tip = "Bugün için aktif görevin yok. Çalışma planı oluşturmak ister misin? 🧠";
           }
-          if (sessions && sessions.length > 0) {
-            tip += ` Ayrıca takviminde ${sessions.length} ders oturumu planlanmış!`;
+          if (userSessions && userSessions.length > 0) {
+            tip += ` Ayrıca takviminde ${userSessions.length} ders oturumu planlanmış!`;
           }
         } else {
-          if (tasks && tasks.length > 0) {
-            const highTask = tasks.find(t => t.priority === "high");
+          if (userTasks && userTasks.length > 0) {
+            const highTask = userTasks.find((t) => t.priority === "high");
             if (highTask) {
               tip = `You have a high-priority task: "${highTask.title}". Let's finish it! 🎯`;
             } else {
-              tip = `You have ${tasks.length} study tasks active. Let's stay on pace! 💪`;
+              tip = `You have ${userTasks.length} study tasks active. Let me help you complete them! 💪`;
             }
           } else {
-            tip = "Your task list is empty. Need to generate a study schedule? 🧠";
+            tip = "Your task list is clean! Want me to help you plan your next study module? 🧠";
           }
-          if (sessions && sessions.length > 0) {
-            tip += ` Plus, you have ${sessions.length} calendar sessions scheduled!`;
+          if (userSessions && userSessions.length > 0) {
+            tip += ` Plus, you have ${userSessions.length} calendar sessions scheduled!`;
           }
         }
 
-        // Show proactive bubble after 4 seconds
+        // Show proactive bubble after 3.5 seconds
         setTimeout(() => {
           setProactiveMsg(tip);
           setShowBubble(true);
-        }, 4000);
+        }, 3500);
       }
     }
 
@@ -135,271 +157,185 @@ export function FloatingAICoach() {
       .catch(() => setCalendarConnected(false));
   }, []);
 
-  // Handle OAuth callback URL params
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("calendar_connected") === "true") {
-      setCalendarConnected(true);
-      setIsOpen(true);
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "coach",
-          text: lang === "tr"
-            ? "Google Takvim başarıyla bağlandı! Artık takvimindeki etkinlikleri görüntüleyebilir, ekleyebilir ve silebilirim. Dene: 'Yaklaşan etkinliklerimi göster'"
-            : "Google Calendar successfully connected! I can now view, add, and delete your calendar events. Try: 'Show my upcoming events'",
-        },
-      ]);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-    if (params.get("calendar_error")) {
-      setIsOpen(true);
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "coach",
-          text: lang === "tr"
-            ? "Google Takvim bağlanırken bir hata oluştu. Lütfen tekrar deneyin."
-            : "There was a problem connecting your Google Calendar. Please try again.",
-        },
-      ]);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [lang]);
-
-  const handleSend = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!input.trim() || loading) return;
 
     const userText = input.trim();
-    const userMsg = { sender: "user", text: userText };
-    setMessages(prev => [...prev, userMsg]);
     setInput("");
+
+    const newMessages = [...messages, { sender: "user", text: userText }];
+    setMessages(newMessages);
     setLoading(true);
-    setShowBubble(false);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        let convId = activeConversationId;
-        if (!convId) {
-          const { data: newConv } = await supabase
-            .from("ai_chat_conversations")
-            .insert({ user_id: session.user.id, title: "Chat Session" })
-            .select("id")
-            .single();
-          if (newConv) {
-            convId = newConv.id;
-            setActiveConversationId(convId);
-          }
-        }
-
-        if (convId) {
-          await supabase.from("ai_chat_messages").insert({
-            conversation_id: convId,
-            user_id: session.user.id,
-            role: "user",
-            content: userText
-          });
-        }
-
-        const chatHistory = messages.map(m => ({
-          sender: m.sender,
-          text: m.text
-        }));
-
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: userText,
-            history: chatHistory
-          })
-        });
-
-        const data = await res.json();
-        if (res.ok && data.reply) {
-          setMessages(prev => [...prev, { sender: "coach", text: data.reply }]);
-          
-          if (convId) {
-            await supabase.from("ai_chat_messages").insert({
-              conversation_id: convId,
-              user_id: session.user.id,
-              role: "assistant",
-              content: data.reply
-            });
-          }
-        } else {
-          setMessages(prev => [...prev, { sender: "coach", text: data.error || "An error occurred." }]);
-        }
+      // Save user message to persistent DB if session exists
+      if (activeSessionId) {
+        await supabase.from("ai_chat_messages").insert([
+          { session_id: activeSessionId, role: "user", content: userText },
+        ]);
       }
-    } catch (err) {
-      setMessages(prev => [...prev, { sender: "coach", text: "Connection error. Please try again." }]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleBubbleClick = () => {
-    setShowBubble(false);
-    setIsOpen(true);
-    if (proactiveMsg) {
-      setMessages(prev => [
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: newMessages.map((m) => ({
+            role: m.sender === "user" ? "user" : "assistant",
+            content: m.text,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+      const reply = data.text || "I'm here to help you stay on pace with your studies!";
+
+      setMessages((prev) => [...prev, { sender: "coach", text: reply }]);
+
+      // Save assistant reply to persistent DB
+      if (activeSessionId) {
+        await supabase.from("ai_chat_messages").insert([
+          { session_id: activeSessionId, role: "assistant", content: reply },
+        ]);
+      }
+    } catch {
+      setMessages((prev) => [
         ...prev,
-        { sender: "coach", text: proactiveMsg }
+        {
+          sender: "coach",
+          text: "I encountered a network issue. Please check your connection and try again.",
+        },
       ]);
     }
+    setLoading(false);
   };
 
-  if (!profile) return null;
-
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3.5 font-sans">
-      {/* Proactive Tip Notification Bubble */}
-      {showBubble && proactiveMsg && (
-        <div 
-          onClick={handleBubbleClick}
-          className="max-w-[260px] bg-white border border-brand/15 shadow-lg p-3 rounded-2xl cursor-pointer hover:border-brand/30 transition-all active:scale-95 animate-in fade-in slide-in-from-bottom-2 duration-300 relative"
-        >
-          {/* Close button – large and clearly visible */}
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowBubble(false);
-            }} 
-            className="absolute -top-2 -right-2 bg-gray-800 hover:bg-gray-900 text-white w-5 h-5 rounded-full flex items-center justify-center transition-colors shadow-sm z-10"
-            title="Dismiss"
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto">
+      {/* Proactive Speech Bubble */}
+      {showBubble && !isOpen && proactiveMsg && (
+        <div className="mb-3 max-w-xs bg-white rounded-2xl p-4 shadow-xl border border-gray-150 relative animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <button
+            onClick={() => setShowBubble(false)}
+            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer"
           >
-            <X size={11} strokeWidth={2.5} />
+            <X size={13} />
           </button>
-          <div className="flex gap-2 items-start pr-1">
-            <span className="p-1 bg-brand/10 rounded-lg text-brand shrink-0 mt-0.5">
-              <Sparkles size={11} fill="currentColor" />
-            </span>
-            <div className="space-y-0.5 text-left">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-brand/70">AI Coach</span>
-              <p className="text-[11px] text-gray-600 leading-snug">{proactiveMsg}</p>
+          <div className="flex items-start gap-2.5">
+            <div className="h-7 w-7 rounded-xl bg-brand/10 text-brand flex items-center justify-center shrink-0 mt-0.5">
+              <Sparkles size={14} />
+            </div>
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-brand mb-0.5">
+                AI COACH
+              </p>
+              <p className="text-xs text-surface-dark leading-relaxed font-medium">
+                {proactiveMsg}
+              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main Expanded Chat Container */}
-      {isOpen ? (
-        <div className="w-[360px] h-[480px] bg-white border border-gray-150 rounded-3xl shadow-2xl flex flex-col justify-between overflow-hidden animate-in slide-in-from-bottom duration-300">
-          {/* Header Bar */}
-          <div className="bg-brand px-5 py-4 flex items-center justify-between shadow-sm">
+      {/* Floating Trigger Button */}
+      {!isOpen && (
+        <button
+          onClick={() => {
+            setIsOpen(true);
+            setShowBubble(false);
+          }}
+          className="h-14 w-14 rounded-full bg-gradient-to-tr from-brand to-brand-dark text-white shadow-xl shadow-brand/30 hover:scale-105 active:scale-95 transition-all flex items-center justify-center cursor-pointer group"
+          aria-label="Open AI Coach"
+        >
+          <Sparkles className="h-6 w-6 group-hover:rotate-12 transition-transform" />
+        </button>
+      )}
+
+      {/* Chat Panel Modal */}
+      {isOpen && (
+        <div className="w-80 sm:w-96 h-[520px] bg-white rounded-3xl shadow-2xl border border-gray-150 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          {/* Header */}
+          <div className="p-4 bg-gradient-to-r from-brand to-brand-dark text-white flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-white/10 rounded-xl text-white">
-                <Sparkles size={16} fill="white" />
+              <div className="h-8 w-8 rounded-xl bg-white/20 flex items-center justify-center">
+                <Sparkles size={16} />
               </div>
-              <div className="text-left">
-                <h3 className="text-sm font-black text-white">AI Study Coach</h3>
-                <span className="text-[10px] font-bold text-brand-light opacity-90">
-                  {lang === "tr" ? "Çalışma Asistanı (Takvim Yetkili)" : "Study Assistant (Calendar & Task Enabled)"}
-                </span>
+              <div>
+                <h3 className="text-xs font-extrabold">OnPace AI Study Coach</h3>
+                <p className="text-[10px] opacity-80">Online & ready to assist</p>
               </div>
             </div>
-            <button 
+            <button
               onClick={() => setIsOpen(false)}
-              className="p-1.5 rounded-xl hover:bg-white/10 text-white transition-colors cursor-pointer"
+              className="p-1 hover:bg-white/20 rounded-lg cursor-pointer transition-colors"
             >
               <X size={16} />
             </button>
           </div>
 
-          {/* Google Calendar Banner */}
-          {calendarConnected === false && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-100">
-              <span className="text-base">📅</span>
-              <span className="text-[10px] font-semibold text-amber-700 flex-1">
-                {lang === "tr" ? "Google Takvim bağlı değil" : "Google Calendar not connected"}
-              </span>
-              <a
-                href="/api/google/oauth"
-                className="text-[10px] font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2 py-1 rounded-lg transition-colors"
-              >
-                {lang === "tr" ? "Bağla" : "Connect"}
-              </a>
-            </div>
-          )}
-          {calendarConnected === true && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border-b border-green-100">
-              <span className="text-base">✅</span>
-              <span className="text-[10px] font-semibold text-green-700">
-                {lang === "tr" ? "Google Takvim bağlı · AI etkinliklerinizi yönetebilir" : "Google Calendar connected · AI can manage your events"}
-              </span>
-            </div>
-          )}
-
-          {/* Messages Body Scroll Pane */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-gray-50/50">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
-                <div className="p-3 bg-brand/5 rounded-2xl text-brand animate-pulse">
-                  <Sparkles size={24} fill="currentColor" />
-                </div>
-                <p className="text-xs font-extrabold text-surface-dark">
-                  {lang === "tr" ? "Merhaba! Ben Yapay Zeka Koçunuz" : "Hello! I am your AI Study Coach"}
-                </p>
-                <p className="text-[10px] text-gray-400 font-semibold max-w-[200px]">
-                  {lang === "tr" ? "Takviminize erişebilir, yeni görevler ekleyebilir ve plan oluşturabilirim." : "I can manage your tasks, schedules, and read/update your study calendar."}
-                </p>
+          {/* Messages Container */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-surface-secondary/40">
+            {messages.length === 0 && (
+              <div className="py-8 text-center text-xs text-gray-400 space-y-2">
+                <MessageSquare className="mx-auto h-8 w-8 text-gray-300" />
+                <p>Start a conversation with your AI Study Coach!</p>
               </div>
-            ) : (
-              messages.map((m, idx) => (
-                <div 
-                  key={idx} 
-                  className={`flex ${m.sender === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-xs font-semibold leading-relaxed ${
-                    m.sender === "user" 
-                      ? "bg-brand text-white rounded-br-none" 
-                      : "bg-white text-gray-700 border border-gray-150 rounded-bl-none shadow-sm"
-                  }`}>
-                    {m.text}
-                  </div>
-                </div>
-              ))
             )}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-white text-gray-500 border border-gray-150 px-4 py-3 rounded-2xl rounded-bl-none shadow-sm flex items-center gap-1.5 text-xs font-semibold">
-                  <Loader2 size={12} className="animate-spin text-brand" />
-                  {lang === "tr" ? "Düşünüyor..." : "Thinking..."}
+
+            {messages.map((m, idx) => (
+              <div
+                key={idx}
+                className={`flex gap-2.5 ${
+                  m.sender === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                {m.sender === "coach" && (
+                  <div className="h-7 w-7 rounded-xl bg-brand/10 text-brand flex items-center justify-center shrink-0 mt-0.5">
+                    <Sparkles size={13} />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[80%] p-3 rounded-2xl text-xs leading-relaxed ${
+                    m.sender === "user"
+                      ? "bg-brand text-white rounded-br-none"
+                      : "bg-white border border-gray-150 text-surface-dark rounded-bl-none shadow-2xs"
+                  }`}
+                >
+                  {m.text}
                 </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div className="flex gap-2 justify-start items-center text-xs text-gray-400">
+                <Loader2 className="h-4 w-4 animate-spin text-brand" />
+                <span>AI Coach is thinking...</span>
               </div>
             )}
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input Form Footer */}
-          <form onSubmit={handleSend} className="p-3 bg-white border-t border-gray-100 flex gap-2">
+          {/* Input Box */}
+          <form
+            onSubmit={handleSendMessage}
+            className="p-3 bg-white border-t border-gray-100 flex items-center gap-2"
+          >
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={lang === "tr" ? "Takvime ders ekle..." : "Schedule study tomorrow at 3pm..."}
-              className="flex-1 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark font-medium"
+              placeholder={t.aiChat?.placeholderChat || "Ask anything about your studies..."}
+              className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
             />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="p-3 bg-brand text-white rounded-xl hover:bg-brand-hover active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              className="p-2.5 bg-brand text-white rounded-xl hover:bg-brand-hover active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
             >
-              <Send size={14} />
+              <Send size={15} />
             </button>
           </form>
         </div>
-      ) : (
-        /* Floating Button Widget */
-        <button
-          onClick={() => setIsOpen(true)}
-          className="h-14 w-14 rounded-full bg-brand hover:bg-brand-hover shadow-2xl flex items-center justify-center text-white active:scale-95 transition-all cursor-pointer group hover:rotate-12 border-2 border-white/20"
-        >
-          <Sparkles className="h-6 w-6 group-hover:scale-110 transition-transform" fill="white" />
-        </button>
       )}
     </div>
   );
