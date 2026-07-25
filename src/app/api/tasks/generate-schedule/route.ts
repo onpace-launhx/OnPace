@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const lang = context.profile?.language || language || "en";
 
     // Build course context
-    const courseContext = context.courses.length > 0 
+    const courseContext = context.courses.length > 0
       ? `The student is taking the following courses: ${context.courses.join(", ")}.`
       : "The student has not listed specific courses.";
     const taskContext = context.openTasks.length > 0
