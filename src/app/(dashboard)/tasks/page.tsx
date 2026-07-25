@@ -196,8 +196,15 @@ export default function TasksPage() {
 
   // Filter main level tasks (excluding subtasks)
   const mainTasks = tasks.filter(t => !t.parent_id);
-  const mainTodoTasks = mainTasks.filter(t => t.status !== "completed");
-  const completedTasks = mainTasks.filter(t => t.status === "completed");
+  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const sortTasks = (items: any[]) => [...items].sort((a, b) => {
+    const dueA = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+    const dueB = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+    if (dueA !== dueB) return dueA - dueB;
+    return (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
+  });
+  const mainTodoTasks = sortTasks(mainTasks.filter(t => t.status !== "completed"));
+  const completedTasks = sortTasks(mainTasks.filter(t => t.status === "completed"));
 
   const getSubtasksFor = (parentId: string) => {
     return tasks.filter(t => t.parent_id === parentId);

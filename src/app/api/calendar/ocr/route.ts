@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  AIServiceError,
+  generateAIText,
+  parseAIJson,
+} from "@/lib/ai/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,20 +25,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const apiKey =
-      process.env.GEMINI_API_KEY ||
-      process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-
-    if (!apiKey) {
+    if (
+      typeof imageBase64 !== "string" ||
+      imageBase64.length > 8_500_000
+    ) {
       return NextResponse.json(
-        { error: "Gemini API Key is not configured in system settings." },
-        { status: 500 }
+        { error: "The image is too large. Use an image smaller than 6 MB." },
+        { status: 413 }
       );
     }
-
-    // Clean base64 string
-    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
     const prompt = `You are an expert AI schedule & syllabus OCR parser for students.
 Analyze this image of a study schedule, routine, class timetable, or to-do list screenshot.
@@ -54,46 +54,22 @@ Return ONLY a valid JSON array of objects with the following schema:
 If the image is not legible or has no schedule information, return an empty array [].
 Do NOT wrap in markdown backticks or explanation text, ONLY return the raw JSON array.`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: prompt },
-                {
-                  inline_data: {
-                    mime_type: mimeType || "image/png",
-                    data: cleanBase64,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-      }
-    );
+    const rawText = await generateAIText(supabase, {
+      prompt,
+      temperature: 0.1,
+      json: true,
+      image: {
+        base64: imageBase64,
+        mimeType: mimeType || "image/png",
+      },
+    });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("Gemini Vision API error:", errText);
-      return NextResponse.json(
-        { error: "Failed to process image with Vision AI" },
-        { status: 500 }
-      );
-    }
-
-    const data = await response.json();
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-
-    // Clean markdown code fence if returned
-    const jsonText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-    let events = [];
+    let events: any[] = [];
     try {
-      events = JSON.parse(jsonText);
+      events = parseAIJson<any[]>(rawText);
+      if (!Array.isArray(events)) {
+        throw new Error("Invalid calendar event schema");
+      }
     } catch {
       events = [];
     }
@@ -103,7 +79,7 @@ Do NOT wrap in markdown backticks or explanation text, ONLY return the raw JSON 
     console.error("OCR Route error:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
-      { status: 500 }
+      { status: error instanceof AIServiceError ? error.status : 500 }
     );
   }
 }

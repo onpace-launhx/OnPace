@@ -14,5 +14,16 @@
   "include": [
     "**/*.ts",
     "**/*.tsx"
+  ],
+  "exclude": [
+    "src/components/app-tabs.tsx",
+    "src/components/app-tabs.web.tsx",
+    "src/components/animated-icon.web.tsx",
+    "src/components/ui/collapsible.tsx",
+    "src/components/themed-text.tsx",
+    "src/components/themed-view.tsx",
+    "src/components/hint-row.tsx",
+    "src/components/web-badge.tsx",
+    "src/hooks/use-theme.ts"
   ]
 }

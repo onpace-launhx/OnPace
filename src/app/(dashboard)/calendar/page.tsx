@@ -86,6 +86,72 @@ export default function CalendarPage() {
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const calendarCopy = {
+    en: {
+      ocrDescription: "Upload a screenshot of your schedule, to-do list, or calendar. AI will extract the items for your review before adding them.",
+      chooseImage: "Choose an image or drop it here",
+      supported: "PNG, JPG, and WEBP are supported",
+      reading: "AI is reading the image and extracting items...",
+      found: "Items found",
+      addItems: "Add items to calendar",
+      analyzing: "Analyzing today's tasks...",
+      cancel: "Cancel",
+      confirmPlan: "Use this plan for my day",
+      today: "Today",
+      minutes: "mins",
+    },
+    tr: {
+      ocrDescription: "Ders programınızın, yapılacaklar listenizin veya takviminizin ekran görüntüsünü yükleyin. AI öğeleri çıkarır; takvime eklemeden önce siz onaylarsınız.",
+      chooseImage: "Görsel seçin veya buraya sürükleyin",
+      supported: "PNG, JPG ve WEBP desteklenir",
+      reading: "AI görseli okuyor ve öğeleri çıkarıyor...",
+      found: "Bulunan öğeler",
+      addItems: "Öğeleri takvime ekle",
+      analyzing: "Bugünkü görevleriniz analiz ediliyor...",
+      cancel: "Vazgeç",
+      confirmPlan: "Günümü bu plana göre oluştur",
+      today: "Bugün",
+      minutes: "dk",
+    },
+    es: {
+      ocrDescription: "Sube una captura de tu horario, lista de tareas o calendario. La IA extraerá los elementos para que los revises antes de añadirlos.",
+      chooseImage: "Elige una imagen o arrástrala aquí",
+      supported: "Compatible con PNG, JPG y WEBP",
+      reading: "La IA está leyendo la imagen y extrayendo elementos...",
+      found: "Elementos encontrados",
+      addItems: "Añadir elementos al calendario",
+      analyzing: "Analizando las tareas de hoy...",
+      cancel: "Cancelar",
+      confirmPlan: "Usar este plan para mi día",
+      today: "Hoy",
+      minutes: "min",
+    },
+    zh: {
+      ocrDescription: "上传课程表、待办事项或日历截图。AI 会提取内容，并在添加到日历前供您确认。",
+      chooseImage: "选择图片或拖放到此处",
+      supported: "支持 PNG、JPG 和 WEBP",
+      reading: "AI 正在读取图片并提取内容...",
+      found: "找到的项目",
+      addItems: "将项目添加到日历",
+      analyzing: "正在分析今天的任务...",
+      cancel: "取消",
+      confirmPlan: "按此方案规划今天",
+      today: "今天",
+      minutes: "分钟",
+    },
+  }[lang as "en" | "tr" | "es" | "zh"] || {
+    ocrDescription: "Upload a screenshot of your schedule, to-do list, or calendar. AI will extract the items for your review before adding them.",
+    chooseImage: "Choose an image or drop it here",
+    supported: "PNG, JPG, and WEBP are supported",
+    reading: "AI is reading the image and extracting items...",
+    found: "Items found",
+    addItems: "Add items to calendar",
+    analyzing: "Analyzing today's tasks...",
+    cancel: "Cancel",
+    confirmPlan: "Use this plan for my day",
+    today: "Today",
+    minutes: "mins",
+  };
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -94,7 +160,11 @@ export default function CalendarPage() {
     setLoading(true);
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      router.push("/login");
+      return;
+    }
 
     const { data: profileData } = await supabase
       .from("profiles")
@@ -170,12 +240,17 @@ export default function CalendarPage() {
       }
     }
 
-    const cleanLocalSessions = localSessions.filter(s => !s.title.startsWith("📅 [Google]"));
+    const cleanLocalSessions = localSessions.filter(
+      (s: { title: string }) => !s.title.startsWith("📅 [Google]")
+    );
     setStudySessions([...cleanLocalSessions, ...fetchedGoogleEvents]);
     setLoading(false);
 
-    // If not connected, show the popup prompt to connect ONLY if !isGConnected
-    if (!isGConnected) {
+    // Avoid repeatedly interrupting the same browser session after dismissal.
+    const promptDismissed =
+      sessionStorage.getItem("onpace_google_calendar_prompt_dismissed") ===
+      "true";
+    if (!isGConnected && !promptDismissed) {
       setShowLinkPrompt(true);
     }
   };
@@ -319,6 +394,11 @@ export default function CalendarPage() {
   const handleOcrImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 6 * 1024 * 1024) {
+      setOcrError("Please choose an image smaller than 6 MB.");
+      e.target.value = "";
+      return;
+    }
 
     setOcrLoading(true);
     setOcrError(null);
@@ -344,6 +424,7 @@ export default function CalendarPage() {
           setOcrError(data.error || "No events found in schedule image.");
         }
         setOcrLoading(false);
+        e.target.value = "";
       };
       reader.readAsDataURL(file);
     } catch {
@@ -400,7 +481,26 @@ export default function CalendarPage() {
         .from("study_sessions")
         .insert(insertSessions)
         .select("*, courses(name, color)");
-      if (addedSessions) setStudySessions((prev) => [...prev, ...addedSessions]);
+      if (addedSessions) {
+        setStudySessions((prev) => [...prev, ...addedSessions]);
+        if (googleConnected) {
+          await Promise.allSettled(
+            addedSessions.map(
+              (session: { title: string; start_time: string; duration: number }) =>
+                fetch("/api/calendar/add", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    title: session.title,
+                    startTime: session.start_time,
+                    durationMinutes: session.duration,
+                    description: "Imported from an image by OnPace Vision AI",
+                  }),
+                })
+            )
+          );
+        }
+      }
     }
 
     if (insertTasks.length > 0) {
@@ -417,52 +517,68 @@ export default function CalendarPage() {
   };
 
   // ── Plan My Day Interactive AI Handler ──────────────────────────────────
-  const handleOpenPlanMyDay = () => {
+  const handleOpenPlanMyDay = async () => {
     setPlanMyDayOpen(true);
     setIsPlanningDay(true);
+    setDayPlanBlocks([]);
+    setDayPlanNote("");
 
-    const incompleteTasks = tasks.filter((t) => t.status === "todo");
-    const todayStr = new Date().toISOString().split("T")[0];
-
-    const blocks: any[] = [];
-    let startHour = 9;
-
-    if (incompleteTasks.length > 0) {
-      incompleteTasks.slice(0, 4).forEach((task) => {
-        const sTime = `${startHour < 10 ? "0" : ""}${startHour}:00`;
-        const dur = task.estimated_minutes || 60;
-        blocks.push({
-          title: `Focus: ${task.title}`,
-          dateStr: todayStr,
-          startTime: sTime,
-          duration: dur,
-          task_id: task.id,
-        });
-        startHour += Math.ceil(dur / 60);
+    try {
+      const now = new Date();
+      const localDate = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+      ].join("-");
+      const response = await fetch("/api/calendar/plan-day", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: localDate,
+          currentLocalTime: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
       });
-      setDayPlanNote("I've analyzed your active task list and arranged focus blocks for today!");
-    } else {
-      blocks.push({
-        title: "Deep Study & Revision Session",
-        dateStr: todayStr,
-        startTime: "10:00",
-        duration: 90,
-      });
-      blocks.push({
-        title: "Practice Flashcards & Quiz",
-        dateStr: todayStr,
-        startTime: "14:00",
-        duration: 45,
-      });
-      setDayPlanNote("No pending tasks! Recommended a structured study & practice routine for today.");
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "AI could not create a plan.");
+      }
+      setDayPlanBlocks(data.blocks || []);
+      setDayPlanNote(data.note || "");
+    } catch (error) {
+      setDayPlanNote(
+        error instanceof Error
+          ? error.message
+          : "AI could not create a plan."
+      );
+    } finally {
+      setIsPlanningDay(false);
     }
-
-    setDayPlanBlocks(blocks);
-    setIsPlanningDay(false);
   };
 
   const handleConfirmDayPlan = async () => {
     if (dayPlanBlocks.length === 0) return;
+    if (
+      dayPlanBlocks.some(
+        (block) =>
+          !String(block.title || "").trim() ||
+          !/^\d{2}:\d{2}$/.test(String(block.startTime || "")) ||
+          !Number.isFinite(Number(block.duration)) ||
+          Number(block.duration) < 15 ||
+          Number(block.duration) > 180
+      )
+    ) {
+      setCustomAlert(
+        lang === "tr"
+          ? "Plan bloklarında başlık, geçerli saat ve 15-180 dakika arası süre olmalıdır."
+          : lang === "es"
+            ? "Cada bloque necesita un título, una hora válida y una duración de 15 a 180 minutos."
+            : lang === "zh"
+              ? "每个计划块都需要标题、有效时间和 15–180 分钟的时长。"
+              : "Each plan block needs a title, valid time, and a duration between 15 and 180 minutes."
+      );
+      return;
+    }
     setIsPlanningDay(true);
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -470,9 +586,9 @@ export default function CalendarPage() {
 
     const payloads = dayPlanBlocks.map((b) => ({
       user_id: user.id,
-      title: b.title,
+      title: b.title.trim(),
       start_time: new Date(`${b.dateStr}T${b.startTime}:00`).toISOString(),
-      duration: b.duration,
+      duration: Number(b.duration),
     }));
 
     const { data, error } = await supabase
@@ -482,6 +598,22 @@ export default function CalendarPage() {
 
     if (!error && data) {
       setStudySessions((prev) => [...prev, ...data]);
+      if (googleConnected) {
+        await Promise.allSettled(
+          data.map((session: { title: string; start_time: string; duration: number }) =>
+            fetch("/api/calendar/add", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: session.title,
+                startTime: session.start_time,
+                durationMinutes: session.duration,
+                description: "Created by OnPace AI Day Planner",
+              }),
+            })
+          )
+        );
+      }
       setPlanMyDayOpen(false);
     }
     setIsPlanningDay(false);
@@ -494,20 +626,13 @@ export default function CalendarPage() {
   const totalDays = getDaysInMonth(year, month);
   const firstDayIndex = new Date(year, month, 1).getDay();
 
-  const localizedMonths = [
-    lang === "tr" ? "Ocak" : "January",
-    lang === "tr" ? "Şubat" : "February",
-    lang === "tr" ? "Mart" : "March",
-    lang === "tr" ? "Nisan" : "April",
-    lang === "tr" ? "Mayıs" : "May",
-    lang === "tr" ? "Haziran" : "June",
-    lang === "tr" ? "Temmuz" : "July",
-    lang === "tr" ? "Ağustos" : "August",
-    lang === "tr" ? "Eylül" : "September",
-    lang === "tr" ? "Ekim" : "October",
-    lang === "tr" ? "Kasım" : "November",
-    lang === "tr" ? "Aralık" : "December"
-  ];
+  const locale =
+    lang === "tr" ? "tr-TR" : lang === "es" ? "es-ES" : lang === "zh" ? "zh-CN" : "en-US";
+  const localizedMonths = Array.from({ length: 12 }, (_, index) =>
+    new Intl.DateTimeFormat(locale, { month: "long" }).format(
+      new Date(2024, index, 1)
+    )
+  );
 
   const cells: (Date | null)[] = [];
   for (let i = 0; i < firstDayIndex; i++) {
@@ -715,7 +840,13 @@ export default function CalendarPage() {
                 ⚙️ {lang === "tr" ? "Ayarlara Git" : lang === "zh" ? "前往设置" : lang === "es" ? "Ir a Ajustes" : "Go to Settings"}
               </button>
               <button
-                onClick={() => setShowLinkPrompt(false)}
+                onClick={() => {
+                  sessionStorage.setItem(
+                    "onpace_google_calendar_prompt_dismissed",
+                    "true"
+                  );
+                  setShowLinkPrompt(false);
+                }}
                 className="w-full py-2.5 bg-gray-50 border border-gray-150 text-gray-500 text-xs font-bold rounded-xl hover:bg-gray-100 active:scale-95 transition-all cursor-pointer"
               >
                 {t.calendar.continueWithoutGoogle || "Google Olmadan Devam Et"}
@@ -742,7 +873,7 @@ export default function CalendarPage() {
             </div>
 
             <p className="text-xs text-gray-500 leading-relaxed">
-              Ders programınızın, yapılacaklar listenizin veya takviminizin ekran görüntüsünü yükleyin. Yapay Zeka görseldeki etkinlikleri okuyup otomatik takviminize ekleyecektir!
+              {calendarCopy.ocrDescription}
             </p>
 
             <div className="border-2 border-dashed border-purple-200 rounded-2xl p-6 text-center hover:bg-purple-50/50 transition-all cursor-pointer relative">
@@ -754,14 +885,14 @@ export default function CalendarPage() {
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
               <Upload size={28} className="mx-auto text-purple-600 mb-2" />
-              <p className="text-xs font-bold text-purple-700">Görsel Seçin veya Buraya Sürükleyin</p>
-              <p className="text-[10px] text-gray-400 mt-1">PNG, JPG, WEBP desteklenmektedir</p>
+              <p className="text-xs font-bold text-purple-700">{calendarCopy.chooseImage}</p>
+              <p className="text-[10px] text-gray-400 mt-1">{calendarCopy.supported}</p>
             </div>
 
             {ocrLoading && (
               <div className="p-4 rounded-xl bg-purple-50 border border-purple-100 text-purple-700 text-xs font-bold flex items-center gap-2 animate-pulse">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Yapay Zeka Görseli Okuyor ve Etkinlikleri Ayrıştırıyor...
+                {calendarCopy.reading}
               </div>
             )}
 
@@ -774,7 +905,7 @@ export default function CalendarPage() {
             {ocrPreviewEvents.length > 0 && (
               <div className="space-y-3">
                 <p className="text-xs font-bold text-surface-dark">
-                  Bulunan Etkinlikler ({ocrPreviewEvents.length}):
+                  {calendarCopy.found} ({ocrPreviewEvents.length}):
                 </p>
                 <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                   {ocrPreviewEvents.map((ev, i) => (
@@ -782,7 +913,7 @@ export default function CalendarPage() {
                       <div>
                         <p className="font-bold text-surface-dark">{ev.title}</p>
                         <p className="text-[10px] text-gray-400">
-                          {ev.startTime} • {ev.durationMinutes} min • {ev.type}
+                          {ev.startTime} • {ev.durationMinutes} {calendarCopy.minutes} • {ev.type}
                         </p>
                       </div>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
@@ -796,7 +927,7 @@ export default function CalendarPage() {
                   disabled={ocrLoading}
                   className="w-full py-3 bg-purple-600 text-white rounded-xl text-xs font-bold hover:bg-purple-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                 >
-                  <Check size={16} /> Etkinlikleri Takvime Ekle
+                  <Check size={16} /> {calendarCopy.addItems}
                 </button>
               </div>
             )}
@@ -823,7 +954,7 @@ export default function CalendarPage() {
             {isPlanningDay ? (
               <div className="py-12 text-center space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin text-brand mx-auto" />
-                <p className="text-xs font-bold text-gray-500">Bugünkü görevleriniz analiz ediliyor...</p>
+                <p className="text-xs font-bold text-gray-500">{calendarCopy.analyzing}</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -833,14 +964,65 @@ export default function CalendarPage() {
 
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                   {dayPlanBlocks.map((block, idx) => (
-                    <div key={idx} className="p-3 bg-gray-50 rounded-xl border border-gray-150 flex items-center justify-between text-xs">
-                      <div>
-                        <p className="font-bold text-surface-dark">{block.title}</p>
-                        <p className="text-[10px] text-gray-400">{block.startTime} ({block.duration} mins)</p>
+                    <div key={idx} className="p-3 bg-gray-50 rounded-xl border border-gray-150 flex items-center gap-3 text-xs">
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <input
+                          value={block.title}
+                          onChange={(event) =>
+                            setDayPlanBlocks((current) =>
+                              current.map((item, itemIndex) =>
+                                itemIndex === idx ? { ...item, title: event.target.value } : item
+                              )
+                            )
+                          }
+                          className="w-full bg-transparent font-bold text-surface-dark outline-none border-b border-transparent focus:border-brand/30"
+                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            value={block.startTime}
+                            onChange={(event) =>
+                              setDayPlanBlocks((current) =>
+                                current.map((item, itemIndex) =>
+                                  itemIndex === idx ? { ...item, startTime: event.target.value } : item
+                                )
+                              )
+                            }
+                            className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-surface-dark caret-brand outline-none [color-scheme:light] focus:border-brand focus:ring-2 focus:ring-brand/15"
+                          />
+                          <input
+                            type="number"
+                            min={15}
+                            max={180}
+                            step={5}
+                            value={block.duration}
+                            onChange={(event) =>
+                              setDayPlanBlocks((current) =>
+                                current.map((item, itemIndex) =>
+                                  itemIndex === idx ? { ...item, duration: Number(event.target.value) } : item
+                                )
+                              )
+                            }
+                            className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-surface-dark caret-brand outline-none [color-scheme:light] focus:border-brand focus:ring-2 focus:ring-brand/15"
+                          />
+                          <span className="text-[10px] text-gray-400">{calendarCopy.minutes}</span>
+                        </div>
                       </div>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
-                        Today
+                        {calendarCopy.today}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDayPlanBlocks((current) =>
+                            current.filter((_, itemIndex) => itemIndex !== idx)
+                          )
+                        }
+                        className="p-1 text-gray-400 hover:text-red-500"
+                        aria-label="Remove plan block"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -850,13 +1032,13 @@ export default function CalendarPage() {
                     onClick={() => setPlanMyDayOpen(false)}
                     className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-50 cursor-pointer"
                   >
-                    Vazgeç
+                    {calendarCopy.cancel}
                   </button>
                   <button
                     onClick={handleConfirmDayPlan}
                     className="flex-1 py-2.5 bg-brand text-white rounded-xl text-xs font-bold hover:bg-brand-hover active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                   >
-                    <Check size={16} /> Günümü Bu Şekilde Planla
+                    <Check size={16} /> {calendarCopy.confirmPlan}
                   </button>
                 </div>
               </div>

@@ -32,6 +32,45 @@ import {
   AlertCircle
 } from "lucide-react";
 
+interface IntegrationConfigResponse {
+  error?: unknown;
+  has_gemini?: boolean;
+  has_openai?: boolean;
+  has_resend?: boolean;
+  active_provider?: string;
+  email_from_address?: string;
+  email_from_name?: string;
+  has_r2_access_key?: boolean;
+  has_r2_secret_key?: boolean;
+  r2_endpoint?: string;
+  r2_bucket_name?: string;
+  r2_public_url?: string;
+}
+
+async function requestIntegrationConfig(
+  body?: Record<string, unknown>
+): Promise<IntegrationConfigResponse> {
+  const response = await fetch("/api/admin/integration-config", {
+    method: body ? "POST" : "GET",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+  const data = await response
+    .json()
+    .catch(() => ({})) as IntegrationConfigResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      typeof data?.error === "string"
+        ? data.error
+        : "Entegrasyon ayarları kaydedilemedi."
+    );
+  }
+
+  return data;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -105,22 +144,39 @@ export default function AdminPage() {
 
   // System Settings (Payment, Maintenance, Pricing, Resend)
   const [paymentGatewayEnabled, setPaymentGatewayEnabled] = useState(false);
+  const [paymentProvider, setPaymentProvider] = useState("unconfigured");
+  const [paymentProviderConfigured, setPaymentProviderConfigured] = useState(false);
   const [disabledMsgTR, setDisabledMsgTR] = useState("");
   const [disabledMsgEN, setDisabledMsgEN] = useState("");
-  const [plusPrice, setPlusPrice] = useState(9);
-  const [proPrice, setProPrice] = useState(19);
-  const [foundingPrice, setFoundingPrice] = useState(49);
+  const [disabledMsgES, setDisabledMsgES] = useState("");
+  const [disabledMsgZH, setDisabledMsgZH] = useState("");
+  const [proMonthlyPrice, setProMonthlyPrice] = useState(6.99);
+  const [proYearlyPrice, setProYearlyPrice] = useState(59.99);
+  const [foundingPrice, setFoundingPrice] = useState(99);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [resendApiKey, setResendApiKey] = useState("");
+  const [hasResend, setHasResend] = useState(false);
+  const [emailFromAddress, setEmailFromAddress] = useState("noreply@onpace.app");
+  const [emailFromName, setEmailFromName] = useState("OnPace");
   const [savingSystemSettings, setSavingSystemSettings] = useState(false);
   const [saveSystemSettingsSuccess, setSaveSystemSettingsSuccess] = useState(false);
+  const [systemSettingsError, setSystemSettingsError] = useState<string | null>(null);
 
   // Email Broadcast Tool States
   const [emailSubject, setEmailSubject] = useState("");
   const [emailContent, setEmailContent] = useState("");
+  const [emailSubjectTR, setEmailSubjectTR] = useState("");
+  const [emailContentTR, setEmailContentTR] = useState("");
+  const [emailSubjectES, setEmailSubjectES] = useState("");
+  const [emailContentES, setEmailContentES] = useState("");
+  const [emailSubjectZH, setEmailSubjectZH] = useState("");
+  const [emailContentZH, setEmailContentZH] = useState("");
   const [emailIsMandatory, setEmailIsMandatory] = useState(false);
-  const [emailOnlyOptedIn, setEmailOnlyOptedIn] = useState(true);
+  const [emailSendEmail, setEmailSendEmail] = useState(true);
+  const [emailSendInApp, setEmailSendInApp] = useState(true);
+  const [emailTargetPlan, setEmailTargetPlan] = useState("all");
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [translatingEmail, setTranslatingEmail] = useState(false);
   const [emailResult, setEmailResult] = useState<string | null>(null);
 
   // Bug Reports Tab States
@@ -152,6 +208,7 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [editingUserRole, setEditingUserRole] = useState("student");
   const [editingUserPermissions, setEditingUserPermissions] = useState<string[]>([]);
+  const [editingMaintenanceAccess, setEditingMaintenanceAccess] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);
 
   // Edit Student Profile Modal States
@@ -212,6 +269,8 @@ export default function AdminPage() {
         setActiveTab("promocodes");
       } else if (perms.includes("manage_settings")) {
         setActiveTab("config");
+      } else if (perms.includes("manage_communications")) {
+        setActiveTab("announcements");
       } else if (perms.includes("view_logs")) {
         setActiveTab("logs");
       }
@@ -284,95 +343,86 @@ export default function AdminPage() {
   }
 
   async function fetchSettings() {
-    const { data: aiData, error: aiError } = await supabase.rpc("get_system_ai_settings");
-    if (!aiError && aiData) {
-      const settings = Array.isArray(aiData) ? aiData[0] : aiData;
-      setHasGemini(settings?.has_gemini || false);
-      setHasOpenai(settings?.has_openai || false);
-      setActiveProvider(settings?.active_provider || "gemini");
-    }
-
-    const { data: r2Data, error: r2Error } = await supabase.rpc("get_system_r2_settings");
-    if (!r2Error && r2Data) {
-      const settings = Array.isArray(r2Data) ? r2Data[0] : r2Data;
-      setHasR2AccessKey(settings?.has_access_key || false);
-      setHasR2SecretKey(settings?.has_secret_key || false);
-      setR2Endpoint(settings?.endpoint || "");
-      setR2BucketName(settings?.bucket_name || "");
-      setR2PublicUrl(settings?.public_url || "");
+    try {
+      const integrationData = await requestIntegrationConfig();
+      setHasGemini(integrationData.has_gemini || false);
+      setHasOpenai(integrationData.has_openai || false);
+      setHasResend(integrationData.has_resend || false);
+      setActiveProvider(integrationData.active_provider || "gemini");
+      setEmailFromAddress(
+        integrationData.email_from_address || "noreply@onpace.app"
+      );
+      setEmailFromName(integrationData.email_from_name || "OnPace");
+      setHasR2AccessKey(integrationData.has_r2_access_key || false);
+      setHasR2SecretKey(integrationData.has_r2_secret_key || false);
+      setR2Endpoint(integrationData.r2_endpoint || "");
+      setR2BucketName(integrationData.r2_bucket_name || "");
+      setR2PublicUrl(integrationData.r2_public_url || "");
+    } catch {
+      // Public system settings below can still be loaded when integrations fail.
     }
 
     // Fetch global system settings (Payment, Maintenance, Pricing, Resend)
-    const { data: sysData } = await supabase
-      .from("system_settings")
-      .select("*")
-      .limit(1)
-      .maybeSingle();
+    const { data: sysRows } = await supabase.rpc(
+      "get_public_system_settings"
+    );
+    const sysData = Array.isArray(sysRows) ? sysRows[0] : sysRows;
 
     if (sysData) {
       setPaymentGatewayEnabled(sysData.payment_gateway_enabled || false);
+      setPaymentProvider(sysData.payment_provider || "unconfigured");
+      setPaymentProviderConfigured(
+        sysData.payment_provider_configured === true
+      );
       setDisabledMsgTR(sysData.payment_disabled_message?.tr || "");
       setDisabledMsgEN(sysData.payment_disabled_message?.en || "");
-      setPlusPrice(sysData.plan_prices?.plus ?? 9);
-      setProPrice(sysData.plan_prices?.pro ?? 19);
-      setFoundingPrice(sysData.plan_prices?.founding ?? 49);
+      setProMonthlyPrice(sysData.plan_prices?.pro_monthly ?? sysData.plan_prices?.pro ?? 6.99);
+      setProYearlyPrice(sysData.plan_prices?.pro_yearly ?? 59.99);
+      setFoundingPrice(sysData.plan_prices?.founding_member ?? sysData.plan_prices?.founding ?? 99);
       setMaintenanceMode(sysData.maintenance_mode || false);
-      setResendApiKey(sysData.resend_api_key || "");
+      setDisabledMsgES(sysData.payment_disabled_message?.es || "");
+      setDisabledMsgZH(sysData.payment_disabled_message?.zh || "");
+      setMaxFailedAttempts(sysData.max_failed_payment_attempts ?? 3);
+      setGlobalGraceDays(sysData.global_grace_days ?? 3);
     }
   }
 
   const handleSaveSystemSettings = async () => {
     setSavingSystemSettings(true);
     setSaveSystemSettingsSuccess(false);
+    setSystemSettingsError(null);
 
     try {
-      const { data: existing } = await supabase
-        .from("system_settings")
-        .select("id")
-        .limit(1)
-        .maybeSingle();
-
-      const payload = {
-        payment_gateway_enabled: paymentGatewayEnabled,
-        maintenance_mode: maintenanceMode,
-        plan_prices: {
-          plus: Number(plusPrice),
-          pro: Number(proPrice),
-          founding: Number(foundingPrice)
+      const data = await requestIntegrationConfig({
+        paymentGatewayEnabled:
+          paymentProviderConfigured && paymentGatewayEnabled,
+        maintenanceMode,
+        planPrices: {
+          pro_monthly: Number(proMonthlyPrice),
+          pro_yearly: Number(proYearlyPrice),
+          founding_member: Number(foundingPrice),
         },
-        payment_disabled_message: {
+        paymentDisabledMessage: {
           tr: disabledMsgTR.trim(),
-          en: disabledMsgEN.trim()
+          en: disabledMsgEN.trim(),
+          es: disabledMsgES.trim(),
+          zh: disabledMsgZH.trim(),
         },
-        resend_api_key: resendApiKey.trim(),
-        updated_at: new Date().toISOString()
-      };
+        resendApiKey: resendApiKey.trim() || undefined,
+        emailFromAddress: emailFromAddress.trim(),
+        emailFromName: emailFromName.trim(),
+      });
 
-      let saveError = null;
-
-      if (existing && existing.id) {
-        const { error } = await supabase
-          .from("system_settings")
-          .update(payload)
-          .eq("id", existing.id);
-        saveError = error;
-      } else {
-        const { error } = await supabase
-          .from("system_settings")
-          .insert([payload]);
-        saveError = error;
-      }
-
-      if (!saveError) {
-        setSaveSystemSettingsSuccess(true);
-        setTimeout(() => setSaveSystemSettingsSuccess(false), 3000);
-      } else {
-        console.error("Error saving system settings:", saveError);
-        alert("Failed to save system settings: " + saveError.message);
-      }
-    } catch (err: any) {
-      console.error("System settings save exception:", err);
-      alert("Error saving system settings: " + (err.message || err));
+      setHasResend(data.has_resend || hasResend);
+      setResendApiKey("");
+      setSaveSystemSettingsSuccess(true);
+      setTimeout(() => setSaveSystemSettingsSuccess(false), 3000);
+    } catch (error) {
+      setSystemSettingsError(
+        error instanceof Error
+          ? error.message
+          : "Sistem ayarları kaydedilemedi."
+      );
     } finally {
       setSavingSystemSettings(false);
     }
@@ -418,6 +468,16 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteBugReport = async (reportId: string) => {
+    if (!window.confirm("Bu hata bildirimini kalıcı olarak silmek istediğinize emin misiniz?")) return;
+    const { error } = await supabase.from("bug_reports").delete().eq("id", reportId);
+    if (error) {
+      alert("Hata bildirimi silinemedi: " + error.message);
+      return;
+    }
+    setBugReports((previous) => previous.filter((report) => report.id !== reportId));
+  };
+
   async function fetchPromocodes() {
     const { data, error } = await supabase
       .from("promocodes")
@@ -432,21 +492,23 @@ export default function AdminPage() {
     e.preventDefault();
     setSavingKey(true);
     setSaveSuccess(false);
+    setSystemSettingsError(null);
 
-    const { error } = await supabase.rpc("set_system_ai_settings", {
-      gemini_val: geminiKey.trim() || null,
-      openai_val: openaiKey.trim() || null,
-      provider_val: activeProvider
-    });
-
-    if (!error) {
+    try {
+      await requestIntegrationConfig({
+        geminiKey: geminiKey.trim() || undefined,
+        openaiKey: openaiKey.trim() || undefined,
+        activeProvider,
+      });
       setSaveSuccess(true);
       setGeminiKey("");
       setOpenaiKey("");
       fetchSettings();
       setTimeout(() => setSaveSuccess(false), 3000);
-    } else {
-      console.error("Failed to save AI settings:", error);
+    } catch (error) {
+      setSystemSettingsError(
+        error instanceof Error ? error.message : "AI ayarları kaydedilemedi."
+      );
     }
     setSavingKey(false);
   };
@@ -455,24 +517,27 @@ export default function AdminPage() {
     e.preventDefault();
     setSavingR2(true);
     setSaveR2Success(false);
+    setSystemSettingsError(null);
 
-    const { error } = await supabase.rpc("set_system_r2_settings", {
-      access_key_val: r2AccessKey.trim() || null,
-      secret_key_val: r2SecretKey.trim() || null,
-      endpoint_val: r2Endpoint.trim() || null,
-      bucket_val: r2BucketName.trim() || null,
-      public_url_val: r2PublicUrl.trim() || null
-    });
-
-    if (!error) {
+    try {
+      const data = await requestIntegrationConfig({
+        r2AccessKey: r2AccessKey.trim() || undefined,
+        r2SecretKey: r2SecretKey.trim() || undefined,
+        r2Endpoint: r2Endpoint.trim(),
+        r2BucketName: r2BucketName.trim(),
+        r2PublicUrl: r2PublicUrl.trim(),
+      });
       setSaveR2Success(true);
       setR2AccessKey("");
       setR2SecretKey("");
+      setHasR2AccessKey(data?.has_r2_access_key || hasR2AccessKey);
+      setHasR2SecretKey(data?.has_r2_secret_key || hasR2SecretKey);
       fetchSettings();
       setTimeout(() => setSaveR2Success(false), 3000);
-    } else {
-      console.error("Failed to save R2 settings:", error);
-      alert(error.message || "Failed to save R2 settings.");
+    } catch (error) {
+      setSystemSettingsError(
+        error instanceof Error ? error.message : "R2 ayarları kaydedilemedi."
+      );
     }
     setSavingR2(false);
   };
@@ -563,20 +628,21 @@ export default function AdminPage() {
     e.preventDefault();
     setSavingBillingRules(true);
     setSaveBillingRulesSuccess(false);
+    setSystemSettingsError(null);
 
-    const { error } = await supabase
-      .from("system_settings")
-      .update({
-        max_failed_payment_attempts: Number(maxFailedAttempts),
-        global_grace_days: Number(globalGraceDays)
-      })
-      .eq("id", 1);
-
-    if (!error) {
+    try {
+      await requestIntegrationConfig({
+        maxFailedPaymentAttempts: Number(maxFailedAttempts),
+        globalGraceDays: Number(globalGraceDays),
+      });
       setSaveBillingRulesSuccess(true);
       setTimeout(() => setSaveBillingRulesSuccess(false), 3000);
-    } else {
-      alert("Failed to save billing rules: " + error.message);
+    } catch (error) {
+      setSystemSettingsError(
+        error instanceof Error
+          ? error.message
+          : "Ödeme kuralları kaydedilemedi."
+      );
     }
     setSavingBillingRules(false);
   };
@@ -586,7 +652,7 @@ export default function AdminPage() {
     setEditingUser(user);
     setEditingUserRole(user.role || "student");
     setEditingUserPermissions(user.permissions || []);
-    setEditingUser(user);
+    setEditingMaintenanceAccess(user.maintenance_access === true);
   };
 
   // Save User Role/Perms Modal Changes
@@ -600,14 +666,20 @@ export default function AdminPage() {
       .from("profiles")
       .update({
         role: editingUserRole,
-        permissions: targetPermissions
+        permissions: targetPermissions,
+        maintenance_access: editingMaintenanceAccess
       })
       .eq("id", editingUser.id);
 
     if (!error) {
       setProfiles(profiles.map(p => 
         p.id === editingUser.id 
-          ? { ...p, role: editingUserRole, permissions: targetPermissions } 
+          ? {
+              ...p,
+              role: editingUserRole,
+              permissions: targetPermissions,
+              maintenance_access: editingMaintenanceAccess,
+            }
           : p
       ));
       setEditingUser(null);
@@ -787,6 +859,8 @@ export default function AdminPage() {
   const canManageUsers = isSuperAdmin || perms.includes("manage_users");
   const canManagePromocodes = isSuperAdmin || perms.includes("manage_promocodes");
   const canManageSettings = isSuperAdmin || perms.includes("manage_settings");
+  const canManageCommunications =
+    isSuperAdmin || perms.includes("manage_communications");
   const canViewLogs = isSuperAdmin || perms.includes("view_logs");
 
   // Metrics
@@ -935,18 +1009,38 @@ export default function AdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subject: emailSubject,
-          content: emailContent,
+          subject: {
+            en: emailSubject,
+            tr: emailSubjectTR,
+            es: emailSubjectES,
+            zh: emailSubjectZH,
+          },
+          content: {
+            en: emailContent,
+            tr: emailContentTR,
+            es: emailContentES,
+            zh: emailContentZH,
+          },
           isMandatory: emailIsMandatory,
-          onlyOptedIn: emailOnlyOptedIn
+          sendEmail: emailSendEmail,
+          sendInApp: emailSendInApp,
+          targetPlan: emailTargetPlan === "all" ? null : emailTargetPlan
         })
       });
 
       const data = await res.json();
       if (data.success) {
-        setEmailResult(`Email sent to ${data.sentCount} recipient(s) successfully! (${data.failedCount} failed)`);
+        setEmailResult(
+          `Delivered: ${data.sentCount || 0} email(s), ${data.inAppCount || 0} in-app notification(s). ${data.failedCount || 0} failed.`
+        );
         setEmailSubject("");
         setEmailContent("");
+        setEmailSubjectTR("");
+        setEmailContentTR("");
+        setEmailSubjectES("");
+        setEmailContentES("");
+        setEmailSubjectZH("");
+        setEmailContentZH("");
       } else {
         setEmailResult("Error sending email: " + (data.error || ""));
       }
@@ -956,25 +1050,50 @@ export default function AdminPage() {
     setSendingEmail(false);
   };
 
+  const handleTranslateEmail = async () => {
+    if (!emailSubject.trim() || !emailContent.trim()) {
+      setEmailResult("AI çevirisi için önce İngilizce konu ve mesajı girin.");
+      return;
+    }
+    setTranslatingEmail(true);
+    setEmailResult(null);
+    try {
+      const response = await fetch("/api/admin/translate-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: emailSubject, content: emailContent }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.translations) {
+        throw new Error(data.error || "AI çevirisi hazırlanamadı.");
+      }
+      setEmailSubjectTR(data.translations.tr.subject);
+      setEmailContentTR(data.translations.tr.content);
+      setEmailSubjectES(data.translations.es.subject);
+      setEmailContentES(data.translations.es.content);
+      setEmailSubjectZH(data.translations.zh.subject);
+      setEmailContentZH(data.translations.zh.content);
+      setEmailResult("TR, ES ve ZH çevirileri AI ile hazırlandı. Göndermeden önce düzenleyebilirsiniz.");
+    } catch (error) {
+      setEmailResult(error instanceof Error ? error.message : "AI çevirisi hazırlanamadı.");
+    } finally {
+      setTranslatingEmail(false);
+    }
+  };
+
   const handleCancelUserSubscription = async (userId: string, userName: string) => {
     const confirm = window.confirm(`Are you sure you want to cancel subscription for ${userName}? Their plan will be set to Free.`);
     if (!confirm) return;
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ plan: "free", pro_expires_at: null })
-      .eq("id", userId);
+    const note = window.prompt("Optional internal cancellation note:", "") || "";
+    const notifyUser = window.confirm("Send an in-app cancellation notification to this user?");
+    const { error } = await supabase.rpc("admin_cancel_subscription", {
+      target_user_id: userId,
+      cancellation_note: note,
+      notify_user: notifyUser
+    });
 
     if (!error) {
-      await supabase.from("notifications").insert([
-        {
-          user_id: userId,
-          title: "Subscription Status Update",
-          content: "Your plan subscription has been cancelled by the system administrator.",
-          type: "alert"
-        }
-      ]);
-
       alert(`Subscription for ${userName} cancelled successfully.`);
       fetchProfiles();
     } else {
@@ -990,7 +1109,12 @@ export default function AdminPage() {
   const premiumRatio = totalUsers > 0 ? Math.round((proUsers / totalUsers) * 100) : 0;
 
   // Render Sub-Admin welcome screen if they have absolutely no permissions
-  const hasAnyPermission = canManageUsers || canManagePromocodes || canManageSettings || canViewLogs;
+  const hasAnyPermission =
+    canManageUsers ||
+    canManagePromocodes ||
+    canManageSettings ||
+    canManageCommunications ||
+    canViewLogs;
   if (!isSuperAdmin && !hasAnyPermission) {
     return (
       <main className="min-h-screen bg-[#F8F9FC] flex items-center justify-center p-6 text-center">
@@ -1086,7 +1210,6 @@ export default function AdminPage() {
             🐞 Bug Reports & AI Analytics
           </button>
           {isSuperAdmin && (
-            <>
               <button
                 onClick={() => setActiveTab("moderation")}
                 className={`pb-4 text-xs sm:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
@@ -1095,6 +1218,8 @@ export default function AdminPage() {
               >
                 🛡️ Social Moderation
               </button>
+          )}
+          {canManageCommunications && (
               <button
                 onClick={() => setActiveTab("announcements")}
                 className={`pb-4 text-xs sm:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
@@ -1103,7 +1228,6 @@ export default function AdminPage() {
               >
                 📢 Bulletins & Feedbacks
               </button>
-            </>
           )}
         </div>
 
@@ -1132,6 +1256,12 @@ export default function AdminPage() {
         {/* AI & R2 Configurations Section */}
         {activeTab === "config" && canManageSettings && (
           <div className="bg-white border border-gray-150 rounded-2xl shadow-sm p-6 space-y-8">
+            {systemSettingsError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-xs font-semibold text-red-700 flex items-start gap-2">
+                <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                <span>{systemSettingsError}</span>
+              </div>
+            )}
             {/* AI Settings Form */}
             <div className="space-y-4">
               <div>
@@ -1331,7 +1461,13 @@ export default function AdminPage() {
                       type="checkbox"
                       checked={paymentGatewayEnabled}
                       onChange={(e) => setPaymentGatewayEnabled(e.target.checked)}
-                      className="h-5 w-5 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand"
+                      disabled={!paymentProviderConfigured && !paymentGatewayEnabled}
+                      title={
+                        paymentProviderConfigured
+                          ? "Ödeme kabulünü aç veya kapat"
+                          : "Önce gerçek bir ödeme sağlayıcısı yapılandırılmalıdır"
+                      }
+                      className="h-5 w-5 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
                     />
                   </div>
 
@@ -1348,30 +1484,39 @@ export default function AdminPage() {
                     />
                   </div>
                 </div>
+                {!paymentProviderConfigured && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs text-amber-800">
+                    <p className="font-bold">Gerçek ödeme sağlayıcısı henüz yapılandırılmadı.</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+                      Ödeme kabulü güvenlik amacıyla kapalı tutuluyor. Sağlayıcı adaptörü ve imzalı webhook
+                      tamamlandıktan sonra bu anahtar kullanılabilir. Mevcut sağlayıcı: {paymentProvider}.
+                    </p>
+                  </div>
+                )}
 
                 {/* Plan Pricing Editors */}
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
-                    Dynamic Plan Pricing ($ / month)
+                    Dynamic Plan Pricing (USD)
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-[10px] text-gray-500 font-semibold">Plus Plan Price ($)</label>
+                      <label className="block text-[10px] text-gray-500 font-semibold">Pro Monthly Price ($)</label>
                       <input
                         type="number"
                         step="0.01"
-                        value={plusPrice}
-                        onChange={(e) => setPlusPrice(parseFloat(e.target.value) || 0)}
+                        value={proMonthlyPrice}
+                        onChange={(e) => setProMonthlyPrice(parseFloat(e.target.value) || 0)}
                         className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none font-bold"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-gray-500 font-semibold">Pro Plan Price ($)</label>
+                      <label className="block text-[10px] text-gray-500 font-semibold">Pro Yearly Price ($)</label>
                       <input
                         type="number"
                         step="0.01"
-                        value={proPrice}
-                        onChange={(e) => setProPrice(parseFloat(e.target.value) || 0)}
+                        value={proYearlyPrice}
+                        onChange={(e) => setProYearlyPrice(parseFloat(e.target.value) || 0)}
                         className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none font-bold text-brand"
                       />
                     </div>
@@ -1414,21 +1559,65 @@ export default function AdminPage() {
                         className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none resize-none"
                       />
                     </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold">Mensaje en español (ES):</span>
+                      <textarea
+                        rows={2}
+                        value={disabledMsgES}
+                        onChange={(e) => setDisabledMsgES(e.target.value)}
+                        placeholder="Los cambios de plan están temporalmente deshabilitados."
+                        className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none resize-none"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 font-bold">中文消息 (ZH):</span>
+                      <textarea
+                        rows={2}
+                        value={disabledMsgZH}
+                        onChange={(e) => setDisabledMsgZH(e.target.value)}
+                        placeholder="套餐变更目前暂不可用。"
+                        className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none resize-none"
+                      />
+                    </div>
                   </div>
                 </div>
 
                 {/* Resend API Key */}
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                    Resend Email API Key
-                  </label>
-                  <input
-                    type="password"
-                    value={resendApiKey}
-                    onChange={(e) => setResendApiKey(e.target.value)}
-                    placeholder="re_123456789..."
-                    className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
-                  />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                      Resend Email Configuration
+                    </label>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${hasResend ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"}`}>
+                      {hasResend ? "Vault configured" : "Not configured"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="password"
+                      value={resendApiKey}
+                      onChange={(e) => setResendApiKey(e.target.value)}
+                      placeholder={hasResend ? "Enter a new key only to rotate it" : "re_123456789..."}
+                      className="px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                    />
+                    <input
+                      type="email"
+                      value={emailFromAddress}
+                      onChange={(e) => setEmailFromAddress(e.target.value)}
+                      placeholder="noreply@onpace.app"
+                      className="px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={emailFromName}
+                      onChange={(e) => setEmailFromName(e.target.value)}
+                      placeholder="OnPace"
+                      className="px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none sm:col-span-2"
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    The API key is written to Supabase Vault through an authenticated Edge Function and is never returned to the browser.
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -1999,7 +2188,7 @@ export default function AdminPage() {
         )}
 
         {/* Bulletins & Feedbacks Tab */}
-        {activeTab === "announcements" && isSuperAdmin && (
+        {activeTab === "announcements" && canManageCommunications && (
           <div className="space-y-6">
 
             {/* Create New Announcement Form */}
@@ -2099,30 +2288,87 @@ export default function AdminPage() {
 
               <form onSubmit={handleSendEmailBroadcast} className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Email Subject</label>
-                  <input
-                    type="text"
-                    required
-                    value={emailSubject}
-                    onChange={(e) => setEmailSubject(e.target.value)}
-                    placeholder="e.g. Exclusive 50% Off Promo Code inside!"
-                    className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                  />
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Recipient plan</label>
+                  <select
+                    value={emailTargetPlan}
+                    onChange={(event) => setEmailTargetPlan(event.target.value)}
+                    className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                  >
+                    <option value="all">All plans</option>
+                    <option value="free">Free</option>
+                    <option value="plus">Plus</option>
+                    <option value="pro">Pro</option>
+                    <option value="founding">Founding</option>
+                  </select>
                 </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Email Content / Body</label>
-                  <textarea
-                    required
-                    rows={4}
-                    value={emailContent}
-                    onChange={(e) => setEmailContent(e.target.value)}
-                    placeholder="Write your email body message..."
-                    className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white resize-none"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {[
+                    { code: "EN", subject: emailSubject, setSubject: setEmailSubject, content: emailContent, setContent: setEmailContent, required: true },
+                    { code: "TR", subject: emailSubjectTR, setSubject: setEmailSubjectTR, content: emailContentTR, setContent: setEmailContentTR, required: false },
+                    { code: "ES", subject: emailSubjectES, setSubject: setEmailSubjectES, content: emailContentES, setContent: setEmailContentES, required: false },
+                    { code: "ZH", subject: emailSubjectZH, setSubject: setEmailSubjectZH, content: emailContentZH, setContent: setEmailContentZH, required: false },
+                  ].map((localizedEmail) => (
+                    <div key={localizedEmail.code} className="rounded-xl border border-gray-150 bg-gray-50/40 p-3 space-y-2">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        {localizedEmail.code} subject & body
+                      </label>
+                      <input
+                        type="text"
+                        required={localizedEmail.required}
+                        value={localizedEmail.subject}
+                        onChange={(event) => localizedEmail.setSubject(event.target.value)}
+                        placeholder={`${localizedEmail.code} subject${localizedEmail.required ? " (fallback)" : ""}`}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
+                      />
+                      <textarea
+                        required={localizedEmail.required}
+                        rows={3}
+                        value={localizedEmail.content}
+                        onChange={(event) => localizedEmail.setContent(event.target.value)}
+                        placeholder={`${localizedEmail.code} message body${localizedEmail.required ? " (fallback)" : ""}`}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white resize-none"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+                  <button
+                    type="button"
+                    onClick={handleTranslateEmail}
+                    disabled={translatingEmail || !emailSubject.trim() || !emailContent.trim()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {translatingEmail ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    {translatingEmail ? "AI çeviriyor..." : "AI ile TR / ES / ZH çevir"}
+                  </button>
+                  <p className="text-[11px] text-violet-700">İngilizce metni temel alır; bağlantıları, kodları ve değişkenleri korur.</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-blue-50/50 rounded-xl border border-blue-100">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="emailChannelToggle"
+                      checked={emailSendEmail}
+                      onChange={(e) => setEmailSendEmail(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 accent-brand"
+                    />
+                    <label htmlFor="emailChannelToggle" className="text-xs font-semibold text-gray-700 cursor-pointer">
+                      Send by email
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="inAppChannelToggle"
+                      checked={emailSendInApp}
+                      onChange={(e) => setEmailSendInApp(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 accent-brand"
+                    />
+                    <label htmlFor="inAppChannelToggle" className="text-xs font-semibold text-gray-700 cursor-pointer">
+                      Add dashboard notification
+                    </label>
+                  </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -2140,13 +2386,13 @@ export default function AdminPage() {
                     <input
                       type="checkbox"
                       id="emailOptedInToggle"
-                      checked={emailOnlyOptedIn}
-                      onChange={(e) => setEmailOnlyOptedIn(e.target.checked)}
-                      disabled={emailIsMandatory}
-                      className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand"
+                      checked={!emailIsMandatory}
+                      readOnly
+                      disabled
+                      className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand accent-brand"
                     />
                     <label htmlFor="emailOptedInToggle" className="text-xs font-semibold text-gray-700 cursor-pointer">
-                      Only send to users who permitted email announcements
+                      Consent is enforced for every non-mandatory email
                     </label>
                   </div>
                 </div>
@@ -2159,7 +2405,7 @@ export default function AdminPage() {
 
                 <button
                   type="submit"
-                  disabled={sendingEmail}
+                  disabled={sendingEmail || (!emailSendEmail && !emailSendInApp)}
                   className="w-full py-3 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   {sendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : "🚀 Dispatch Email Broadcast"}
@@ -2328,6 +2574,15 @@ export default function AdminPage() {
                             </div>
                           </div>
                         )}
+                        {!bug.screenshot_url && bug.screenshot_status === "upload_failed" && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                            <p className="font-bold">Ekran görüntüsü R2&apos;ye yüklenemedi</p>
+                            <p className="mt-0.5 break-words">{bug.screenshot_error || "R2 yapılandırmasını ve erişim bilgilerini kontrol edin."}</p>
+                          </div>
+                        )}
+                        {!bug.screenshot_url && bug.screenshot_status !== "upload_failed" && (
+                          <p className="text-[11px] text-gray-400">Bu bildirim için ekran görüntüsü yok.</p>
+                        )}
 
                         <div className="text-[10px] text-gray-400 space-y-0.5">
                           <p>User: <span className="font-bold text-gray-700">{bug.user_email || bug.user_id}</span></p>
@@ -2356,6 +2611,14 @@ export default function AdminPage() {
                             className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${bug.status === "resolved" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                           >
                             Resolved
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBugReport(bug.id)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Hata bildirimini sil"
+                            aria-label="Hata bildirimini sil"
+                          >
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </div>
@@ -2666,6 +2929,7 @@ export default function AdminPage() {
                         { key: "manage_users", label: "Registered Students & Subscriptions" },
                         { key: "manage_promocodes", label: "Promo Codes Campaign Manager" },
                         { key: "manage_settings", label: "AI & R2 Configurations" },
+                        { key: "manage_communications", label: "Announcements, Email & Notifications" },
                         { key: "view_logs", label: "View System Execution Logs" }
                       ].map((item) => {
                         const checked = editingUserPermissions.includes(item.key);
@@ -2683,6 +2947,19 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
+
+                <label className="flex items-center justify-between gap-3 rounded-xl border border-amber-100 bg-amber-50/50 p-3 cursor-pointer">
+                  <span>
+                    <span className="block text-xs font-bold text-gray-700">Maintenance mode access</span>
+                    <span className="block text-[10px] text-gray-500 mt-0.5">Allow this user to enter OnPace while maintenance mode is active.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={editingMaintenanceAccess}
+                    onChange={(event) => setEditingMaintenanceAccess(event.target.checked)}
+                    className="h-4 w-4 accent-amber-500"
+                  />
+                </label>
 
                 <div className="pt-4 flex gap-3 border-t border-gray-100">
                   <button

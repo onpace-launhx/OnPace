@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const [showTrialEndedModal, setShowTrialEndedModal] = useState(false);
 
   const [generatingSchedule, setGeneratingSchedule] = useState(false);
+  const [scheduleDraft, setScheduleDraft] = useState<Array<{ title: string; priority: string }>>([]);
 
   const generateFallbackTasks = (courseList: string[], language: string) => {
     if (courseList.length === 0) {
@@ -108,39 +109,42 @@ export default function DashboardPage() {
         ? data.tasks
         : generateFallbackTasks(courseNames, lang).map((t: any) => t.text);
 
-      // Save to Supabase
-      const rows = rawTexts.map((text, idx) => ({
-        user_id: user?.id,
+      // Keep AI output as an explicit draft. The user decides whether it
+      // belongs in the active task list.
+      setScheduleDraft(rawTexts.map((text, idx) => ({
         title: text,
         priority: idx === 0 ? "high" : idx === 1 ? "medium" : "low",
-        status: "todo"
-      }));
-
-      const { data: inserted, error: insertError } = await supabase
-        .from("tasks")
-        .insert(rows)
-        .select("*");
-
-      if (insertError) {
-        console.error("Failed to save tasks to Supabase:", insertError);
-      }
-
-      // Update local state with DB ids so they persist
-      const newTasks = (inserted || rows).map((row: any, idx: number) => ({
-        id: row.id || Date.now() + idx,
-        text: row.title || row.text,
-        done: false,
-        priority: row.priority
-      }));
-
-      setTasks(prev => [...prev, ...newTasks]);
+      })));
     } catch (err) {
       const courseNames = courses.map(c => c.name);
       const fallbackTasks = generateFallbackTasks(courseNames, lang);
-      setTasks(prev => [...prev, ...fallbackTasks]);
+      setScheduleDraft(fallbackTasks.map((task: any) => ({ title: task.text, priority: task.priority })));
     } finally {
       setGeneratingSchedule(false);
     }
+  };
+
+  const handleAcceptSchedule = async () => {
+    if (!user || scheduleDraft.length === 0) return;
+    const rows = scheduleDraft.map((draft) => ({
+      user_id: user.id,
+      title: draft.title,
+      priority: draft.priority,
+      status: "todo",
+    }));
+    const { data: inserted, error } = await supabase.from("tasks").insert(rows).select("*");
+    if (error) {
+      alert(lang === "tr" ? "Plan görev listesine eklenemedi." : "The plan could not be added to your tasks.");
+      return;
+    }
+    const newTasks = (inserted || rows).map((row: any, idx: number) => ({
+      id: row.id || Date.now() + idx,
+      text: row.title,
+      done: false,
+      priority: row.priority,
+    }));
+    setTasks((previous) => [...previous, ...newTasks]);
+    setScheduleDraft([]);
   };
 
 
@@ -679,7 +683,7 @@ export default function DashboardPage() {
               {showNotes && (
                 <div className={`bg-white border border-gray-100 p-6 sm:p-8 rounded-3xl shadow-sm space-y-6 ${getNotesSpan()}`}>
                   <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-extrabold text-surface-dark">{t.dashboard.activeStudyList}</h2>
+           <h2 className="text-xl font-extrabold text-surface-dark">{lang === "tr" ? "Bugünün Görevleri" : lang === "es" ? "Tareas de hoy" : lang === "zh" ? "今日任务" : "Today's Tasks"}</h2>
                     <span className="text-xs text-gray-500 font-medium">{t.dashboard.clickToComplete}</span>
                   </div>
 
@@ -844,6 +848,26 @@ export default function DashboardPage() {
                   )}
                 </button>
               </div>
+              {scheduleDraft.length > 0 && (
+                <div className="mt-5 rounded-2xl border border-brand/20 bg-white/80 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-surface-dark">{lang === "tr" ? "AI çalışma planı taslağı" : "AI study plan draft"}</p>
+                      <p className="text-[11px] text-gray-500">{lang === "tr" ? "Görev listene eklemeden önce kontrol edebilirsin." : "Review before adding anything to your task list."}</p>
+                    </div>
+                    <button type="button" onClick={handleAcceptSchedule} className="rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-hover">
+                      {lang === "tr" ? "Görevlerime ekle" : "Add to my tasks"}
+                    </button>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {scheduleDraft.map((draft, index) => (
+                      <li key={`${draft.title}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-surface-dark">
+                        <span>{draft.title}</span><span className="text-[10px] font-bold uppercase text-gray-400">{draft.priority}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

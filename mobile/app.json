@@ -8,9 +8,13 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "onpace",
+    "android": {
+      "usesCleartextTraffic": true
+    },
     "extra": {
       "supabaseUrl": "https://dcnpabvaptjilinfyrwy.supabase.co",
-      "supabaseAnonKey": "sb_publishable_sFCTeO8wrgjQWakSLVeldg_gqBMPnWR"
+      "supabaseAnonKey": "sb_publishable_sFCTeO8wrgjQWakSLVeldg_gqBMPnWR",
+      "webAppUrl": "http://192.168.1.107:3000"
     }
   }
 }

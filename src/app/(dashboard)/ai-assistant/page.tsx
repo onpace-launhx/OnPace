@@ -93,7 +93,7 @@ export default function AiAssistantPage() {
 
           if (dbMsgs && dbMsgs.length > 0) {
             setMessages(
-              dbMsgs.map((m, idx) => ({
+              dbMsgs.map((m: { role: string; content: string }, idx: number) => ({
                 id: idx.toString(),
                 sender: m.role === "user" ? "user" : "ai",
                 text: m.content,
@@ -137,27 +137,6 @@ export default function AiAssistantPage() {
     e.preventDefault();
     if (!inputMsg.trim() || sending) return;
 
-    // Check message limitation for Free plan using client-side date trackers
-    if (!isPro) {
-      const todayStr = new Date().toDateString();
-      const savedDate = localStorage.getItem("ai_query_date");
-      let count = parseInt(localStorage.getItem("ai_query_count") || "0");
-
-      if (savedDate !== todayStr) {
-        count = 0;
-        localStorage.setItem("ai_query_date", todayStr);
-      }
-
-      if (count >= 5) {
-        setCustomAlert(t.ai.limitError || "Daily AI query limit of 5 reached. Upgrade to Pro for unlimited AI!");
-        setPremiumModalOpen(true);
-        return;
-      }
-
-      // Increment count
-      localStorage.setItem("ai_query_count", String(count + 1));
-    }
-
     const userText = inputMsg.trim();
     const contextPrefix = selectedCourse ? `[Context: ${selectedCourse}] ` : "";
     const fullMessageText = `${contextPrefix}${userText}`;
@@ -190,7 +169,17 @@ export default function AiAssistantPage() {
       });
 
       const data = await response.json();
-      const reply = data.reply || data.text || "I'm here to help you stay on pace with your studies!";
+      if (!response.ok) {
+        if (response.status === 429) {
+          setCustomAlert(t.ai.limitError || data.error);
+          setPremiumModalOpen(true);
+        }
+        throw new Error(data.error || "AI assistant is unavailable.");
+      }
+      const reply = data.reply || data.text;
+      if (!reply) {
+        throw new Error("AI returned an empty response.");
+      }
 
       setMessages((prev) => [
         ...prev,
@@ -202,10 +191,14 @@ export default function AiAssistantPage() {
           { session_id: activeSessionId, role: "assistant", content: reply }
         ]);
       }
-    } catch {
+    } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), sender: "ai", text: "⚠️ Network error. Please try again." }
+        {
+          id: Date.now().toString(),
+          sender: "ai",
+          text: `⚠️ ${error instanceof Error ? error.message : t.common.errorOccurred}`,
+        }
       ]);
     }
     setSending(false);

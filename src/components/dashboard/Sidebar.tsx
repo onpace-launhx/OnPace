@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
@@ -24,8 +24,6 @@ import {
   User,
   Users,
   AlertCircle,
-  Camera,
-  Tag,
   Check
 } from "lucide-react";
 import html2canvas from "html2canvas";
@@ -51,6 +49,8 @@ const translations: Record<string, Record<string, string>> = {
     close: "Close",
     saving: "Saving...",
     saved: "Saved!",
+    emailVerificationSent: "Email change requested. A verification code and secure link were sent to the required address(es).",
+    emailConsent: "Receive email announcements, feature updates, and campaigns",
     proBannerTitle: "Go Premium",
     proBannerDesc: "Unlock AI planner, quizzes & advanced metrics.",
     upgrade: "Upgrade to Pro",
@@ -78,6 +78,8 @@ const translations: Record<string, Record<string, string>> = {
     close: "Cerrar",
     saving: "Guardando...",
     saved: "¡Guardado!",
+    emailVerificationSent: "Cambio de correo solicitado. Se envió un código y enlace seguro a las direcciones necesarias.",
+    emailConsent: "Recibir anuncios, novedades y campañas por correo",
     proBannerTitle: "Hacerse Premium",
     proBannerDesc: "Desbloquea planificador de IA, exámenes y métricas.",
     upgrade: "Actualizar a Pro",
@@ -105,6 +107,8 @@ const translations: Record<string, Record<string, string>> = {
     close: "关闭",
     saving: "保存中...",
     saved: "已保存!",
+    emailVerificationSent: "已请求更改邮箱。验证代码和安全链接已发送至所需邮箱。",
+    emailConsent: "接收电子邮件公告、功能更新和活动",
     proBannerTitle: "解锁高级版",
     proBannerDesc: "开启AI学习计划、智能测验与专属数据分析。",
     upgrade: "升级到Pro",
@@ -132,6 +136,8 @@ const translations: Record<string, Record<string, string>> = {
     close: "Kapat",
     saving: "Kaydediliyor...",
     saved: "Kaydedildi!",
+    emailVerificationSent: "E-posta değişikliği isteği oluşturuldu. Doğrulama kodu ve güvenli bağlantı gerekli adreslere gönderildi.",
+    emailConsent: "E-posta duyurularına, özellik haberlerine ve kampanyalara izin ver",
     proBannerTitle: "Premium'a Geç",
     proBannerDesc: "Yapay zeka planlayıcı, quizler ve gelişmiş metrikleri aç.",
     upgrade: "Pro Plana Yükselt",
@@ -141,6 +147,73 @@ const translations: Record<string, Record<string, string>> = {
     studyGroups: "Çalışma Grupları"
   }
 };
+
+const bugReportTranslations: Record<string, Record<string, string>> = {
+  en: {
+    title: "Report a Problem",
+    descriptionLabel: "What went wrong?",
+    placeholder: "For example: Calendar items do not load after I add a task...",
+    submit: "Send report",
+    submitting: "Sending...",
+    successTitle: "Your report has been received",
+    successMessage: "Thank you. We will review the problem as soon as possible.",
+    thankYouButton: "Thank you for your bug report",
+    error: "The report could not be sent. Please try again.",
+  },
+  tr: {
+    title: "Hata Bildir",
+    descriptionLabel: "Karşılaştığınız sorun nedir?",
+    placeholder: "Örneğin: Bir görev ekledikten sonra takvim öğeleri yüklenmiyor...",
+    submit: "Hata bildirimini gönder",
+    submitting: "Gönderiliyor...",
+    successTitle: "Bildiriminiz alındı",
+    successMessage: "Sorunu en kısa sürede inceleyeceğiz.",
+    thankYouButton: "Hata bildiriminiz için teşekkürler",
+    error: "Bildirim gönderilemedi. Lütfen tekrar deneyin.",
+  },
+  es: {
+    title: "Informar de un problema",
+    descriptionLabel: "¿Qué problema encontraste?",
+    placeholder: "Por ejemplo: Los elementos del calendario no cargan después de añadir una tarea...",
+    submit: "Enviar informe",
+    submitting: "Enviando...",
+    successTitle: "Hemos recibido tu informe",
+    successMessage: "Gracias. Revisaremos el problema lo antes posible.",
+    thankYouButton: "Gracias por informar del error",
+    error: "No se pudo enviar el informe. Inténtalo de nuevo.",
+  },
+  zh: {
+    title: "报告问题",
+    descriptionLabel: "你遇到了什么问题？",
+    placeholder: "例如：添加任务后，日历项目无法加载……",
+    submit: "发送报告",
+    submitting: "正在发送……",
+    successTitle: "我们已收到你的报告",
+    successMessage: "谢谢，我们会尽快检查这个问题。",
+    thankYouButton: "感谢你的错误报告",
+    error: "报告发送失败，请重试。",
+  },
+};
+
+function getEmailUpdateErrorMessage(error: unknown) {
+  const rawMessage =
+    error && typeof error === "object" && "message" in error
+      ? (error as { message?: unknown }).message
+      : error;
+  const message = typeof rawMessage === "string" ? rawMessage : "";
+
+  if (!message || message === "{}" || message === "[object Object]") {
+    return "E-posta doğrulama isteği gönderilemedi. Supabase Send Email Hook, Resend anahtarı ve gönderen domain ayarlarını kontrol edin.";
+  }
+  if (message.includes("Resend is not configured")) {
+    return "Resend yapılandırılmamış. Yönetici panelinden Resend API anahtarını ve gönderen adresini kaydedin.";
+  }
+  if (message.includes("SEND_EMAIL_HOOK_SECRET")) {
+    return "Supabase Send Email Hook gizli anahtarı yapılandırılmamış.";
+  }
+
+  return message;
+}
 
 export function Sidebar() {
   const router = useRouter();
@@ -152,6 +225,7 @@ export function Sidebar() {
 
   // Collapsible sidebar state (persisted locally)
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Profile modal settings state
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -163,6 +237,8 @@ export function Sidebar() {
   const [editEmailNotifications, setEditEmailNotifications] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [emailVerificationSent, setEmailVerificationSent] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
 
   // Google Calendar Integration Settings inside Sidebar
   const [googleConnected, setGoogleConnected] = useState(false);
@@ -172,48 +248,52 @@ export function Sidebar() {
   // Bug Report Modal States
   const [showBugModal, setShowBugModal] = useState(false);
   const [bugDesc, setBugDesc] = useState("");
-  const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
-  const [capturingScreenshot, setCapturingScreenshot] = useState(false);
   const [submittingBug, setSubmittingBug] = useState(false);
-  const [bugSuccessCode, setBugSuccessCode] = useState<string | null>(null);
-  const [bugSuccessCategory, setBugSuccessCategory] = useState<string | null>(null);
+  const [bugSubmitted, setBugSubmitted] = useState(false);
+  const [bugError, setBugError] = useState<string | null>(null);
+  const screenshotCaptureRef = useRef<Promise<string | null> | null>(null);
 
   // Promocode Form States inside Profile Modal
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const [applyingPromo, setApplyingPromo] = useState(false);
   const [promoMsg, setPromoMsg] = useState<{ text: string; error: boolean } | null>(null);
 
-  const handleOpenBugModal = async () => {
+  const handleOpenBugModal = () => {
     setShowBugModal(true);
-    setBugSuccessCode(null);
-    setBugSuccessCategory(null);
-    setScreenshotBase64(null);
-    setCapturingScreenshot(true);
+    setBugSubmitted(false);
+    setBugError(null);
+    setBugDesc("");
 
-    try {
-      const targetElement = document.documentElement || document.body;
-      const canvas = await html2canvas(targetElement, {
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        scale: 0.5,
-        ignoreElements: (element) => element.id === "bug-report-modal"
+    screenshotCaptureRef.current = new Promise((resolve) => {
+      requestAnimationFrame(async () => {
+        try {
+          const targetElement = document.documentElement || document.body;
+          const canvas = await html2canvas(targetElement, {
+            useCORS: true,
+            allowTaint: false,
+            logging: false,
+            scale: Math.min(window.devicePixelRatio || 1, 1),
+            imageTimeout: 3_000,
+            ignoreElements: (element) => element.id === "bug-report-modal",
+          });
+          resolve(canvas.toDataURL("image/jpeg", 0.72));
+        } catch {
+          resolve(null);
+        }
       });
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
-      setScreenshotBase64(dataUrl);
-    } catch (err) {
-      console.error("Screenshot capture failed:", err);
-    } finally {
-      setCapturingScreenshot(false);
-    }
+    });
   };
 
   const handleSubmitBugReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bugDesc.trim()) return;
     setSubmittingBug(true);
+    setBugError(null);
 
     try {
+      const screenshotBase64 = screenshotCaptureRef.current
+        ? await screenshotCaptureRef.current
+        : null;
       const res = await fetch("/api/bug-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -225,15 +305,16 @@ export function Sidebar() {
       });
 
       const data = await res.json();
-      if (data.success) {
-        setBugSuccessCode(data.categoryCode || "9000");
-        setBugSuccessCategory(data.categoryName || "General Issue");
+      if (res.ok && data.success) {
+        setBugSubmitted(true);
         setBugDesc("");
       } else {
-        alert("Failed to submit bug report: " + (data.error || ""));
+        setBugError(
+          typeof data?.error === "string" ? data.error : "REPORT_FAILED"
+        );
       }
     } catch {
-      alert("Network error submitting bug report.");
+      setBugError("REPORT_FAILED");
     } finally {
       setSubmittingBug(false);
     }
@@ -349,6 +430,8 @@ export function Sidebar() {
     setEditLang(profile.language || "en");
     setEditEmailNotifications(profile.email_notifications_enabled !== false);
     setSaveSuccess(false);
+    setEmailVerificationSent(false);
+    setProfileSaveError(null);
     setShowProfileModal(true);
   };
 
@@ -356,16 +439,32 @@ export function Sidebar() {
     e.preventDefault();
     setSavingProfile(true);
     setSaveSuccess(false);
+    setProfileSaveError(null);
 
-    // If email has changed, call direct RPC to update auth.users
-    if (editEmail.trim().toLowerCase() !== user.email?.toLowerCase()) {
-      const { error: emailError } = await supabase.rpc("update_user_email_direct", {
-        new_email: editEmail.trim().toLowerCase()
-      });
+    const requestedEmail = editEmail.trim().toLowerCase();
+    const emailChanged = requestedEmail !== user.email?.toLowerCase();
+    const authLanguageChanged = user.user_metadata?.language !== editLang;
+
+    // Keep email and language metadata inside Supabase Auth so confirmation and
+    // future localized Send Email Hook messages cannot be bypassed.
+    if (emailChanged || authLanguageChanged) {
+      const updatePayload = {
+        ...(emailChanged ? { email: requestedEmail } : {}),
+        data: { ...user.user_metadata, language: editLang },
+      };
+      const { error: emailError } = await supabase.auth.updateUser(
+        updatePayload,
+        emailChanged
+          ? { emailRedirectTo: `${window.location.origin}/auth/callback` }
+          : undefined
+      );
       if (emailError) {
-        alert("Failed to update email: " + emailError.message);
+        setProfileSaveError(getEmailUpdateErrorMessage(emailError));
         setSavingProfile(false);
         return;
+      }
+      if (emailChanged) {
+        setEmailVerificationSent(true);
       }
     }
 
@@ -409,9 +508,11 @@ export function Sidebar() {
         setShowProfileModal(false);
         // Reload pages that translate dynamically
         window.location.reload();
-      }, 1000);
+      }, emailChanged ? 4000 : 1000);
     } else {
-      alert("Failed to save profile settings: " + (error.message || "Unknown error"));
+      setProfileSaveError(
+        error.message || "Profil ayarları kaydedilemedi."
+      );
     }
     setSavingProfile(false);
   };
@@ -458,6 +559,8 @@ export function Sidebar() {
   // Select active language translation pack (falls back to English)
   const lang = profile?.language || "en";
   const t = translations[lang] || translations.en;
+  const bugText =
+    bugReportTranslations[editLang] || bugReportTranslations.en;
 
   const navItems = [
     { href: "/dashboard", label: t.dashboard, icon: LayoutDashboard, requiresPro: false },
@@ -488,9 +591,25 @@ export function Sidebar() {
 
   return (
     <>
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white/95 text-surface-dark shadow-lg backdrop-blur lg:hidden"
+        aria-label="Open navigation menu"
+      >
+        <Menu size={20} />
+      </button>
+      {mobileOpen && (
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-surface-dark/40 backdrop-blur-[2px] lg:hidden"
+          aria-label="Close navigation menu"
+        />
+      )}
       <aside 
-        className={`hidden lg:flex flex-col border-r border-gray-200 bg-white p-5 justify-between shrink-0 h-screen sticky top-0 transition-all duration-300 ${
-          isCollapsed ? "w-20" : "w-64"
+        className={`${mobileOpen ? "flex" : "hidden"} lg:flex fixed lg:static inset-y-0 left-0 z-50 lg:z-auto flex-col border-r border-gray-200 bg-white p-5 justify-between shrink-0 h-screen transition-all duration-300 w-64 ${
+          isCollapsed ? "lg:w-20" : "lg:w-64"
         }`}
       >
         <div className="space-y-6">
@@ -512,7 +631,7 @@ export function Sidebar() {
               <button
                 onClick={handleOpenBugModal}
                 className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-all cursor-pointer"
-                title={lang === "tr" ? "Hata Bildir (Ekran Görüntülü & AI)" : "Report Bug (Auto-Screenshot & AI)"}
+                title={lang === "tr" ? "Hata bildir" : "Report a problem"}
               >
                 <AlertCircle size={19} className="animate-pulse" />
               </button>
@@ -539,6 +658,7 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={href}
+                  onClick={() => setMobileOpen(false)}
                   className={`group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-xl transition-all ${
                     isActive
                       ? "text-brand bg-brand-light font-semibold"
@@ -561,6 +681,7 @@ export function Sidebar() {
             {isAdmin && (
               <Link
                 href="/admin"
+                onClick={() => setMobileOpen(false)}
                 className={`flex items-center justify-center gap-3 px-3 py-2.5 mt-4 text-sm font-bold rounded-xl transition-all ${
                   pathname === "/admin"
                     ? "text-white bg-red-600 hover:bg-red-700"
@@ -721,15 +842,22 @@ export function Sidebar() {
                   className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand"
                 />
                 <label htmlFor="emailNotifsToggle" className="text-[11px] font-semibold text-gray-600 cursor-pointer">
-                  {editLang === "tr" ? "E-posta Duyurularına ve Kampanyalara İzin Ver" : "Receive Email Announcements & Updates"}
+                  {t.emailConsent}
                 </label>
               </div>
 
               <div className="pt-2 flex items-center justify-between">
-                <div>
+                  <div>
+                  {profileSaveError && (
+                    <p className="max-w-xs text-[10px] text-red-600 font-bold flex items-start gap-1">
+                      <AlertCircle size={10} className="mt-0.5 shrink-0" />
+                      {profileSaveError}
+                    </p>
+                  )}
                   {saveSuccess && (
-                    <p className="text-[10px] text-green-500 font-bold flex items-center gap-1">
-                      <CheckCircle2 size={10} /> {t.saved}
+                    <p className="max-w-xs text-[10px] text-green-500 font-bold flex items-start gap-1">
+                      <CheckCircle2 size={10} className="mt-0.5 shrink-0" />
+                      {emailVerificationSent ? t.emailVerificationSent : t.saved}
                     </p>
                   )}
                 </div>
@@ -829,9 +957,9 @@ export function Sidebar() {
           <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
-                <AlertCircle className="text-red-500 animate-pulse" size={20} />
+                <AlertCircle className="text-red-500" size={20} />
                 <h3 className="font-extrabold text-sm text-surface-dark">
-                  {editLang === "tr" ? "Hata Bildir (AI İle Kategorize Edilir)" : "Report Bug (AI Categorization)"}
+                  {bugText.title}
                 </h3>
               </div>
               <button
@@ -842,75 +970,55 @@ export function Sidebar() {
               </button>
             </div>
 
-            {bugSuccessCode ? (
+            {bugSubmitted ? (
               <div className="text-center py-6 space-y-3">
                 <div className="h-12 w-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto text-xl font-bold">
                   <Check size={24} />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-surface-dark">
-                    {editLang === "tr" ? "Hata Bildirimi İletildi!" : "Bug Report Submitted!"}
+                    {bugText.successTitle}
                   </h4>
                   <p className="text-xs text-gray-500 mt-1">
-                    {editLang === "tr" ? "Yapay zeka sorununuzu otomatik analiz etti:" : "AI analyzed and categorized your report:"}
+                    {bugText.successMessage}
                   </p>
-                  <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 text-xs font-extrabold">
-                    <Tag size={14} /> #{bugSuccessCode} - {bugSuccessCategory}
-                  </div>
                 </div>
                 <button
                   onClick={() => setShowBugModal(false)}
                   className="w-full py-2.5 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover cursor-pointer active:scale-95 transition-all mt-4"
                 >
-                  {editLang === "tr" ? "Tamam" : "Got it!"}
+                  {bugText.thankYouButton}
                 </button>
               </div>
             ) : (
               <form onSubmit={handleSubmitBugReport} className="space-y-4">
-                {/* Screenshot Preview */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                    <Camera size={12} /> {editLang === "tr" ? "Otomatik Ekran Görüntüsü Önizleme" : "Auto Screen Capture Preview"}
-                  </label>
-                  {capturingScreenshot ? (
-                    <div className="h-28 bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400 gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin text-brand" />
-                      <span>Capturing screen...</span>
-                    </div>
-                  ) : screenshotBase64 ? (
-                    <img
-                      src={screenshotBase64}
-                      alt="Screen Preview"
-                      className="w-full h-28 object-cover rounded-xl border border-gray-200 shadow-xs"
-                    />
-                  ) : (
-                    <div className="h-28 bg-gray-50 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400">
-                      Screenshot ready
-                    </div>
-                  )}
-                </div>
-
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                    {editLang === "tr" ? "Karşılaştığınız Sorun Nedir?" : "Describe the Issue"}
+                    {bugText.descriptionLabel}
                   </label>
                   <textarea
                     required
                     rows={3}
                     value={bugDesc}
                     onChange={(e) => setBugDesc(e.target.value)}
-                    placeholder={editLang === "tr" ? "Örn: Yan menü açıkken yazılar üst üste bindi, ya da takvim ekleme yanıt vermiyor..." : "e.g. Navigation items overlap when sidebar expands..."}
+                    placeholder={bugText.placeholder}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white resize-none"
                   />
                 </div>
 
+                {bugError && (
+                  <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+                    {bugText.error}
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  disabled={submittingBug || capturingScreenshot || !bugDesc.trim()}
+                  disabled={submittingBug || !bugDesc.trim()}
                   className="w-full py-3 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
                 >
                   {submittingBug ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle size={15} />}
-                  {submittingBug ? (editLang === "tr" ? "AI Analiz Ediyor..." : "Analyzing with AI...") : (editLang === "tr" ? "Hayırlı Bildirim Gönder (AI)" : "Submit Bug Report")}
+                  {submittingBug ? bugText.submitting : bugText.submit}
                 </button>
               </form>
             )}

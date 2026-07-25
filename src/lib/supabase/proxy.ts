@@ -31,14 +31,30 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth') &&
-    request.nextUrl.pathname.startsWith('/dashboard')
-  ) {
+  const protectedPrefixes = [
+    '/dashboard',
+    '/achievements',
+    '/ai-assistant',
+    '/billing',
+    '/calendar',
+    '/focus',
+    '/notes',
+    '/onboarding',
+    '/profile',
+    '/study-groups',
+    '/tasks',
+    '/admin',
+  ]
+  const isProtected = protectedPrefixes.some(
+    (prefix) =>
+      request.nextUrl.pathname === prefix ||
+      request.nextUrl.pathname.startsWith(`${prefix}/`)
+  )
+
+  if (!user && isProtected) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    url.searchParams.set('next', request.nextUrl.pathname)
     return NextResponse.redirect(url)
   }
 

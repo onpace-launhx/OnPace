@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  AIServiceError,
+  generateAIText,
+  parseAIJson,
+} from "@/lib/ai/server";
 
 export async function POST(request: Request) {
   try {
@@ -10,22 +15,6 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Fetch active API configuration on server
-    const { data: config, error: rpcError } = await supabase.rpc("get_active_ai_config");
-
-    if (rpcError || !config) {
-      console.error("Supabase RPC error calling get_active_ai_config:", rpcError);
-      return NextResponse.json({ error: "AI configs not loaded." }, { status: 400 });
-    }
-
-    const activeConfig = Array.isArray(config) ? config[0] : config;
-    const apiKey = activeConfig?.api_key;
-    const provider = activeConfig?.provider || "gemini";
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "AI key not configured." }, { status: 400 });
     }
 
     const { task_id, title, course_id, due_date } = await request.json();
@@ -50,43 +39,22 @@ Return ONLY a raw valid JSON array of strings. Example output format:
 
 Do not output markdown code fences, do not output any surrounding text. Return raw JSON text only.`;
 
-    let aiOutput = "";
-
-    if (provider === "openai") {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-5.4-mini",
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.3
-        }),
-      });
-      const data = await response.json();
-      aiOutput = data.choices?.[0]?.message?.content || "";
-    } else {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3 }
-          }),
-        }
-      );
-      const data = await response.json();
-      aiOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    }
+    const aiOutput = await generateAIText(supabase, {
+      prompt,
+      temperature: 0.3,
+      json: true,
+    });
 
     let subtasksText: string[] = [];
     try {
-      const cleanJson = aiOutput.replace(/```json/gi, "").replace(/```/g, "").trim();
-      subtasksText = JSON.parse(cleanJson);
+      subtasksText = parseAIJson<string[]>(aiOutput);
+      if (
+        !Array.isArray(subtasksText) ||
+        subtasksText.length === 0 ||
+        subtasksText.some((item) => typeof item !== "string" || !item.trim())
+      ) {
+        throw new Error("Invalid task breakdown schema");
+      }
     } catch (parseErr: any) {
       console.error("AI Task Breakdown output parsing error:", parseErr, "Output was:", aiOutput);
 
@@ -128,6 +96,9 @@ Do not output markdown code fences, do not output any surrounding text. Return r
 
   } catch (error: any) {
     console.error("Task breakdown server exception:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || "Task breakdown failed." },
+      { status: error instanceof AIServiceError ? error.status : 500 }
+    );
   }
 }

@@ -1,0 +1,16 @@
+project_id = "onpace"
+
+[functions.auth-email-hook]
+verify_jwt = false
+
+[functions.admin-email-broadcast]
+verify_jwt = true
+
+[functions.integration-config]
+verify_jwt = true
+
+[functions.ai-gateway]
+verify_jwt = true
+
+[functions.r2-upload]
+verify_jwt = true

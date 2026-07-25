@@ -20,11 +20,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { summary, start, end, description } = await request.json();
+  const {
+    summary,
+    title,
+    start,
+    startTime,
+    end,
+    durationMinutes,
+    description,
+  } = await request.json();
+  const eventSummary = summary || title;
+  const eventStart = start || startTime;
+  const eventEnd =
+    end ||
+    (eventStart
+      ? new Date(
+          new Date(eventStart).getTime() +
+            (Number(durationMinutes) || 60) * 60_000
+        ).toISOString()
+      : null);
 
-  if (!summary || !start || !end) {
+  if (!eventSummary || !eventStart || !eventEnd) {
     return NextResponse.json(
-      { error: "summary, start, and end are required" },
+      { error: "Event title, start time, and end time are required" },
       { status: 400 }
     );
   }
@@ -38,10 +56,10 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        summary,
+        summary: eventSummary,
         description: description || "",
-        start: { dateTime: start, timeZone: "UTC" },
-        end: { dateTime: end, timeZone: "UTC" },
+        start: { dateTime: eventStart },
+        end: { dateTime: eventEnd },
       }),
     }
   );
@@ -50,10 +68,9 @@ export async function POST(request: NextRequest) {
 
   if (!calData.id) {
     console.error("Failed to create event:", calData);
-    return NextResponse.json(
-      { error: "Failed to create calendar event" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: calData?.error?.message || "Failed to create calendar event",
+    }, { status: calRes.status || 500 });
   }
 
   return NextResponse.json({

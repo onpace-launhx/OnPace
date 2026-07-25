@@ -21,6 +21,7 @@ import {
   Upload,
   FileText,
   BrainCircuit,
+  Search,
   Eye,
   Check
 } from "lucide-react";
@@ -35,6 +36,7 @@ export default function NotesPage() {
   const t = getTranslations(lang);
 
   const [notes, setNotes] = useState<any[]>([]);
+  const [noteSearch, setNoteSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Split-screen navigation states (mobile-responsive)
@@ -53,6 +55,7 @@ export default function NotesPage() {
   // Flashcards states
   const [flashcards, setFlashcards] = useState<any[]>([]);
   const [generatingCards, setGeneratingCards] = useState(false);
+  const [practiceCount, setPracticeCount] = useState("6");
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 
@@ -207,60 +210,83 @@ export default function NotesPage() {
     });
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const processNoteImage = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file.");
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      alert("The image must be smaller than 6 MB.");
+      return;
+    }
+    if (uploading || analyzing) return;
 
     setUploading(true);
-    
     try {
-      // 1. Read as base64 first (for Vision AI input)
       const base64Data = await getBase64(file);
-
+      let archivedFileUrl: string | null = null;
       const formData = new FormData();
       formData.append("file", file);
 
-      // 2. Upload file to Cloudflare R2
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const uploadData = await uploadRes.json();
-      if (uploadData.error) {
-        alert(uploadData.error);
-        setUploading(false);
-        return;
+      // R2 is optional archival storage. OCR must still work when it is absent.
+      try {
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          archivedFileUrl = uploadData.url || null;
+        }
+      } catch {
+        // Continue with direct Vision AI analysis.
       }
 
       setUploading(false);
       setAnalyzing(true);
 
-      // 3. Trigger AI vision analysis with file URL & base64
       const analyzeRes = await fetch("/api/notes/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileUrl: uploadData.url,
-          contentType: uploadData.contentType,
-          base64Data: base64Data,
+          fileUrl: archivedFileUrl,
+          contentType: file.type,
+          base64Data,
         }),
       });
 
       const analyzeData = await analyzeRes.json();
-      if (analyzeData.error) {
-        alert(analyzeData.error);
+      if (!analyzeRes.ok || analyzeData.error) {
+        alert(analyzeData.error || "Image analysis failed.");
       } else if (analyzeData.note) {
-        setNotes([analyzeData.note, ...notes]);
+        setNotes((currentNotes) => [analyzeData.note, ...currentNotes]);
         handleSelectNote(analyzeData.note);
       }
-    } catch (err: any) {
-      alert("Error processing note file: " + (err.message || String(err)));
+    } catch (error) {
+      alert(
+        "Error processing note file: " +
+          (error instanceof Error ? error.message : String(error))
+      );
     } finally {
       setUploading(false);
       setAnalyzing(false);
-      event.target.value = "";
     }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) await processNoteImage(file);
+    event.target.value = "";
+  };
+
+  const handleEditorPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageItem = Array.from(event.clipboardData.items).find((item) =>
+      item.type.startsWith("image/")
+    );
+    const imageFile = imageItem?.getAsFile();
+    if (!imageFile) return;
+    event.preventDefault();
+    void processNoteImage(imageFile);
   };
 
   const handleSaveNote = async () => {
@@ -312,6 +338,11 @@ export default function NotesPage() {
     }
   };
 
+  const filteredNotes = notes.filter((note) => {
+    const query = noteSearch.trim().toLowerCase();
+    return !query || `${note.title || ""} ${note.content || ""}`.toLowerCase().includes(query);
+  });
+
   const handleGenerateCards = async () => {
     if (!selectedNote || !content.trim()) return;
     setGeneratingCards(true);
@@ -323,7 +354,8 @@ export default function NotesPage() {
         body: JSON.stringify({
           note_id: selectedNote.id,
           title: selectedNote.title,
-          content: selectedNote.content
+          content: selectedNote.content,
+          count: Number(practiceCount)
         })
       });
 
@@ -353,7 +385,8 @@ export default function NotesPage() {
         body: JSON.stringify({
           note_id: selectedNote.id,
           title: selectedNote.title,
-          content: selectedNote.content
+          content: selectedNote.content,
+          count: Number(practiceCount)
         })
       });
 
@@ -461,6 +494,15 @@ export default function NotesPage() {
           </div>
 
           <div className="space-y-2">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={noteSearch}
+                onChange={(event) => setNoteSearch(event.target.value)}
+                placeholder={lang === "tr" ? "Notlarda ara..." : lang === "es" ? "Buscar notas..." : lang === "zh" ? "搜索笔记..." : "Search notes..."}
+                className="w-full rounded-xl border border-gray-150 bg-gray-50 py-2.5 pl-9 pr-3 text-xs text-surface-dark outline-none transition-all focus:border-brand focus:ring-2 focus:ring-brand/10"
+              />
+            </div>
             {uploading && (
               <div className="p-3.5 rounded-2xl border border-dashed border-brand/20 bg-brand-light/10 text-brand text-xs font-semibold flex items-center gap-2">
                 <Loader2 className="animate-spin h-4 w-4" />
@@ -477,8 +519,10 @@ export default function NotesPage() {
               <p className="text-xs text-gray-400 py-6 text-center">
                 {lang === "zh" ? "您的笔记本是空的。点击 + 添加学习笔记。" : lang === "es" ? "Tu cuaderno está vacío. Haz clic en + para agregar notas de estudio." : "Your notebook is empty. Click + to add study notes."}
               </p>
+            ) : filteredNotes.length === 0 ? (
+              <p className="py-6 text-center text-xs text-gray-400">{lang === "tr" ? "Aramanızla eşleşen not yok." : "No notes match your search."}</p>
             ) : (
-              notes.map((n) => {
+              filteredNotes.map((n) => {
                 const isActive = selectedNote?.id === n.id;
                 return (
                   <div
@@ -607,6 +651,7 @@ export default function NotesPage() {
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              onPaste={handleEditorPaste}
               placeholder={t.notes.placeholderText}
               className="w-full flex-1 outline-none text-sm text-surface-dark bg-transparent resize-none leading-relaxed placeholder-gray-400 font-medium font-sans"
             />
@@ -662,7 +707,7 @@ export default function NotesPage() {
             {activeTab === "flashcards" && (
               <div className="space-y-4">
                 <div className="bg-white border border-gray-100 p-5 rounded-2xl shadow-sm space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="text-xs font-extrabold text-surface-dark flex items-center gap-1.5">
                         <Sparkles className="text-brand" size={14} /> Flashcard Set
@@ -670,6 +715,13 @@ export default function NotesPage() {
                       <p className="text-[10px] text-gray-400 mt-0.5">Quiz yourself to check retention.</p>
                     </div>
 
+                    <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-[10px] text-gray-500">
+                      <span className="hidden sm:inline">{lang === "tr" ? "Adet" : "Count"}</span>
+                      <select value={practiceCount} onChange={(event) => setPracticeCount(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-[10px] text-surface-dark">
+                        {[3, 6, 10, 15, 20].map((count) => <option key={count} value={count}>{count}</option>)}
+                      </select>
+                    </label>
                     <button
                       onClick={handleGenerateCards}
                       disabled={generatingCards || content.trim().length < 20}
@@ -678,6 +730,7 @@ export default function NotesPage() {
                       {generatingCards ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles size={11} />}
                       {t.notes.flashcards.generate}
                     </button>
+                    </div>
                   </div>
 
                   {flashcards.length > 0 ? (
@@ -753,7 +806,7 @@ export default function NotesPage() {
                 {/* Generation Block */}
                 {!activeQuiz && (
                   <div className="bg-white border border-gray-100 p-5 rounded-2xl shadow-sm space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="text-xs font-extrabold text-surface-dark flex items-center gap-1.5">
                           <HelpCircle className="text-brand" size={14} /> Practice Quiz
@@ -761,6 +814,13 @@ export default function NotesPage() {
                         <p className="text-[10px] text-gray-400 mt-0.5">Generate a quiz from these notes.</p>
                       </div>
 
+                      <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1 text-[10px] text-gray-500">
+                        <span className="hidden sm:inline">{lang === "tr" ? "Adet" : "Count"}</span>
+                        <select value={practiceCount} onChange={(event) => setPracticeCount(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-[10px] text-surface-dark">
+                          {[3, 6, 10, 15, 20].map((count) => <option key={count} value={count}>{count}</option>)}
+                        </select>
+                      </label>
                       <button
                         onClick={handleGenerateQuiz}
                         disabled={generatingQuiz || content.trim().length < 20}
@@ -769,6 +829,7 @@ export default function NotesPage() {
                         {generatingQuiz ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles size={11} />}
                         {t.notes.quiz.generate}
                       </button>
+                      </div>
                     </div>
 
                     <div className="border border-dashed border-gray-200 rounded-2xl p-6 text-center text-xs text-gray-400">

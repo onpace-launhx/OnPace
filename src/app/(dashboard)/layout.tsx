@@ -19,7 +19,9 @@ export default function DashboardLayout({
   // Maintenance & Auth state
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [hasMaintenanceAccess, setHasMaintenanceAccess] = useState(false);
   const [userLang, setUserLang] = useState("en");
+  const [maintenanceChecked, setMaintenanceChecked] = useState(false);
 
   // Announcement state
   const [pinnedAnnouncements, setPinnedAnnouncements] = useState<any[]>([]);
@@ -38,7 +40,7 @@ export default function DashboardLayout({
         if (user) {
           const { data: prof } = await supabase
             .from("profiles")
-            .select("role, language")
+            .select("role, language, maintenance_access")
             .eq("id", user.id)
             .single();
 
@@ -47,20 +49,24 @@ export default function DashboardLayout({
             if (["admin", "super_admin"].includes(prof.role)) {
               setIsAdminUser(true);
             }
+            setHasMaintenanceAccess(prof.maintenance_access === true);
           }
         }
 
-        const { data: settings } = await supabase
-          .from("system_settings")
-          .select("maintenance_mode")
-          .eq("id", "default")
-          .maybeSingle();
+        const { data: settingsRows } = await supabase.rpc(
+          "get_public_system_settings"
+        );
+        const settings = Array.isArray(settingsRows)
+          ? settingsRows[0]
+          : settingsRows;
 
         if (settings?.maintenance_mode) {
           setIsMaintenanceMode(true);
         }
       } catch {
         // Silently ignore
+      } finally {
+        setMaintenanceChecked(true);
       }
     }
 
@@ -139,8 +145,16 @@ export default function DashboardLayout({
     }
   };
 
+  if (!maintenanceChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FC]">
+        <Loader2 className="h-7 w-7 animate-spin text-brand" />
+      </div>
+    );
+  }
+
   // If System Maintenance is active AND user is not an Admin -> Render Maintenance Barrier Screen
-  if (isMaintenanceMode && !isAdminUser) {
+  if (isMaintenanceMode && !isAdminUser && !hasMaintenanceAccess) {
     return <MaintenanceScreen userLanguage={userLang} />;
   }
 
@@ -183,6 +197,7 @@ export default function DashboardLayout({
           <div className="absolute top-4 right-6 z-30 pointer-events-auto">
             <NotificationBell userLanguage={userLang} />
           </div>
+          <div className="h-16 shrink-0 lg:hidden" aria-hidden="true" />
           {children}
         </div>
       </div>

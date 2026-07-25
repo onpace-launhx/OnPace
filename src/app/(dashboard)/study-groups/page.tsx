@@ -107,7 +107,9 @@ export default function StudyGroupsPage() {
 
       if (groupsData) setAllGroups(groupsData);
       if (membershipsData) {
-        setMyMemberships(membershipsData.map(m => m.group_id));
+        setMyMemberships(
+          membershipsData.map((m: { group_id: string }) => m.group_id)
+        );
       }
 
       setLoading(false);

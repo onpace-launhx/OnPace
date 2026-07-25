@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { AIServiceError, generateAIText } from "@/lib/ai/server";
+
+interface IncomingHistoryMessage {
+  sender?: string;
+  role?: string;
+  text?: string;
+  content?: string;
+}
 
 export async function POST(request: Request) {
   try {
@@ -12,273 +20,90 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Call secure RPC or query system settings for active AI key
-    let apiKey = process.env.GEMINI_API_KEY;
-    let provider = "gemini";
-
-    try {
-      const { data: config } = await supabase.rpc("get_active_ai_config");
-      if (config) {
-        const activeConfig = Array.isArray(config) ? config[0] : config;
-        if (activeConfig?.api_key) {
-          apiKey = activeConfig.api_key;
-          provider = activeConfig.provider || "gemini";
-        }
-      }
-    } catch {
-      // Ignore RPC error
+    const body = await request.json();
+    const message = typeof body?.message === "string" ? body.message.trim() : "";
+    const history: IncomingHistoryMessage[] = Array.isArray(body?.history)
+      ? body.history.slice(-20)
+      : [];
+    if (!message) {
+      return NextResponse.json({ error: "Message is required." }, { status: 400 });
     }
 
-    if (!apiKey) {
-      apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    }
+    const [
+      { data: profile },
+      { data: tasks },
+      { data: sessions },
+      { data: courses },
+    ] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("language, full_name, learning_styles, daily_study_goal_minutes")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("tasks")
+        .select("id, title, status, priority, due_date, estimated_minutes")
+        .eq("user_id", user.id)
+        .neq("status", "completed")
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .limit(15),
+      supabase
+        .from("study_sessions")
+        .select("id, title, start_time, duration")
+        .eq("user_id", user.id)
+        .gte("start_time", new Date().toISOString())
+        .order("start_time", { ascending: true })
+        .limit(10),
+      supabase
+        .from("courses")
+        .select("name")
+        .eq("user_id", user.id)
+        .limit(20),
+    ]);
 
-    const { message, history = [] } = await request.json();
+    const userLanguage = profile?.language || "en";
+    const systemInstruction = `You are the OnPace AI Study Coach: warm, concise, practical, and honest.
+The student's name is ${profile?.full_name || "Student"}.
+The interface language is "${userLanguage}". Always answer naturally in that language unless the student explicitly requests another language.
+Current timestamp: ${new Date().toISOString()}.
+Learning styles: ${JSON.stringify(profile?.learning_styles || [])}.
+Daily study target: ${profile?.daily_study_goal_minutes || 60} minutes.
+Courses: ${JSON.stringify((courses || []).map((course) => course.name))}.
+Incomplete tasks: ${JSON.stringify(tasks || [])}.
+Upcoming OnPace calendar sessions: ${JSON.stringify(sessions || [])}.
 
-    const { data: userProfile } = await supabase
-      .from("profiles")
-      .select("language, full_name, learning_styles")
-      .eq("id", user.id)
-      .maybeSingle();
+Ground personalized advice in the real data above. Never invent tasks, deadlines, grades, or calendar events.
+When asked to plan, propose a concrete plan that avoids existing sessions and explains the next action.
+Do not claim that an item was added, changed, or deleted unless the application explicitly supplied a successful tool result.
+For calendar creation, task creation, or destructive changes, first show the exact proposed details and ask for explicit confirmation.
+The dedicated "Plan My Day with AI" action in the Calendar can save a confirmed plan.`;
 
-    const userLang = userProfile?.language || "en";
-    const currentDate = new Date().toISOString();
-    const userName = userProfile?.full_name || "Student";
-
-    const systemPrompt = `You are the OnPace Study Coach, an intelligent, empathetic, highly motivating and interactive AI study assistant designed for students.
-The student's name is: ${userName}.
-The current timestamp is: ${currentDate}.
-Keep your responses helpful, highly structured, encouraging, and clear.
-
-CRITICAL LANGUAGE INSTRUCTION: The user's active interface language preference is '${userLang}'. You MUST ALWAYS respond fluently in '${userLang}' (e.g. if 'tr' write in natural Turkish, if 'zh' in natural Chinese, if 'es' in Spanish, if 'en' in English) unless the user explicitly asks you to converse in another language.
-
-For greetings (like "merhaba", "selam", "hello", "hi"):
-Warmly greet the student in '${userLang}', mention that you are their OnPace AI Study Coach, and ask how you can help them plan their studies, tasks, or exams today.
-
-CRITICAL FUNCTIONALITY: Before scheduling any new calendar event or study session (add_calendar_event), or creating a task (add_task), propose the details to the user and ask for explicit confirmation.`;
-
-    // Define function calling tools
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "get_tasks",
-          description: "Fetch the user's current study tasks and todo checklist items."
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "add_task",
-          description: "Add a new study task to the user's checklist/todo list.",
-          parameters: {
-            type: "object",
-            properties: {
-              title: { type: "string", description: "The description of the study task." },
-              priority: { type: "string", enum: ["high", "medium", "low"], description: "Priority of the task." },
-              due_date: { type: "string", description: "Optional ISO date string for due date." }
-            },
-            required: ["title"]
-          }
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "get_calendar_events",
-          description: "Fetch the user's scheduled study sessions stored in OnPace."
-        }
-      },
-      {
-        type: "function",
-        function: {
-          name: "add_calendar_event",
-          description: "Add a study session to the OnPace internal calendar.",
-          parameters: {
-            type: "object",
-            properties: {
-              title: { type: "string", description: "Title of the study session." },
-              start_time: { type: "string", description: "ISO 8601 start date/time." },
-              end_time: { type: "string", description: "ISO 8601 end date/time." }
-            },
-            required: ["title", "start_time", "end_time"]
-          }
-        }
-      }
-    ];
-
-    async function executeTool(name: string, args: any) {
-      if (!user) return { error: "Unauthorized" };
-      try {
-        if (name === "get_tasks") {
-          const { data } = await supabase
-            .from("tasks")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false });
-          return { tasks: data || [] };
-        }
-        if (name === "add_task") {
-          const { data, error } = await supabase
-            .from("tasks")
-            .insert({
-              user_id: user.id,
-              title: args.title,
-              priority: args.priority || "medium",
-              due_date: args.due_date || null,
-              status: "todo"
-            })
-            .select("*")
-            .single();
-          if (error) return { error: error.message };
-          return { success: true, task: data };
-        }
-        if (name === "get_calendar_events") {
-          const { data } = await supabase
-            .from("study_sessions")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("start_time", { ascending: true });
-          return { events: data || [] };
-        }
-        if (name === "add_calendar_event") {
-          const { data, error } = await supabase
-            .from("study_sessions")
-            .insert({
-              user_id: user.id,
-              title: args.title,
-              start_time: args.start_time,
-              end_time: args.end_time,
-              is_ai_scheduled: true
-            })
-            .select("*")
-            .single();
-          if (error) return { error: error.message };
-          return { success: true, event: data };
-        }
-      } catch (err: any) {
-        return { error: err.message || "Tool execution failed" };
-      }
-      return { error: "Unknown tool call" };
-    }
-
-    let reply = "";
-
-    // Primary Call: OpenAI if configured
-    if (provider === "openai" && apiKey && apiKey.startsWith("sk-")) {
-      try {
-        const messages: any[] = [
-          { role: "system", content: systemPrompt },
-          ...history.map((msg: any) => ({
-            role: msg.sender === "user" ? "user" : "assistant",
-            content: msg.text || msg.content || ""
-          })),
-          { role: "user", content: message }
-        ];
-
-        const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages,
-            tools,
-            tool_choice: "auto"
-          }),
-        });
-
-        if (openaiResponse.ok) {
-          const openaiData = await openaiResponse.json();
-          const assistantMessage = openaiData.choices?.[0]?.message;
-
-          if (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0) {
-            messages.push(assistantMessage);
-            for (const toolCall of assistantMessage.tool_calls) {
-              const functionName = toolCall.function.name;
-              const functionArgs = JSON.parse(toolCall.function.arguments || "{}");
-              const result = await executeTool(functionName, functionArgs);
-              messages.push({
-                role: "tool",
-                tool_call_id: toolCall.id,
-                name: functionName,
-                content: JSON.stringify(result)
-              });
-            }
-
-            const secondResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ model: "gpt-4o-mini", messages }),
-            });
-
-            if (secondResponse.ok) {
-              const secondData = await secondResponse.json();
-              reply = secondData.choices?.[0]?.message?.content || "";
-            }
-          } else {
-            reply = assistantMessage?.content || "";
-          }
-        }
-      } catch (e) {
-        console.warn("OpenAI API call failed, falling back to Gemini:", e);
-      }
-    }
-
-    // Fallback or Direct Call: Gemini 1.5 Flash
-    if (!reply) {
-      const geminiKey = (provider === "gemini" ? apiKey : undefined) || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if (geminiKey) {
-        const contents = [
-          { role: "user", parts: [{ text: systemPrompt }] },
-          ...history.map((msg: any) => ({
-            role: msg.sender === "user" ? "user" : "model",
-            parts: [{ text: msg.text || msg.content || "" }]
-          })),
-          { role: "user", parts: [{ text: message }] }
-        ];
-
-        const geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents }),
-          }
-        );
-
-        if (geminiResponse.ok) {
-          const geminiData = await geminiResponse.json();
-          reply = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        }
-      }
-    }
-
-    // Ultimate Fallback Response in User Language
-    if (!reply || reply.trim().length === 0) {
-      if (userLang === "tr") {
-        reply = `Selam ${userName}! Ben OnPace Yapay Zeka Çalışma Koçun. Bugün derslerini ve görevlerini planlamana nasıl yardımcı olabilirim?`;
-      } else if (userLang === "es") {
-        reply = `¡Hola ${userName}! Soy tu tutor de estudio OnPace AI. ¿En qué puedo ayudarte hoy a planificar tus tareas o exámenes?`;
-      } else if (userLang === "zh") {
-        reply = `你好 ${userName}！我是你的 OnPace AI 学习教练。今天我能为你安排课程、任务或考试计划提供什么帮助？`;
-      } else {
-        reply = `Hey ${userName}! I'm your OnPace AI Study Coach. How can I assist you with your tasks, notes, or study schedule today?`;
-      }
-    }
+    const reply = await generateAIText(supabase, {
+      prompt: message,
+      systemInstruction,
+      history: history
+        .map((item) => ({
+          role:
+            item.sender === "user" || item.role === "user"
+              ? ("user" as const)
+              : ("assistant" as const),
+          content: String(item.text || item.content || "").trim(),
+        }))
+        .filter((item) => item.content),
+      temperature: 0.35,
+    });
 
     return NextResponse.json({ reply });
-
-  } catch (error: any) {
-    console.error("Server Exception inside /api/chat:", error);
+  } catch (error) {
+    console.error("Chat route error:", error);
     return NextResponse.json(
-      { error: "An internal server error occurred. Please try again." },
-      { status: 500 }
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "AI assistant is temporarily unavailable.",
+      },
+      { status: error instanceof AIServiceError ? error.status : 500 }
     );
   }
 }

@@ -141,14 +141,19 @@ export default function AssistantWidget() {
       });
 
       const data = await res.json();
-      const reply =
-        data.reply ||
-        data.error ||
-        "I couldn't get a response. Please try again.";
+      if (!res.ok) {
+        throw new Error(data.error || "AI assistant is unavailable.");
+      }
+      const reply = data.reply;
+      if (!reply) throw new Error("AI returned an empty response.");
 
       addAssistantMessage(reply);
-    } catch {
-      addAssistantMessage("Something went wrong. Please try again.");
+    } catch (error) {
+      addAssistantMessage(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again."
+      );
     } finally {
       setLoading(false);
     }

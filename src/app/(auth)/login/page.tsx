@@ -29,7 +29,12 @@ export default function LoginPage() {
       setErrorMsg(error.message);
       setLoading(false);
     } else {
-      router.push("/dashboard");
+      const nextPath = new URLSearchParams(window.location.search).get("next");
+      router.push(
+        nextPath?.startsWith("/") && !nextPath.startsWith("//")
+          ? nextPath
+          : "/dashboard"
+      );
     }
   };
 

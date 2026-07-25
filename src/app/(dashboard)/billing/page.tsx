@@ -25,15 +25,9 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Stripe Simulation Checkout Modal States
+  // Provider-hosted checkout state
   const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("4242 4242 4242 4242");
-  const [cardExpiry, setCardExpiry] = useState("12/29");
-  const [cardCvc, setCardCvc] = useState("424");
-  const [zipCode, setZipCode] = useState("34000");
   const [checkingOut, setCheckingOut] = useState(false);
-  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
 
   // Custom Alert Popups
   const [customAlert, setCustomAlert] = useState<string | null>(null);
@@ -100,11 +94,12 @@ export default function BillingPage() {
       setProfile(profileData);
 
       // Fetch system settings for payment toggle & pricing
-      const { data: sysData } = await supabase
-        .from("system_settings")
-        .select("*")
-        .limit(1)
-        .maybeSingle();
+      const { data: settingsRows } = await supabase.rpc(
+        "get_public_system_settings"
+      );
+      const sysData = Array.isArray(settingsRows)
+        ? settingsRows[0]
+        : settingsRows;
       if (sysData) {
         setSystemSettings(sysData);
       }
@@ -133,19 +128,18 @@ export default function BillingPage() {
           ? "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir."
           : "Plan changes can only be made using a promo code issued to you or by your system administrator.");
       setCustomAlert(disabledMsg);
+    } else if (!systemSettings?.payment_provider_configured) {
+      setCustomAlert(t.billing.providerNotConfigured);
     } else {
       const dynamicPrice = systemSettings?.plan_prices?.[plan.type] ?? plan.price;
       setSelectedPlan({ ...plan, price: dynamicPrice });
     }
   };
 
-  const handleSimulatePayment = async (e: React.FormEvent) => {
+  const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPlan) return;
     setCheckingOut(true);
-
-    const discount = profile?.discount_percent || 0;
-    const finalAmount = discount > 0 ? parseFloat((selectedPlan.price * (1 - discount / 100)).toFixed(2)) : selectedPlan.price;
 
     try {
       const response = await fetch("/api/billing/checkout", {
@@ -153,20 +147,14 @@ export default function BillingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan_type: selectedPlan.type,
-          billing_cycle: selectedPlan.cycle,
-          amount: finalAmount
+          billing_cycle: selectedPlan.cycle
         })
       });
 
       const data = await response.json();
 
-      if (data.success) {
-        setCheckoutSuccess(true);
-        setTimeout(() => {
-          setSelectedPlan(null);
-          // Refresh billing page data
-          window.location.reload();
-        }, 2000);
+      if (response.ok && data.checkoutUrl) {
+        window.location.assign(data.checkoutUrl);
       } else {
         setCustomAlert(data.error || "Checkout error.");
       }
@@ -199,132 +187,103 @@ export default function BillingPage() {
     trialDaysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   }
 
+  const localized = <T,>(values: { en: T; tr: T; es: T; zh: T }): T =>
+    values[(["en", "tr", "es", "zh"].includes(lang) ? lang : "en") as keyof typeof values];
+
   const plans = [
     {
-      title: lang === "zh" ? "免费版" : lang === "es" ? "Gratis" : "Free Plan",
+      title: localized({ en: "Free Plan", tr: "Ücretsiz Plan", es: "Gratis", zh: "免费版" }),
       type: "free",
       cycle: "none",
       price: 0,
-      period: lang === "zh" ? "永久" : lang === "es" ? "para siempre" : "forever",
-      description: lang === "zh" ? "基础跟踪和日常练习管理工具。" : lang === "es" ? "Funciones básicas para seguimiento." : "Basic features to track school work.",
-      features: lang === "zh" ? [
-        "每日限量 AI 提问 (5次)",
-        "最多创建 2 门学科",
-        "基础日程及作业管理",
-        "基础日历大纲",
-        "学生社区公共版块"
-      ] : lang === "es" ? [
-        "Uso limitado de IA (5 msgs/día)",
-        "Hasta 2 asignaturas",
-        "Calendario básico",
-        "Seguimiento básico de tareas",
-        "Acceso a foro comunitario"
-      ] : [
-        "Limited AI usage (5 msgs/day)",
-        "Up to 2 courses",
-        "Basic calendar scheduling",
-        "Basic assignment tracking",
-        "Community forum access"
-      ],
-      badge: lang === "zh" ? "当前方案" : lang === "es" ? "Plan Actual" : "Current Plan",
+      period: localized({ en: "forever", tr: "süresiz", es: "para siempre", zh: "永久" }),
+      description: localized({
+        en: "Basic tools to track school work.",
+        tr: "Derslerini takip etmek için temel araçlar.",
+        es: "Funciones básicas para organizar tus estudios.",
+        zh: "用于跟踪学业的基础工具。",
+      }),
+      features: localized({
+        en: ["Limited AI usage (5 messages/day)", "Up to 2 courses", "Basic calendar scheduling", "Basic assignment tracking", "Community forum access"],
+        tr: ["Sınırlı AI kullanımı (günde 5 mesaj)", "En fazla 2 ders", "Temel takvim planlama", "Temel görev takibi", "Topluluk forumuna erişim"],
+        es: ["Uso limitado de IA (5 mensajes/día)", "Hasta 2 asignaturas", "Calendario básico", "Seguimiento básico de tareas", "Acceso al foro comunitario"],
+        zh: ["每日限量 AI 提问（5 次）", "最多创建 2 门课程", "基础日历规划", "基础任务跟踪", "学生社区访问"],
+      }),
+      badge: localized({ en: "Current Plan", tr: "Mevcut Plan", es: "Plan actual", zh: "当前方案" }),
       badgeStyle: "bg-gray-100 text-gray-500",
-      cta: lang === "zh" ? "当前方案" : lang === "es" ? "Plan Actual" : "Current Plan",
-      disabled: true
+      cta: localized({ en: "Current Plan", tr: "Mevcut Plan", es: "Plan actual", zh: "当前方案" }),
+      disabled: true,
     },
     {
-      title: lang === "zh" ? "Pro 月订阅" : lang === "es" ? "Pro Mensual" : "Pro Monthly",
+      title: localized({ en: "Pro Monthly", tr: "Pro Aylık", es: "Pro Mensual", zh: "Pro 月订阅" }),
       type: "pro_monthly",
       cycle: "monthly",
-      price: 6.99,
-      period: lang === "zh" ? "月" : lang === "es" ? "mes" : "month",
-      description: lang === "zh" ? "开启所有高级人工智能及定制学科支持。" : lang === "es" ? "Todo lo necesario para tus clases." : "Everything you need to master your classes.",
-      features: lang === "zh" ? [
-        "无限量 AI 智能学科教练",
-        "无限量创建课程笔记本",
-        "AI 知识闪卡自动生成",
-        "AI 章节互动自测模拟题",
-        "SAT / ACT / AP 考前特训",
-        "高阶学习数据统计与分析"
-      ] : lang === "es" ? [
-        "Asesor de IA ilimitado",
-        "Notebooks de cursos ilimitados",
-        "Generador de tarjetas flash",
-        "Cuestionarios interactivos de IA",
-        "Herramientas SAT / ACT / AP",
-        "Analíticas avanzadas de estudio"
-      ] : [
-        "Unlimited AI Study Coach",
-        "Unlimited Course Notebooks",
-        "Study Flashcards Generator",
-        "Interactive Practice Quizzes",
-        "SAT / ACT / AP Prep tools",
-        "Advanced Study Analytics"
-      ],
-      badge: lang === "zh" ? "最受欢迎" : lang === "es" ? "Popular" : "Popular",
+      price: Number(systemSettings?.plan_prices?.pro_monthly ?? systemSettings?.plan_prices?.pro ?? 6.99),
+      period: localized({ en: "month", tr: "ay", es: "mes", zh: "月" }),
+      description: localized({
+        en: "Everything you need to master your classes.",
+        tr: "Derslerinde ilerlemek için ihtiyaç duyduğun tüm araçlar.",
+        es: "Todo lo necesario para dominar tus clases.",
+        zh: "掌握课程所需的全部功能。",
+      }),
+      features: localized({
+        en: ["Unlimited AI Study Coach", "Unlimited course notebooks", "AI flashcard generation", "Interactive AI quizzes", "SAT / ACT / AP prep tools", "Advanced study analytics"],
+        tr: ["Sınırsız AI Çalışma Koçu", "Sınırsız ders not defteri", "AI bilgi kartı oluşturma", "İnteraktif AI testleri", "SAT / ACT / AP hazırlık araçları", "Gelişmiş çalışma analizleri"],
+        es: ["Coach de IA ilimitado", "Cuadernos ilimitados", "Generador de tarjetas con IA", "Cuestionarios interactivos", "Herramientas SAT / ACT / AP", "Analíticas avanzadas"],
+        zh: ["无限量 AI 学习教练", "无限量课程笔记本", "AI 知识卡生成", "互动 AI 测验", "SAT / ACT / AP 备考工具", "高级学习分析"],
+      }),
+      badge: localized({ en: "Popular", tr: "Popüler", es: "Popular", zh: "最受欢迎" }),
       badgeStyle: "bg-brand/10 text-brand border border-brand/20",
-      cta: lang === "zh" ? "升级至 Pro 月度版" : lang === "es" ? "Mejorar a Pro Mensual" : "Upgrade to Pro Monthly",
-      disabled: profile?.plan === "pro" && profile?.billing_cycle === "monthly"
+      cta: localized({ en: "Upgrade to Pro Monthly", tr: "Pro Aylık'a Geç", es: "Mejorar a Pro Mensual", zh: "升级至 Pro 月度版" }),
+      disabled: profile?.plan === "pro" && profile?.billing_cycle === "monthly",
     },
     {
-      title: lang === "zh" ? "Pro 年订阅" : lang === "es" ? "Pro Anual" : "Pro Yearly",
+      title: localized({ en: "Pro Yearly", tr: "Pro Yıllık", es: "Pro Anual", zh: "Pro 年订阅" }),
       type: "pro_yearly",
       cycle: "yearly",
-      price: 59.99,
-      period: lang === "zh" ? "年" : lang === "es" ? "año" : "year",
-      description: lang === "zh" ? "全学年无间断学业冲刺支持。" : lang === "es" ? "Soporte completo para todo el año." : "Complete academic support all year long.",
-      features: lang === "zh" ? [
-        "包含 Pro 月度版所有高级功能",
-        "高优 AI 服务器专线通道",
-        "抢先体验未来全新 Beta 工具",
-        "立省 $24 (比按月付更划算！)"
-      ] : lang === "es" ? [
-        "Todo lo incluido en Pro Mensual",
-        "Prioridad de respuesta de IA",
-        "Acceso temprano a betas",
-        "Ahorra $24 al año (¡Recomendado!)"
-      ] : [
-        "All Pro Monthly features",
-        "Priority AI server routing",
-        "Beta feature early access",
-        "Save $24 / year (Best Value!)"
-      ],
-      badge: lang === "zh" ? "最佳性价比" : lang === "es" ? "Mejor Valor" : "Best Value",
+      price: Number(systemSettings?.plan_prices?.pro_yearly ?? 59.99),
+      period: localized({ en: "year", tr: "yıl", es: "año", zh: "年" }),
+      description: localized({
+        en: "Complete academic support all year long.",
+        tr: "Tüm yıl boyunca kesintisiz akademik destek.",
+        es: "Soporte académico completo durante todo el año.",
+        zh: "全年持续提供完整学习支持。",
+      }),
+      features: localized({
+        en: ["All Pro Monthly features", "Priority AI processing", "Early access to beta tools", "Better annual value"],
+        tr: ["Pro Aylık'taki tüm özellikler", "Öncelikli AI işlem sırası", "Beta araçlarına erken erişim", "Daha avantajlı yıllık fiyat"],
+        es: ["Todo lo incluido en Pro Mensual", "Procesamiento prioritario de IA", "Acceso anticipado a betas", "Mejor precio anual"],
+        zh: ["包含 Pro 月度版全部功能", "优先 AI 处理", "抢先体验测试功能", "更优惠的年度价格"],
+      }),
+      badge: localized({ en: "Best Value", tr: "En Avantajlı", es: "Mejor valor", zh: "最佳性价比" }),
       badgeStyle: "bg-accent/15 text-accent border border-accent/20",
-      cta: lang === "zh" ? "升级至 Pro 年度版" : lang === "es" ? "Mejorar a Pro Anual" : "Upgrade to Pro Yearly",
+      cta: localized({ en: "Upgrade to Pro Yearly", tr: "Pro Yıllık'a Geç", es: "Mejorar a Pro Anual", zh: "升级至 Pro 年度版" }),
       disabled: profile?.plan === "pro" && profile?.billing_cycle === "yearly",
-      highlight: true
+      highlight: true,
     },
     {
-      title: lang === "zh" ? "创始会员 (限时)" : lang === "es" ? "Miembro Fundador" : "Founding Member",
+      title: localized({ en: "Founding Member", tr: "Kurucu Üye", es: "Miembro Fundador", zh: "创始会员" }),
       type: "founding_member",
       cycle: "lifetime",
-      price: 99.00,
-      period: lang === "zh" ? "一次性" : lang === "es" ? "pago único" : "one-time",
-      description: lang === "zh" ? "创始阶段特惠，终身免费享有未来所有升级。" : lang === "es" ? "Oferta de lanzamiento. Acceso de por vida." : "Exclusive launch offer. Lifetime access.",
-      features: lang === "zh" ? [
-        "终身免费使用未来所有 Pro 工具",
-        "免费获得未来新增的所有付费包",
-        "主页专属“创始会员”闪耀勋章",
-        "尊享与开发团队直接反馈特权",
-        "一次性付款 - 终身免收年费"
-      ] : lang === "es" ? [
-        "Acceso de por vida a todo lo Pro",
-        "Adiciones premium futuras gratis",
-        "Insignia de Miembro Fundador",
-        "Línea de comentarios de devs",
-        "Pago único: no vuelvas a pagar"
-      ] : [
-        "Lifetime access to all Pro features",
-        "Free future premium add-ons",
-        "Founding Member badge on profile",
-        "Direct feedback line to developers",
-        "One-time charge - never pay again"
-      ],
-      badge: lang === "zh" ? "限时抢购" : lang === "es" ? "Tiempo Limitado" : "Limited Time",
+      price: Number(systemSettings?.plan_prices?.founding_member ?? systemSettings?.plan_prices?.founding ?? 99),
+      period: localized({ en: "one-time", tr: "tek seferlik", es: "pago único", zh: "一次性" }),
+      description: localized({
+        en: "Exclusive launch offer with lifetime access.",
+        tr: "Ömür boyu erişim sunan özel lansman teklifi.",
+        es: "Oferta exclusiva de lanzamiento con acceso de por vida.",
+        zh: "提供终身访问权限的专属创始优惠。",
+      }),
+      features: localized({
+        en: ["Lifetime access to Pro features", "Future premium additions", "Founding Member badge", "Direct product feedback", "One-time payment"],
+        tr: ["Pro özelliklerine ömür boyu erişim", "Gelecekteki premium eklentiler", "Kurucu Üye rozeti", "Doğrudan ürün geri bildirimi", "Tek seferlik ödeme"],
+        es: ["Acceso de por vida a Pro", "Futuras funciones premium", "Insignia de Miembro Fundador", "Canal directo de comentarios", "Pago único"],
+        zh: ["终身使用 Pro 功能", "未来高级功能", "创始会员徽章", "直接产品反馈渠道", "一次性付款"],
+      }),
+      badge: localized({ en: "Limited Time", tr: "Sınırlı Süre", es: "Tiempo limitado", zh: "限时优惠" }),
       badgeStyle: "bg-purple-50 text-purple-600 border border-purple-100",
-      cta: lang === "zh" ? "加入创始会员" : lang === "es" ? "Ser Miembro Fundador" : "Become a Founding Member",
-      disabled: profile?.plan === "founding"
-    }
+      cta: localized({ en: "Become a Founding Member", tr: "Kurucu Üye Ol", es: "Ser Miembro Fundador", zh: "加入创始会员" }),
+      disabled: profile?.plan === "founding",
+    },
   ];
 
   return (
@@ -382,7 +341,7 @@ export default function BillingPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${p.badgeStyle}`}>
-                    {isCurrent ? (lang === "zh" ? "正在使用方案" : lang === "es" ? "Plan Activo" : "Active Plan") : p.badge}
+                    {isCurrent ? localized({ en: "Active Plan", tr: "Aktif Plan", es: "Plan activo", zh: "正在使用方案" }) : p.badge}
                   </span>
                 </div>
 
@@ -418,7 +377,7 @@ export default function BillingPage() {
                       : "bg-white border border-gray-200 hover:border-brand text-gray-700 hover:text-brand"
                   }`}
                 >
-                  {isCurrent ? (lang === "zh" ? "激活" : lang === "es" ? "Activo" : "Active") : p.cta}
+                  {isCurrent ? localized({ en: "Active", tr: "Aktif", es: "Activo", zh: "激活" }) : p.cta}
                 </button>
               </div>
             </div>
@@ -426,7 +385,7 @@ export default function BillingPage() {
         })}
       </div>
 
-      {/* Stripe Mock Checkout Modal (Simulated overlay) */}
+      {/* PCI-compliant provider-hosted checkout handoff */}
       {selectedPlan && (
         <div className="fixed inset-0 bg-surface-dark/45 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-lg border border-gray-100 overflow-hidden flex flex-col">
@@ -447,7 +406,7 @@ export default function BillingPage() {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSimulatePayment} className="p-6 space-y-4">
+            <form onSubmit={handleCheckout} className="p-6 space-y-4">
               <div className="bg-gray-50 p-4 rounded-2xl flex justify-between items-center border border-gray-100">
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase">{t.billing.selectedPlan}</p>
@@ -470,72 +429,10 @@ export default function BillingPage() {
                 </div>
               </div>
 
-              {checkoutSuccess ? (
-                <div className="py-6 text-center space-y-3">
-                  <div className="h-12 w-12 rounded-full bg-green-50 text-green-500 border border-green-200 flex items-center justify-center mx-auto animate-pulse">
-                    <ShieldCheck size={28} />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-green-700">{t.billing.success}</h4>
-                    <p className="text-xs text-gray-400 mt-1">Applying credentials & updating subscription...</p>
-                  </div>
-                </div>
-              ) : (
-                <>
                   <div className="space-y-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.billing.cardholder}</label>
-                      <input
-                        type="text"
-                        required
-                        value={cardName}
-                        onChange={(e) => setCardName(e.target.value)}
-                        placeholder="John Doe"
-                        className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                      />
+                    <div className="rounded-2xl border border-brand/10 bg-brand/5 p-4 text-xs leading-relaxed text-gray-600">
+                      {t.billing.hostedCheckoutNotice}
                     </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.billing.cardDetails}</label>
-                      <div className="relative mt-1.5">
-                        <input
-                          type="text"
-                          required
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="4242 4242 4242 4242"
-                          className="block w-full px-3 py-2.5 pr-20 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                        />
-                        <span className="absolute right-2.5 top-2.5 text-[9px] font-extrabold text-brand tracking-widest uppercase border border-brand/20 px-1.5 py-0.5 rounded bg-brand/5">Visa</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="col-span-2">
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.billing.expDate}</label>
-                        <input
-                          type="text"
-                          required
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value)}
-                          placeholder="MM/YY"
-                          className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.billing.cvc}</label>
-                        <input
-                          type="text"
-                          required
-                          value={cardCvc}
-                          onChange={(e) => setCardCvc(e.target.value)}
-                          placeholder="424"
-                          className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Promo Code Input */}
                     <div className="border-t border-gray-100 pt-3">
                       <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Promo Code</label>
                       <div className="flex gap-2 mt-1.5">
@@ -567,17 +464,6 @@ export default function BillingPage() {
                       )}
                     </div>
 
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.billing.zip}</label>
-                      <input
-                        type="text"
-                        required
-                        value={zipCode}
-                        onChange={(e) => setZipCode(e.target.value)}
-                        placeholder="34000"
-                        className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                      />
-                    </div>
                   </div>
 
                   <button
@@ -586,10 +472,8 @@ export default function BillingPage() {
                     className="w-full py-3.5 mt-4 rounded-xl bg-brand text-white text-xs font-bold hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     {checkingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck size={14} />}
-                    {checkingOut ? t.billing.processing : (lang === "zh" ? "模拟支付" : lang === "es" ? "Pagar" : "Pay") + " $" + selectedPlan.price}
+                    {checkingOut ? t.billing.processing : `${t.billing.continueToPayment} $${selectedPlan.price}`}
                   </button>
-                </>
-              )}
             </form>
           </div>
         </div>
@@ -620,15 +504,21 @@ export default function BillingPage() {
                 {invoices.map((inv) => (
                   <tr key={inv.id} className="text-gray-700 hover:bg-gray-50 transition-all">
                     <td className="py-3.5 px-4 font-medium">{new Date(inv.created_at).toLocaleDateString()}</td>
-                    <td className="py-3.5 px-4 font-mono text-[10px] text-gray-400">{inv.stripe_payment_intent_id}</td>
+                    <td className="py-3.5 px-4 font-mono text-[10px] text-gray-400">
+                      {inv.provider_reference || inv.stripe_payment_intent_id || "—"}
+                    </td>
                     <td className="py-3.5 px-4 font-bold">
-                      {inv.plan_type === "pro_monthly" ? (lang === "zh" ? "Pro 月订阅" : lang === "es" ? "Pro Mensual" : "Pro Monthly") : inv.plan_type === "pro_yearly" ? (lang === "zh" ? "Pro 年订阅" : lang === "es" ? "Pro Anual" : "Pro Yearly") : (lang === "zh" ? "创始会员" : lang === "es" ? "Miembro Fundador" : "Founding Member")}
+                      {inv.plan_type === "pro_monthly"
+                        ? localized({ en: "Pro Monthly", tr: "Pro Aylık", es: "Pro Mensual", zh: "Pro 月订阅" })
+                        : inv.plan_type === "pro_yearly"
+                          ? localized({ en: "Pro Yearly", tr: "Pro Yıllık", es: "Pro Anual", zh: "Pro 年订阅" })
+                          : localized({ en: "Founding Member", tr: "Kurucu Üye", es: "Miembro Fundador", zh: "创始会员" })}
                     </td>
                     <td className="py-3.5 px-4 font-semibold text-gray-400">{inv.billing_cycle}</td>
                     <td className="py-3.5 px-4 font-extrabold text-surface-dark">${inv.amount}</td>
                     <td className="py-3.5 px-4">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-green-50 text-green-700 border border-green-150 uppercase">
-                        {lang === "zh" ? "已付款" : lang === "es" ? "Pagado" : "Paid"}
+                        {localized({ en: "Paid", tr: "Ödendi", es: "Pagado", zh: "已付款" })}
                       </span>
                     </td>
                   </tr>
@@ -647,14 +537,16 @@ export default function BillingPage() {
               <HelpCircle size={24} />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-surface-dark">{lang === "zh" ? "支付提示" : lang === "es" ? "Aviso" : "Notification"}</h4>
+              <h4 className="text-sm font-bold text-surface-dark">
+                {t.billing.noticeTitle}
+              </h4>
               <p className="text-xs text-gray-500 mt-2 leading-relaxed">{customAlert}</p>
             </div>
             <button
               onClick={() => setCustomAlert(null)}
               className="w-full py-2.5 bg-brand text-white text-xs font-semibold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer"
             >
-              {lang === "zh" ? "好的" : lang === "es" ? "Entendido" : "Dismiss"}
+              {t.billing.dismiss}
             </button>
           </div>
         </div>

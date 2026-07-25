@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getPaymentProviderAdapter,
+  PaymentConfigurationError,
+} from "@/lib/payments/server";
+
+const PLAN_KEYS: Record<string, { plan: string; cycle: string }> = {
+  pro_monthly: { plan: "pro", cycle: "monthly" },
+  pro_yearly: { plan: "pro", cycle: "yearly" },
+  founding_member: { plan: "founding", cycle: "lifetime" },
+};
 
 export async function POST(request: Request) {
   try {
@@ -7,85 +17,86 @@ export async function POST(request: Request) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { plan_type, billing_cycle, amount } = await request.json();
-
-    if (!plan_type || !billing_cycle || amount === undefined) {
-      return NextResponse.json({ error: "Missing checkout parameters" }, { status: 400 });
+    const { plan_type, billing_cycle } = await request.json();
+    const plan = PLAN_KEYS[plan_type];
+    if (!plan || plan.cycle !== billing_cycle) {
+      return NextResponse.json({ error: "Invalid plan selection." }, { status: 400 });
     }
 
-    // Determine target plan name
-    let targetPlan = "free";
-    if (plan_type === "pro_monthly" || plan_type === "pro_yearly") {
-      targetPlan = "pro";
-    } else if (plan_type === "founding_member") {
-      targetPlan = "founding";
+    const { data: settingsRows, error: settingsError } = await supabase.rpc(
+      "get_public_system_settings"
+    );
+    const settings = Array.isArray(settingsRows)
+      ? settingsRows[0]
+      : settingsRows;
+    if (settingsError || !settings) {
+      return NextResponse.json(
+        { error: "Payment settings are unavailable." },
+        { status: 503 }
+      );
+    }
+    if (!settings.payment_gateway_enabled) {
+      return NextResponse.json(
+        { error: "Online payments are currently disabled." },
+        { status: 403 }
+      );
+    }
+    if (!settings.payment_provider_configured) {
+      return NextResponse.json(
+        { error: "The payment provider has not been configured yet." },
+        { status: 503 }
+      );
     }
 
-    // Calculate next billing date
-    let nextBillingDate: Date | null = null;
-    if (billing_cycle === "monthly") {
-      nextBillingDate = new Date();
-      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
-    } else if (billing_cycle === "yearly") {
-      nextBillingDate = new Date();
-      nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
-    }
-
-    // Mock stripe payment intent ID
-    const mockPaymentIntent = "pi_" + Math.random().toString(36).substring(2, 15);
-
-    // 1. Update user profile with new subscription plan details
-    const { error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from("profiles")
-      .update({
-        plan: targetPlan,
-        billing_cycle,
-        subscription_status: "active",
-        trial_ends_at: null, // Clear trial state since they paid
-        next_billing_date: nextBillingDate ? nextBillingDate.toISOString() : null,
-        failed_payment_attempts: 0 // Reset any failures
-      })
-      .eq("id", user.id);
-
-    if (profileError) {
-      console.error("Failed to update profile plan:", profileError);
-      return NextResponse.json({ error: "Failed to update subscription profile." }, { status: 500 });
+      .select("discount_percent")
+      .eq("id", user.id)
+      .maybeSingle();
+    const legacyPrice =
+      plan.plan === "pro" ? settings.plan_prices?.pro : settings.plan_prices?.founding;
+    const basePrice = Number(settings.plan_prices?.[plan_type] ?? legacyPrice);
+    if (!Number.isFinite(basePrice) || basePrice <= 0) {
+      return NextResponse.json(
+        { error: "This plan does not have a valid configured price." },
+        { status: 503 }
+      );
     }
+    const discount = Math.max(0, Math.min(100, Number(profile?.discount_percent) || 0));
+    const amount = Number((basePrice * (1 - discount / 100)).toFixed(2));
+    const origin = new URL(request.url).origin;
+    const adapter = getPaymentProviderAdapter(settings.payment_provider);
+    const session = await adapter.createCheckoutSession({
+      userId: user.id,
+      email: user.email,
+      planType: plan_type,
+      billingCycle: billing_cycle,
+      amount,
+      currency: "USD",
+      successUrl: `${origin}/billing?checkout=success`,
+      cancelUrl: `${origin}/billing?checkout=cancelled`,
+    });
 
-    // 2. Insert invoice details into purchase_history
-    const { error: historyError } = await supabase
-      .from("purchase_history")
-      .insert([
-        {
-          user_id: user.id,
-          amount,
-          plan_type,
-          billing_cycle,
-          stripe_payment_intent_id: mockPaymentIntent,
-          status: "completed",
-          next_billing_date: nextBillingDate ? nextBillingDate.toISOString() : null
-        },
-      ]);
-
-    if (historyError) {
-      console.error("Failed to write to purchase history:", historyError);
-      // Don't fail checkout since profile updated, but log it
-      await supabase.from("system_logs").insert({
-        user_id: user.id,
-        error_message: "Failed to write to purchase history table during mock Stripe checkout",
-        details: JSON.stringify(historyError),
-      });
-    }
-
-    return NextResponse.json({ success: true, plan: targetPlan });
-
-  } catch (error: any) {
-    console.error("Stripe Mock checkout server exception:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Subscription activation must be performed only by a verified provider
+    // webhook. A checkout request never grants a plan directly.
+    return NextResponse.json({
+      success: true,
+      checkoutUrl: session.checkoutUrl,
+    });
+  } catch (error) {
+    console.error("Checkout initialization error:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Checkout could not be initialized.",
+      },
+      { status: error instanceof PaymentConfigurationError ? 503 : 500 }
+    );
   }
 }

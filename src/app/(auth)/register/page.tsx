@@ -11,6 +11,7 @@ export default function RegisterPage() {
   const supabase = createClient();
   const [fullName, setFullName] = useState("");
   const [gradeLevel, setGradeLevel] = useState("");
+  const [language, setLanguage] = useState("en");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,6 +66,7 @@ export default function RegisterPage() {
         data: {
           full_name: fullName,
           grade_level: gradeLevel,
+          language,
           promocode: promoVerified ? promoCode.trim() : null,
         },
       },
@@ -228,6 +230,27 @@ export default function RegisterPage() {
                   <option value="Other">Other Finals / Regular</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label htmlFor="language" className="block text-sm font-medium text-gray-700">
+                Account and email language
+              </label>
+              <select
+                id="language"
+                name="language"
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+                className="mt-1 block w-full px-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand focus:border-brand sm:text-sm bg-white text-surface-dark transition-all outline-none"
+              >
+                <option value="en">English</option>
+                <option value="tr">Türkçe</option>
+                <option value="es">Español</option>
+                <option value="zh">中文</option>
+              </select>
+              <p className="mt-1.5 text-xs text-gray-500">
+                Verification and security emails will use this language.
+              </p>
             </div>
 
             <div>

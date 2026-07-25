@@ -1,4 +1,11 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OnPace
+
+OnPace is a multilingual AI-assisted study planner built with Next.js and
+Supabase.
+
+Production setup for Supabase Edge Functions, Vault-backed AI/Resend secrets,
+email verification, payments, and deployment order is documented in
+[`docs/production-deployment.md`](docs/production-deployment.md).
 
 ## Getting Started
 

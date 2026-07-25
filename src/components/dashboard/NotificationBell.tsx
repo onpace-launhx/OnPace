@@ -29,7 +29,9 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
 
       if (!error && data) {
         setNotifications(data);
-        setUnreadCount(data.filter((n) => !n.read).length);
+        setUnreadCount(
+          data.filter((n: { read?: boolean }) => !n.read).length
+        );
       }
     } catch {
       // Silently ignore notification fetch errors
@@ -66,6 +68,32 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
       .from("notifications")
       .update({ read: true })
       .eq("id", id);
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    const removed = notifications.find((notification) => notification.id === id);
+    setNotifications((previous) => previous.filter((notification) => notification.id !== id));
+    if (removed && !removed.read) setUnreadCount((previous) => Math.max(0, previous - 1));
+
+    const { error } = await supabase.from("notifications").delete().eq("id", id);
+    if (error) {
+      await fetchNotifications();
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm("Tüm bildirimleri silmek istediğinize emin misiniz?")) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const previous = notifications;
+    setNotifications([]);
+    setUnreadCount(0);
+    const { error } = await supabase.from("notifications").delete().eq("user_id", user.id);
+    if (error) {
+      setNotifications(previous);
+      setUnreadCount(previous.filter((notification) => !notification.read).length);
+    }
   };
 
   return (
@@ -106,15 +134,26 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
                   </span>
                 )}
               </div>
-              {unreadCount > 0 && (
-                <button
-                  onClick={handleMarkAllRead}
-                  className="text-[11px] font-semibold text-brand hover:underline cursor-pointer flex items-center gap-1"
-                >
-                  <CheckCheck size={12} />
-                  {t.notifications?.markAllRead || "Tümünü okundu işaretle"}
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={handleMarkAllRead}
+                    className="text-[11px] font-semibold text-brand hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <CheckCheck size={12} />
+                    {t.notifications?.markAllRead || "Tümünü okundu işaretle"}
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    onClick={handleClearAll}
+                    className="text-[11px] font-semibold text-red-500 hover:underline cursor-pointer flex items-center gap-1"
+                    aria-label="Tüm bildirimleri sil"
+                  >
+                    <Trash2 size={12} /> Tümünü sil
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* List */}
@@ -161,6 +200,17 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
                     {!n.read && (
                       <span className="h-2 w-2 rounded-full bg-brand shrink-0 mt-1.5" />
                     )}
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteNotification(n.id);
+                      }}
+                      className="shrink-0 p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                      aria-label="Bildirimi sil"
+                      title="Bildirimi sil"
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 ))
               )}
