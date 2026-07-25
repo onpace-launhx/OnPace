@@ -2,12 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, Lock, Mail, Loader2, AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,21 +18,25 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMsg(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      setErrorMsg(error.message);
+    if (error || !data.session) {
+      setErrorMsg(error?.message || "Oturum oluşturulamadı. Lütfen tekrar deneyin.");
       setLoading(false);
     } else {
       const nextPath = new URLSearchParams(window.location.search).get("next");
-      router.push(
+      const destination =
         nextPath?.startsWith("/") && !nextPath.startsWith("//")
           ? nextPath
-          : "/dashboard"
-      );
+          : "/dashboard";
+
+      // A full navigation gives cookie-based server guards a fresh request.
+      // This is particularly important inside Android/iOS WebViews, where a
+      // client-side route transition can race the newly written auth cookie.
+      window.setTimeout(() => window.location.assign(destination), 120);
     }
   };
 

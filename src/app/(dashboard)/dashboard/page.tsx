@@ -27,6 +27,13 @@ import {
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 
+const learningStyleNames: Record<string, Record<string, string>> = {
+  visual: { tr: "Görsel", en: "Visual", es: "Visual", zh: "视觉" },
+  auditory: { tr: "İşitsel", en: "Auditory", es: "Auditivo", zh: "听觉" },
+  reading: { tr: "Okuma ve yazma", en: "Reading & writing", es: "Lectura y escritura", zh: "读写" },
+  kinesthetic: { tr: "Uygulamalı", en: "Hands-on", es: "Práctico", zh: "动手实践" },
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -44,13 +51,18 @@ export default function DashboardPage() {
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
   const [timerType, setTimerType] = useState<"work" | "short" | "long">("work");
-  const [totalStudyMinutes, setTotalStudyMinutes] = useState(20); // starts at 20 mins for display
+  const [totalStudyMinutes, setTotalStudyMinutes] = useState(0);
+  const [weeklyStudyMinutes, setWeeklyStudyMinutes] = useState(0);
+  const [weeklySessionCount, setWeeklySessionCount] = useState(0);
 
   // Tasks loaded from Supabase
   const [tasks, setTasks] = useState<any[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
 
   const [showTrialEndedModal, setShowTrialEndedModal] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalDraft, setGoalDraft] = useState("60");
+  const [savingGoal, setSavingGoal] = useState(false);
 
   const [generatingSchedule, setGeneratingSchedule] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState<Array<{ title: string; priority: string }>>([]);
@@ -101,7 +113,15 @@ export default function DashboardPage() {
       const response = await fetch("/api/tasks/generate-schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courses: courseNames, language: lang })
+        body: JSON.stringify({
+          courses: courseNames,
+          language: lang,
+          dailyGoalMinutes: profile?.daily_study_goal_minutes || 60,
+          completedFocusMinutes: totalStudyMinutes,
+          existingTasks: tasks
+            .filter((task) => !task.done)
+            .map((task) => ({ title: task.text, priority: task.priority, dueDate: task.dueDate }))
+        })
       });
       const data = await response.json();
 
@@ -126,7 +146,9 @@ export default function DashboardPage() {
 
   const handleAcceptSchedule = async () => {
     if (!user || scheduleDraft.length === 0) return;
-    const rows = scheduleDraft.map((draft) => ({
+    const acceptedDraft = scheduleDraft.filter((draft) => draft.title.trim());
+    if (acceptedDraft.length === 0) return;
+    const rows = acceptedDraft.map((draft) => ({
       user_id: user.id,
       title: draft.title,
       priority: draft.priority,
@@ -145,6 +167,14 @@ export default function DashboardPage() {
     }));
     setTasks((previous) => [...previous, ...newTasks]);
     setScheduleDraft([]);
+  };
+
+  const updateScheduleDraftTitle = (index: number, title: string) => {
+    setScheduleDraft((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, title } : item));
+  };
+
+  const removeScheduleDraftItem = (index: number) => {
+    setScheduleDraft((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
 
@@ -252,6 +282,7 @@ export default function DashboardPage() {
       }
 
       if (profileData) {
+        setGoalDraft(String(profileData.daily_study_goal_minutes || 60));
         const now = new Date();
         const trialEnds = profileData.trial_ends_at ? new Date(profileData.trial_ends_at) : null;
         const isTrialActive = trialEnds && trialEnds > now;
@@ -288,7 +319,6 @@ export default function DashboardPage() {
         .from("tasks")
         .select("*")
         .eq("user_id", user.id)
-        .neq("status", "completed")
         .order("created_at", { ascending: false });
 
       if (tasksData) {
@@ -296,8 +326,38 @@ export default function DashboardPage() {
           id: t.id,
           text: t.title,
           done: t.status === "completed",
-          priority: t.priority
+          priority: t.priority,
+          dueDate: t.due_date
         })));
+      }
+
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const { data: focusData } = await supabase
+        .from("focus_sessions")
+        .select("duration_seconds")
+        .eq("user_id", user.id)
+        .eq("mode", "study")
+        .gte("created_at", startOfToday.toISOString());
+
+      if (focusData) {
+        const loggedSeconds = focusData.reduce((total: number, session: any) => total + Number(session.duration_seconds || 0), 0);
+        setTotalStudyMinutes(Math.floor(loggedSeconds / 60));
+      }
+
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      const { data: weeklyFocusData } = await supabase
+        .from("focus_sessions")
+        .select("duration_seconds")
+        .eq("user_id", user.id)
+        .eq("mode", "study")
+        .gte("created_at", sevenDaysAgo.toISOString());
+
+      if (weeklyFocusData) {
+        setWeeklySessionCount(weeklyFocusData.length);
+        setWeeklyStudyMinutes(Math.floor(weeklyFocusData.reduce((total: number, session: any) => total + Number(session.duration_seconds || 0), 0) / 60));
       }
 
       setLoading(false);
@@ -314,8 +374,17 @@ export default function DashboardPage() {
           if (timerMinutes === 0) {
             // Timer complete
             setTimerActive(false);
-            if (timerType === "work") {
-              setTotalStudyMinutes(prev => prev + 25);
+            if (timerType === "work" && user?.id) {
+              void supabase
+                .from("focus_sessions")
+                .insert({ user_id: user.id, duration_seconds: 25 * 60, mode: "study", completed: true })
+                .then(({ error }) => {
+                  if (!error) {
+                    setTotalStudyMinutes(prev => prev + 25);
+                    setWeeklyStudyMinutes(prev => prev + 25);
+                    setWeeklySessionCount(prev => prev + 1);
+                  }
+                });
             }
             alert(`Timer complete! Enjoy your break.`);
             resetTimer();
@@ -331,7 +400,7 @@ export default function DashboardPage() {
       clearInterval(interval);
     }
     return () => clearInterval(interval);
-  }, [timerActive, timerMinutes, timerSeconds, timerType]);
+  }, [timerActive, timerMinutes, timerSeconds, timerType, user?.id, supabase]);
 
   const selectTimer = (type: "work" | "short" | "long") => {
     setTimerType(type);
@@ -349,6 +418,25 @@ export default function DashboardPage() {
   const resetTimer = () => {
     setTimerActive(false);
     selectTimer(timerType);
+  };
+
+  const handleSaveDailyGoal = async () => {
+    if (!profile?.id) return;
+    const goal = Math.max(15, Math.min(480, Number.parseInt(goalDraft, 10) || 60));
+    setSavingGoal(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ daily_study_goal_minutes: goal })
+      .eq("id", profile.id);
+
+    if (!error) {
+      setProfile((current: any) => ({ ...current, daily_study_goal_minutes: goal }));
+      setGoalDraft(String(goal));
+      setShowGoalModal(false);
+    } else {
+      alert(lang === "tr" ? "Günlük hedef kaydedilemedi. Lütfen tekrar deneyin." : "Your daily goal could not be saved. Please try again.");
+    }
+    setSavingGoal(false);
   };
 
   // Task Actions
@@ -377,7 +465,7 @@ export default function DashboardPage() {
       .select("*")
       .single();
     setTasks(prev => [
-      { id: inserted?.id || Date.now(), text: title, done: false, priority: "medium" },
+      { id: inserted?.id || Date.now(), text: title, done: false, priority: "medium", dueDate: inserted?.due_date || null },
       ...prev
     ]);
   };
@@ -416,6 +504,48 @@ export default function DashboardPage() {
   const formattedDate = new Date().toLocaleDateString(dateLocale, { weekday: 'long', month: 'long', day: 'numeric' });
 
   const progressPercent = Math.min(Math.round((totalStudyMinutes / dailyGoal) * 100), 100);
+  const remainingMinutes = Math.max(0, dailyGoal - totalStudyMinutes);
+  const completedTaskCount = tasks.filter((task) => task.done).length;
+  const goalSummary = lang === "tr"
+    ? (remainingMinutes > 0
+      ? `Bugün ${totalStudyMinutes} dk odak çalışması kaydettin. Hedefe ulaşmak için ${remainingMinutes} dk kaldı.`
+      : `Bugünkü ${dailyGoal} dk odak hedefini tamamladın. Harika iş!`)
+    : lang === "es"
+      ? (remainingMinutes > 0
+        ? `Hoy registraste ${totalStudyMinutes} min de enfoque. Te faltan ${remainingMinutes} min para tu meta.`
+        : `Completaste tu meta de enfoque de ${dailyGoal} min para hoy. ¡Buen trabajo!`)
+      : lang === "zh"
+        ? (remainingMinutes > 0
+          ? `今天已记录 ${totalStudyMinutes} 分钟专注学习，还差 ${remainingMinutes} 分钟即可完成目标。`
+          : `你已完成今天 ${dailyGoal} 分钟的专注目标，做得很棒！`)
+        : (remainingMinutes > 0
+          ? `You have logged ${totalStudyMinutes} minutes of focused study today. ${remainingMinutes} minutes remain.`
+          : `You completed today's ${dailyGoal}-minute focus goal. Great work!`);
+  const nextTask = [...tasks]
+    .filter((task) => !task.done)
+    .sort((first, second) => {
+      const firstDue = first.dueDate ? new Date(first.dueDate).getTime() : Number.POSITIVE_INFINITY;
+      const secondDue = second.dueDate ? new Date(second.dueDate).getTime() : Number.POSITIVE_INFINITY;
+      return firstDue - secondDue;
+    })[0];
+  const todayPlanRecommendation = lang === "tr"
+    ? (nextTask
+      ? `Sıradaki görev: “${nextTask.text}”. Kalan ${remainingMinutes} dakikayı bu işe göre parçalara ayıran bir taslak oluşturabilirim.`
+      : `Bugün için açık görevin yok. Derslerine ve ${dailyGoal} dakikalık hedefine göre başlangıç taslağı oluşturabilirim.`)
+    : (nextTask
+      ? `Next task: “${nextTask.text}”. I can create a draft that uses your remaining ${remainingMinutes} minutes.`
+      : `You have no open tasks today. I can create a starter draft around your courses and ${dailyGoal}-minute goal.`);
+
+  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const orderedTasks = tasks.filter((task) => !task.done).sort((a, b) => {
+    const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+    if (dueA !== dueB) return dueA - dueB;
+    return (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
+  });
+  const startOfTodayForTasks = new Date();
+  startOfTodayForTasks.setHours(0, 0, 0, 0);
+  const overdueTaskCount = orderedTasks.filter((task) => task.dueDate && new Date(task.dueDate) < startOfTodayForTasks).length;
 
   // SVG parameters for progress ring
   const ringRadius = 50;
@@ -450,11 +580,11 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-500 mt-1">{t.dashboard.todayIs} {formattedDate}. {t.dashboard.stayFocused}</p>
               {profile?.learning_styles && profile.learning_styles.length > 0 && (
                 <div className="flex items-center gap-1.5 mt-2">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">🧠 Learner Type:</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">🧠 {lang === "tr" ? "Öğrenme stilin:" : lang === "zh" ? "学习风格：" : lang === "es" ? "Estilo de aprendizaje:" : "Learning style:"}</span>
                   <div className="flex flex-wrap gap-1">
                     {profile.learning_styles.map((style: string) => (
                       <span key={style} className="bg-brand/10 text-brand text-[10px] font-bold px-2 py-0.5 rounded-md border border-brand/20 uppercase">
-                        {style}
+                        {learningStyleNames[style]?.[lang] || style}
                       </span>
                     ))}
                   </div>
@@ -542,17 +672,15 @@ export default function DashboardPage() {
                   </svg>
                   <div className="absolute text-center">
                     <span className="text-xl font-extrabold text-surface-dark">{progressPercent}%</span>
-                    <p className="text-[10px] text-gray-400 font-medium">{t.dashboard.goalMinutes.split(" ")[0]}</p>
+                    <p className="text-[10px] text-gray-400 font-medium">{lang === "tr" ? "Bugün" : lang === "zh" ? "今天" : "Today"}</p>
                   </div>
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-surface-dark">{t.dashboard.goalProgress}</h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {t.dashboard.loggedMins} <strong className="text-brand font-semibold">{totalStudyMinutes} {t.common.minutes}</strong> {t.dashboard.outOfTarget} {dailyGoal} {t.dashboard.minuteTarget}
-                  </p>
-                  <Link href="/billing" className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline mt-3">
+                  <p className="text-sm text-gray-500 mt-1 max-w-lg">{goalSummary}</p>
+                  <button type="button" onClick={() => setShowGoalModal(true)} className="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline mt-3">
                     {t.common.adjustGoal} <ChevronRight size={14} />
-                  </Link>
+                  </button>
                 </div>
               </div>
 
@@ -563,12 +691,22 @@ export default function DashboardPage() {
                   <div className="space-y-3 mt-4">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">{t.dashboard.tasksFinished}</span>
-                      <span className="font-semibold text-surface-dark">{tasks.filter(t => t.done).length} / {tasks.length}</span>
+                      <span className="font-semibold text-surface-dark">{completedTaskCount} / {tasks.length}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">{t.dashboard.goalMinutes}</span>
                       <span className="font-semibold text-surface-dark">{dailyGoal} {t.common.minutes}</span>
                     </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-600">{lang === "tr" ? "Son 7 gün" : lang === "zh" ? "最近 7 天" : "Last 7 days"}</span>
+                      <span className="font-semibold text-surface-dark">{weeklyStudyMinutes} {lang === "tr" ? "dk" : "min"} · {weeklySessionCount} {lang === "tr" ? "oturum" : "sessions"}</span>
+                    </div>
+                    {overdueTaskCount > 0 && (
+                      <Link href="/tasks" className="flex items-center justify-between rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100">
+                        <span>{lang === "tr" ? `${overdueTaskCount} gecikmiş görev` : `${overdueTaskCount} overdue task${overdueTaskCount === 1 ? "" : "s"}`}</span>
+                        <ChevronRight size={14} />
+                      </Link>
+                    )}
                   </div>
 
                   <div className="mt-4">
@@ -682,9 +820,14 @@ export default function DashboardPage() {
               {/* Widget: Interactive Tasks */}
               {showNotes && (
                 <div className={`bg-white border border-gray-100 p-6 sm:p-8 rounded-3xl shadow-sm space-y-6 ${getNotesSpan()}`}>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center gap-3">
            <h2 className="text-xl font-extrabold text-surface-dark">{lang === "tr" ? "Bugünün Görevleri" : lang === "es" ? "Tareas de hoy" : lang === "zh" ? "今日任务" : "Today's Tasks"}</h2>
-                    <span className="text-xs text-gray-500 font-medium">{t.dashboard.clickToComplete}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-500 font-medium">{t.dashboard.clickToComplete}</span>
+                      <Link href="/tasks" className="text-xs font-bold text-brand hover:text-brand-hover whitespace-nowrap">
+                        {lang === "tr" ? "Tümünü gör" : lang === "zh" ? "查看全部" : lang === "es" ? "Ver todas" : "View all"} →
+                      </Link>
+                    </div>
                   </div>
 
                   <form onSubmit={handleAddTask} className="flex gap-2">
@@ -705,7 +848,7 @@ export default function DashboardPage() {
                   </form>
 
                   <div className="space-y-3">
-                    {tasks.map((task) => (
+                    {orderedTasks.slice(0, 5).map((task) => (
                       <div
                         key={task.id}
                         onClick={() => handleToggleTask(task.id)}
@@ -738,6 +881,11 @@ export default function DashboardPage() {
                       </div>
                     ))}
                   </div>
+                  {orderedTasks.length > 5 && (
+                    <Link href="/tasks" className="block text-center text-xs font-bold text-brand hover:text-brand-hover pt-1">
+                      {lang === "tr" ? `+${orderedTasks.length - 5} görev daha` : lang === "zh" ? `还有 ${orderedTasks.length - 5} 个任务` : lang === "es" ? `+${orderedTasks.length - 5} tareas más` : `+${orderedTasks.length - 5} more tasks`}
+                    </Link>
+                  )}
                 </div>
               )}
 
@@ -827,10 +975,10 @@ export default function DashboardPage() {
                     <Sparkles size={12} /> {t.dashboard.aiTitle}
                   </span>
                   <h3 className="text-xl font-extrabold text-surface-dark">
-                    {t.dashboard.aiSubtitle}
+                    {lang === "tr" ? "Bugünün planı" : "Today’s plan"}
                   </h3>
                   <p className="text-sm text-gray-600 max-w-2xl">
-                    {t.dashboard.aiRecommendation}
+                    {todayPlanRecommendation}
                   </p>
                 </div>
                 <button
@@ -862,7 +1010,16 @@ export default function DashboardPage() {
                   <ul className="space-y-1.5">
                     {scheduleDraft.map((draft, index) => (
                       <li key={`${draft.title}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-surface-dark">
-                        <span>{draft.title}</span><span className="text-[10px] font-bold uppercase text-gray-400">{draft.priority}</span>
+                        <input
+                          value={draft.title}
+                          onChange={(event) => updateScheduleDraftTitle(index, event.target.value)}
+                          aria-label={lang === "tr" ? "Plan görevi" : "Plan task"}
+                          className="min-w-0 flex-1 bg-transparent outline-none focus:text-brand"
+                        />
+                        <span className="text-[10px] font-bold uppercase text-gray-400">{draft.priority}</span>
+                        <button type="button" onClick={() => removeScheduleDraftItem(index)} className="rounded-md p-1 text-gray-300 hover:bg-red-50 hover:text-red-500" aria-label={lang === "tr" ? "Öneriyi sil" : "Remove suggestion"}>
+                          <Trash2 size={13} />
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -872,6 +1029,33 @@ export default function DashboardPage() {
           )}
 
         </div>
+
+        {showGoalModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-lg font-extrabold text-surface-dark">{lang === "tr" ? "Günlük odak hedefin" : lang === "zh" ? "每日专注目标" : lang === "es" ? "Tu meta diaria de enfoque" : "Your daily focus goal"}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-gray-500">{lang === "tr" ? "Bu hedef yalnızca çalışma planını ve ilerleme kartını kişiselleştirir; üyelik veya ödeme ile ilgisi yoktur." : "This only personalizes your study plan and progress card; it does not affect billing."}</p>
+                </div>
+                <button type="button" onClick={() => setShowGoalModal(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100" aria-label="Close">×</button>
+              </div>
+              <div className="mt-6">
+                <label htmlFor="daily-goal" className="text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "tr" ? "Dakika / gün" : "Minutes per day"}</label>
+                <input id="daily-goal" type="number" min={15} max={480} step={5} value={goalDraft} onChange={(event) => setGoalDraft(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-lg font-bold text-surface-dark outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
+                <div className="mt-3 grid grid-cols-4 gap-2">
+                  {[30, 60, 90, 120].map((minutes) => (
+                    <button key={minutes} type="button" onClick={() => setGoalDraft(String(minutes))} className={`rounded-xl border px-2 py-2 text-xs font-bold transition-colors ${Number(goalDraft) === minutes ? "border-brand bg-brand/10 text-brand" : "border-gray-200 text-gray-600 hover:border-brand/40"}`}>{minutes} dk</button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-6 flex gap-3">
+                <button type="button" onClick={() => setShowGoalModal(false)} className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-xs font-bold text-gray-600 hover:bg-gray-50">{lang === "tr" ? "Vazgeç" : "Cancel"}</button>
+                <button type="button" disabled={savingGoal} onClick={handleSaveDailyGoal} className="flex-1 rounded-xl bg-brand px-4 py-3 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-60">{savingGoal ? (lang === "tr" ? "Kaydediliyor..." : "Saving...") : (lang === "tr" ? "Hedefi kaydet" : "Save goal")}</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mobile Bottom Navigation Bar */}
 

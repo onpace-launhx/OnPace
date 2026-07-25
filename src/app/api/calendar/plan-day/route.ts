@@ -5,6 +5,7 @@ import {
   generateAIText,
   parseAIJson,
 } from "@/lib/ai/server";
+import { getStudentLearningContext } from "@/lib/ai/student-context";
 
 interface PlannedBlock {
   title: string;
@@ -46,28 +47,19 @@ export async function POST(request: Request) {
     const timeZone =
       typeof body?.timeZone === "string" ? body.timeZone.slice(0, 100) : "local";
 
-    const [{ data: profile }, { data: tasks }, { data: sessions }] =
-      await Promise.all([
-        supabase
-          .from("profiles")
-          .select("language, full_name, daily_study_goal_minutes")
-          .eq("id", user.id)
-          .maybeSingle(),
-        supabase
-          .from("tasks")
-          .select("id, title, priority, due_date, estimated_minutes, status")
-          .eq("user_id", user.id)
-          .neq("status", "completed")
-          .order("due_date", { ascending: true, nullsFirst: false })
-          .limit(20),
-        supabase
-          .from("study_sessions")
-          .select("title, start_time, duration")
-          .eq("user_id", user.id)
-          .gte("start_time", `${requestedDate}T00:00:00`)
-          .lt("start_time", `${requestedDate}T23:59:59`)
-          .order("start_time", { ascending: true }),
-      ]);
+    const [context, sessionsResult] = await Promise.all([
+      getStudentLearningContext(supabase, user.id),
+      supabase
+        .from("study_sessions")
+        .select("title, start_time, duration")
+        .eq("user_id", user.id)
+        .gte("start_time", `${requestedDate}T00:00:00`)
+        .lt("start_time", `${requestedDate}T23:59:59`)
+        .order("start_time", { ascending: true }),
+    ]);
+    const profile = context.profile;
+    const tasks = context.openTasks;
+    const sessions = sessionsResult.data;
 
     const language = profile?.language || "en";
     const prompt = `Create a realistic study plan for ${requestedDate}.
@@ -77,6 +69,9 @@ Student: ${profile?.full_name || "Student"}
 Preferred response language: ${language}
 Daily study target: ${profile?.daily_study_goal_minutes || 60} minutes
 Incomplete tasks: ${JSON.stringify(tasks || [])}
+Recent notes that can guide revision: ${JSON.stringify(context.recentNotes.map((note) => note.title))}
+Focus achieved in last 7 days: ${context.focusMinutesLast7Days} minutes across ${context.focusSessionCountLast7Days} sessions
+Upcoming exams to prioritize when relevant: ${JSON.stringify(context.upcomingExams)}
 Existing calendar blocks that MUST NOT overlap: ${JSON.stringify(sessions || [])}
 
 Use local 24-hour time. Prioritize urgent and high-priority tasks, include short breaks when useful, and do not schedule more than 6 blocks.

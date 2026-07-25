@@ -12,7 +12,10 @@ import {
   BookOpen,
   HelpCircle,
   Clock,
-  Lock
+  Lock,
+  Plus,
+  Trash2,
+  X
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 
@@ -39,6 +42,8 @@ export default function AiAssistantPage() {
   const t = getTranslations(lang);
 
   const [activeSessionId, setActiveSessionId] = useState<string>("");
+  const [chatSessions, setChatSessions] = useState<any[]>([]);
+  const [showChatHistory, setShowChatHistory] = useState(false);
 
   useEffect(() => {
     async function loadProfileAndChat() {
@@ -66,21 +71,25 @@ export default function AiAssistantPage() {
       try {
         const { data: sessions } = await supabase
           .from("ai_chat_sessions")
-          .select("id")
+          .select("id, title, created_at, updated_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
-          .limit(1);
+          .limit(30);
 
         let sessId = "";
         if (sessions && sessions.length > 0) {
           sessId = sessions[0].id;
+          setChatSessions(sessions);
         } else {
           const { data: newSess } = await supabase
             .from("ai_chat_sessions")
             .insert([{ user_id: user.id, title: "Study Assistant Chat" }])
-            .select("id")
+            .select("id, title, created_at, updated_at")
             .single();
-          if (newSess) sessId = newSess.id;
+          if (newSess) {
+            sessId = newSess.id;
+            setChatSessions([newSess]);
+          }
         }
 
         if (sessId) {
@@ -109,6 +118,69 @@ export default function AiAssistantPage() {
     }
     loadProfileAndChat();
   }, [router, supabase]);
+
+  const openChatSession = async (session: any) => {
+    if (!session?.id || session.id === activeSessionId) return;
+    const { data: dbMsgs, error } = await supabase
+      .from("ai_chat_messages")
+      .select("id, role, content")
+      .eq("session_id", session.id)
+      .order("created_at", { ascending: true });
+    if (error) {
+      setCustomAlert(error.message);
+      return;
+    }
+    setActiveSessionId(session.id);
+    setShowChatHistory(false);
+    setMessages(
+      (dbMsgs || []).map((message: { id: string; role: string; content: string }) => ({
+        id: message.id,
+        sender: message.role === "user" ? "user" : "ai",
+        text: message.content,
+      }))
+    );
+  };
+
+  const createChatSession = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+    const { data, error } = await supabase
+      .from("ai_chat_sessions")
+      .insert([{ user_id: userData.user.id, title: "New study chat" }])
+      .select("id, title, created_at, updated_at")
+      .single();
+    if (error || !data) {
+      setCustomAlert(error?.message || "Unable to create a new chat.");
+      return;
+    }
+    setChatSessions((current) => [data, ...current]);
+    setActiveSessionId(data.id);
+    setMessages([]);
+    setInputMsg("");
+    setSelectedCourse("");
+    setShowChatHistory(false);
+  };
+
+  const deleteChatSession = async (session: any) => {
+    const confirmed = window.confirm(
+      lang === "tr" ? "Bu AI sohbetini silmek istediğinize emin misiniz?" : "Delete this AI conversation?"
+    );
+    if (!confirmed) return;
+    const { error } = await supabase.from("ai_chat_sessions").delete().eq("id", session.id);
+    if (error) {
+      setCustomAlert(error.message);
+      return;
+    }
+    const remaining = chatSessions.filter((item) => item.id !== session.id);
+    setChatSessions(remaining);
+    if (session.id === activeSessionId) {
+      if (remaining[0]) {
+        await openChatSession(remaining[0]);
+      } else {
+        await createChatSession();
+      }
+    }
+  };
 
   // Set localized welcome message once translation loader completes
   useEffect(() => {
@@ -152,6 +224,16 @@ export default function AiAssistantPage() {
         await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "user", content: fullMessageText }
         ]);
+        if (!messages.some((message) => message.sender === "user")) {
+          const sessionTitle = userText.length > 42 ? `${userText.slice(0, 42)}…` : userText;
+          await supabase
+            .from("ai_chat_sessions")
+            .update({ title: sessionTitle, updated_at: new Date().toISOString() })
+            .eq("id", activeSessionId);
+          setChatSessions((current) => current.map((session) =>
+            session.id === activeSessionId ? { ...session, title: sessionTitle } : session
+          ));
+        }
       }
 
       const response = await fetch("/api/chat", {
@@ -249,8 +331,16 @@ export default function AiAssistantPage() {
         "Create 3 practice questions for SAT math"
       ];
 
+  const chatLabels = {
+    newChat: lang === "tr" ? "Yeni sohbet" : lang === "zh" ? "新对话" : lang === "es" ? "Nuevo chat" : "New chat",
+    history: lang === "tr" ? "Sohbet geçmişi" : lang === "zh" ? "对话历史" : lang === "es" ? "Historial de chats" : "Chat history",
+    suggestions: lang === "tr" ? "Önerilen başlangıçlar" : lang === "zh" ? "建议问题" : lang === "es" ? "Consultas sugeridas" : "Suggested queries",
+    noHistory: lang === "tr" ? "Henüz kayıtlı sohbet yok." : lang === "zh" ? "还没有保存的对话。" : lang === "es" ? "Aún no hay conversaciones guardadas." : "No saved conversations yet.",
+    delete: lang === "tr" ? "Sohbeti sil" : lang === "zh" ? "删除对话" : lang === "es" ? "Eliminar conversación" : "Delete conversation",
+  };
+
   return (
-    <main className="flex-1 p-6 lg:p-10 flex flex-col h-[calc(100vh-2rem)] overflow-hidden max-w-5xl mx-auto w-full justify-between">
+    <main className="flex-1 p-4 sm:p-6 lg:p-10 flex flex-col h-[calc(100vh-2rem)] overflow-hidden max-w-5xl mx-auto w-full">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
@@ -279,28 +369,26 @@ export default function AiAssistantPage() {
         </div>
       </div>
 
-      {/* Suggestion Badges */}
-      {messages.length <= 1 && (
-        <div className="my-auto py-6 shrink-0 text-center space-y-4">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-            {lang === "zh" ? "建议问题" : lang === "es" ? "Consultas Sugeridas" : "Suggested Queries"}
-          </p>
-          <div className="flex flex-wrap gap-2 justify-center max-w-2xl mx-auto">
-            {suggestionQueries.map((text, idx) => (
-              <button
-                key={idx}
-                onClick={() => selectSuggestion(text)}
-                className="px-3 py-2 rounded-xl border border-gray-200 bg-white hover:border-brand text-xs text-gray-600 hover:text-brand font-medium transition-all active:scale-95 cursor-pointer shadow-sm"
-              >
-                {text}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="mt-4 flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={createChatSession}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-hover transition-colors"
+        >
+          <Plus size={14} /> {chatLabels.newChat}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowChatHistory(true)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600 hover:border-brand/40 hover:text-brand transition-colors"
+        >
+          <Clock size={14} /> {chatLabels.history}
+          {chatSessions.length > 0 && <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{chatSessions.length}</span>}
+        </button>
+      </div>
 
       {/* Chat Messages Body */}
-      <div className="flex-1 overflow-y-auto border border-gray-150 rounded-3xl bg-white p-6 my-6 space-y-4 shadow-sm min-h-[300px]">
+      <div className="flex-1 min-h-0 overflow-y-auto border border-gray-150 rounded-3xl bg-white p-4 sm:p-6 my-4 space-y-4 shadow-sm">
         {messages.map((msg) => {
           const isAi = msg.sender === "ai";
           return (
@@ -323,6 +411,23 @@ export default function AiAssistantPage() {
             </div>
           );
         })}
+        {messages.length <= 1 && !sending && (
+          <div className="mx-auto max-w-2xl pt-2 pb-6 text-center space-y-4">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{chatLabels.suggestions}</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {suggestionQueries.map((text, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => selectSuggestion(text)}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 shadow-sm transition-all hover:border-brand hover:text-brand active:scale-95"
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {sending && (
           <div className="flex gap-3 max-w-[85%]">
             <div className="h-8 w-8 rounded-full bg-brand/10 flex items-center justify-center text-brand shrink-0">
@@ -353,6 +458,48 @@ export default function AiAssistantPage() {
           <Send size={16} />
         </button>
       </form>
+
+      {showChatHistory && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            aria-label="Close chat history"
+            className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]"
+            onClick={() => setShowChatHistory(false)}
+          />
+          <aside className="relative flex h-full w-full max-w-sm flex-col bg-white shadow-2xl sm:w-[23rem]" aria-label={chatLabels.history}>
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-5">
+              <div>
+                <p className="text-sm font-extrabold text-surface-dark">{chatLabels.history}</p>
+                <p className="mt-0.5 text-xs text-gray-400">{chatSessions.length} {lang === "tr" ? "sohbet" : "conversations"}</p>
+              </div>
+              <button type="button" onClick={() => setShowChatHistory(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4">
+              <button type="button" onClick={createChatSession} className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-xs font-bold text-white transition-colors hover:bg-brand-hover">
+                <Plus size={15} /> {chatLabels.newChat}
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-5">
+              {chatSessions.length === 0 ? (
+                <p className="px-3 py-8 text-center text-sm text-gray-400">{chatLabels.noHistory}</p>
+              ) : chatSessions.map((session) => (
+                <div key={session.id} className={`group mb-2 flex items-center rounded-2xl border p-1 transition-colors ${session.id === activeSessionId ? "border-brand bg-brand/5" : "border-gray-100 bg-white hover:border-brand/25"}`}>
+                  <button type="button" onClick={() => openChatSession(session)} className={`min-w-0 flex-1 px-3 py-2.5 text-left text-xs font-semibold ${session.id === activeSessionId ? "text-brand" : "text-gray-600"}`}>
+                    <span className="block truncate">{session.title || chatLabels.newChat}</span>
+                    {session.updated_at && <span className="mt-1 block text-[10px] font-normal text-gray-400">{new Date(session.updated_at).toLocaleDateString(lang === "tr" ? "tr-TR" : lang)}</span>}
+                  </button>
+                  <button type="button" onClick={() => deleteChatSession(session)} className="mr-1 rounded-xl p-2 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500" aria-label={chatLabels.delete}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* Premium Upgrade Modal Popup */}
       {premiumModalOpen && (

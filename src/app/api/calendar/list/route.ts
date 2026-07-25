@@ -36,6 +36,17 @@ export async function GET() {
 
   const calData = await calRes.json();
 
+  if (!calRes.ok) {
+    console.error("Google Calendar list failed:", calData);
+    return NextResponse.json(
+      {
+        error: calData?.error?.message || "Unable to read Google Calendar events",
+        connected: false,
+      },
+      { status: calRes.status || 502 }
+    );
+  }
+
   const events = (calData.items || []).map((e: any) => ({
     id: e.id,
     summary: e.summary,

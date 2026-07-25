@@ -10,6 +10,12 @@ export async function getValidAccessToken(
 
   if (error || !tokenRow) return null;
 
+  // A Google sign-in token is not automatically a Calendar token. Only the
+  // dedicated Calendar OAuth flow grants this scope.
+  if (!String(tokenRow.scope || "").includes("https://www.googleapis.com/auth/calendar")) {
+    return null;
+  }
+
   const now = new Date();
   const expiresAt = new Date(tokenRow.expires_at);
 

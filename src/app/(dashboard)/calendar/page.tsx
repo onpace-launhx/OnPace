@@ -27,6 +27,7 @@ import {
   X
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
+import { getLocalizedCourseName } from "@/lib/course-labels";
 
 export default function CalendarPage() {
   const router = useRouter();
@@ -176,11 +177,13 @@ export default function CalendarPage() {
     // Query user_google_tokens table for real Google Calendar connection state
     const { data: googleToken } = await supabase
       .from("user_google_tokens")
-      .select("id")
+      .select("id, scope")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    const isGConnected = !!googleToken;
+    const isGConnected = Boolean(
+      googleToken?.scope?.includes("https://www.googleapis.com/auth/calendar")
+    );
     const gEmail = isGConnected ? (user.email || "Google Connected") : "";
     setGoogleConnected(isGConnected);
     setGoogleEmail(gEmail);
@@ -234,6 +237,10 @@ export default function CalendarPage() {
               };
             });
           }
+        } else {
+          const data = await res.json().catch(() => ({}));
+          setGoogleConnected(false);
+          setCustomAlert(data.error || "Google Calendar connection needs to be renewed.");
         }
       } catch (err) {
         console.error("Failed to load Google Calendar events:", err);
@@ -259,6 +266,108 @@ export default function CalendarPage() {
     loadAllData();
   }, [router, supabase]);
 
+  const openSessionDetails = (session: any) => {
+    const start = session.start_time ? new Date(session.start_time) : new Date();
+    setSelectedSession(session);
+    setEditTitle(String(session.title || "").replace(/^📅 \[Google\] /, ""));
+    setEditCourseId(session.course_id || "");
+    setEditDateStr(
+      [start.getFullYear(), String(start.getMonth() + 1).padStart(2, "0"), String(start.getDate()).padStart(2, "0")].join("-")
+    );
+    setEditStartTime(
+      `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`
+    );
+    setEditDuration(String(session.duration || 60));
+  };
+
+  const closeSessionDetails = () => {
+    if (!savingEdit && !deletingSession) setSelectedSession(null);
+  };
+
+  const handleSaveSessionEdit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedSession || !editTitle.trim()) return;
+
+    const durationMinutes = Math.max(15, Number(editDuration) || 60);
+    const startTimeIso = new Date(`${editDateStr}T${editStartTime}:00`).toISOString();
+    const endTimeIso = new Date(new Date(startTimeIso).getTime() + durationMinutes * 60_000).toISOString();
+    setSavingEdit(true);
+
+    try {
+      if (selectedSession.isGoogleEvent) {
+        const response = await fetch("/api/calendar/update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId: selectedSession.google_event_id,
+            summary: editTitle.trim(),
+            start: startTimeIso,
+            end: endTimeIso,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || "Google Calendar event could not be updated.");
+
+        setStudySessions((current) => current.map((session) =>
+          session.id === selectedSession.id
+            ? {
+                ...session,
+                title: `📅 [Google] ${editTitle.trim()}`,
+                start_time: startTimeIso,
+                duration: durationMinutes,
+                formattedTime: editStartTime,
+                description: data.event?.description || session.description,
+              }
+            : session
+        ));
+      } else {
+        const { data, error } = await supabase
+          .from("study_sessions")
+          .update({
+            title: editTitle.trim(),
+            course_id: editCourseId || null,
+            start_time: startTimeIso,
+            duration: durationMinutes,
+          })
+          .eq("id", selectedSession.id)
+          .select("*, courses(name, color)")
+          .single();
+        if (error) throw new Error(error.message);
+        setStudySessions((current) => current.map((session) => session.id === selectedSession.id ? data : session));
+      }
+      setSelectedSession(null);
+    } catch (error) {
+      setCustomAlert(error instanceof Error ? error.message : "Calendar event could not be updated.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteSession = async () => {
+    if (!selectedSession) return;
+    setDeletingSession(true);
+    try {
+      if (selectedSession.isGoogleEvent) {
+        const response = await fetch("/api/calendar/delete", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId: selectedSession.google_event_id }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || "Google Calendar event could not be deleted.");
+      } else {
+        const { error } = await supabase.from("study_sessions").delete().eq("id", selectedSession.id);
+        if (error) throw new Error(error.message);
+      }
+      setStudySessions((current) => current.filter((session) => session.id !== selectedSession.id));
+      setSelectedSession(null);
+    } catch (error) {
+      setCustomAlert(error instanceof Error ? error.message : "Calendar event could not be deleted.");
+    } finally {
+      setDeletingSession(false);
+    }
+  };
+
   const handleExportICS = () => {
     let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//OnPace//Study Calendar//EN\n";
     studySessions.forEach(s => {
@@ -276,6 +385,39 @@ export default function CalendarPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const syncSessionsToGoogle = async (
+    sessions: Array<{ title: string; start_time: string; duration: number }>,
+    description: string
+  ) => {
+    if (!googleConnected || sessions.length === 0) return true;
+    const results = await Promise.all(
+      sessions.map(async (session) => {
+        try {
+          const response = await fetch("/api/calendar/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: session.title,
+              startTime: session.start_time,
+              durationMinutes: session.duration,
+              description,
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          return response.ok && data.success ? null : data.error || "Google Calendar event could not be created.";
+        } catch {
+          return "Google Calendar could not be reached. Please try again.";
+        }
+      })
+    );
+    const failure = results.find(Boolean);
+    if (failure) {
+      setCustomAlert(String(failure));
+      return false;
+    }
+    return true;
   };
 
   const handleSaveSession = async (e: React.FormEvent) => {
@@ -308,22 +450,7 @@ export default function CalendarPage() {
       setTitle("");
       setCourseId("");
 
-      if (googleConnected) {
-        try {
-          await fetch("/api/calendar/add", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: data.title,
-              startTime: data.start_time,
-              durationMinutes: data.duration,
-              description: "Created via OnPace Study Calendar"
-            })
-          });
-        } catch (err) {
-          console.error("Failed to add event to Google Calendar:", err);
-        }
-      }
+      await syncSessionsToGoogle([data], "Created via OnPace Study Calendar");
     } else {
       setCustomAlert("Error saving session: " + (error?.message || ""));
     }
@@ -385,6 +512,7 @@ export default function CalendarPage() {
 
     if (!error && data) {
       setStudySessions(prev => [...prev, ...data]);
+      await syncSessionsToGoogle(data, "Created by OnPace AI Study Schedule");
       setAiPlannerOpen(false);
     }
     setIsPlanning(false);
@@ -483,23 +611,7 @@ export default function CalendarPage() {
         .select("*, courses(name, color)");
       if (addedSessions) {
         setStudySessions((prev) => [...prev, ...addedSessions]);
-        if (googleConnected) {
-          await Promise.allSettled(
-            addedSessions.map(
-              (session: { title: string; start_time: string; duration: number }) =>
-                fetch("/api/calendar/add", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    title: session.title,
-                    startTime: session.start_time,
-                    durationMinutes: session.duration,
-                    description: "Imported from an image by OnPace Vision AI",
-                  }),
-                })
-            )
-          );
-        }
+        await syncSessionsToGoogle(addedSessions, "Imported from an image by OnPace Vision AI");
       }
     }
 
@@ -598,22 +710,7 @@ export default function CalendarPage() {
 
     if (!error && data) {
       setStudySessions((prev) => [...prev, ...data]);
-      if (googleConnected) {
-        await Promise.allSettled(
-          data.map((session: { title: string; start_time: string; duration: number }) =>
-            fetch("/api/calendar/add", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                title: session.title,
-                startTime: session.start_time,
-                durationMinutes: session.duration,
-                description: "Created by OnPace AI Day Planner",
-              }),
-            })
-          )
-        );
-      }
+      await syncSessionsToGoogle(data, "Created by OnPace AI Day Planner");
       setPlanMyDayOpen(false);
     }
     setIsPlanningDay(false);
@@ -781,12 +878,7 @@ export default function CalendarPage() {
                   {daySessions.map(s => (
                     <div
                       key={s.id}
-                      onClick={() => {
-                        setSelectedSession(s);
-                        setEditTitle(s.title.replace(/^📅 \[Google\] /, ""));
-                        setEditCourseId(s.course_id || "");
-                        setEditDuration(String(s.duration || 60));
-                      }}
+                      onClick={() => openSessionDetails(s)}
                       className="px-2 py-1 rounded-lg text-[10px] font-bold text-white truncate cursor-pointer transition-all hover:opacity-90 shadow-2xs"
                       style={{ backgroundColor: s.courses?.color || "#4F46E5" }}
                     >
@@ -811,6 +903,82 @@ export default function CalendarPage() {
           })}
         </div>
       </div>
+
+      {/* Modal: Edit or delete a local/Google calendar event */}
+      {selectedSession && (
+        <div className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-5 border border-gray-100 shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-surface-dark">
+                  {lang === "tr" ? "Takvim etkinliğini düzenle" : lang === "zh" ? "编辑日历事件" : lang === "es" ? "Editar evento" : "Edit calendar event"}
+                </h3>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  {selectedSession.isGoogleEvent ? "Google Calendar" : "OnPace Calendar"}
+                </p>
+              </div>
+              <button type="button" onClick={closeSessionDetails} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSessionEdit} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.sessionTitle}</label>
+                <input
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  required
+                  className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
+                />
+              </div>
+
+              {!selectedSession.isGoogleEvent && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.course}</label>
+                  <select
+                    value={editCourseId}
+                    onChange={(event) => setEditCourseId(event.target.value)}
+                    className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                  >
+                    <option value="">-- {t.calendar.noCourse} --</option>
+                    {courses.map((course) => <option key={course.id} value={course.id}>{getLocalizedCourseName(course.name, lang)}</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.date}</label>
+                  <input type="date" value={editDateStr} onChange={(event) => setEditDateStr(event.target.value)} required className="block w-full mt-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs text-surface-dark bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.startTime}</label>
+                  <input type="time" value={editStartTime} onChange={(event) => setEditStartTime(event.target.value)} required className="block w-full mt-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs text-surface-dark bg-white" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.calendar.duration}</label>
+                <input type="number" min={15} max={480} value={editDuration} onChange={(event) => setEditDuration(event.target.value)} required className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs text-surface-dark bg-white" />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={handleDeleteSession} disabled={savingEdit || deletingSession} className="px-3 py-2.5 border border-red-100 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 disabled:opacity-50" title={lang === "tr" ? "Etkinliği sil" : "Delete event"}>
+                  {deletingSession ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                </button>
+                <button type="button" onClick={closeSessionDetails} disabled={savingEdit || deletingSession} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                  {lang === "tr" ? "Vazgeç" : lang === "zh" ? "取消" : lang === "es" ? "Cancelar" : "Cancel"}
+                </button>
+                <button type="submit" disabled={savingEdit || deletingSession} className="flex-1 py-2.5 bg-brand text-white rounded-xl text-xs font-bold hover:bg-brand-hover disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  {savingEdit ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                  {lang === "tr" ? "Kaydet" : lang === "zh" ? "保存" : lang === "es" ? "Guardar" : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Google Calendar Link Prompt Popup (ONLY if !googleConnected) */}
       {showLinkPrompt && !googleConnected && (
@@ -1073,8 +1241,8 @@ export default function CalendarPage() {
                   className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none cursor-pointer"
                 >
                   <option value="">-- {t.calendar.noCourse} --</option>
-                  {courses.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    {courses.map(c => (
+                    <option key={c.id} value={c.id}>{getLocalizedCourseName(c.name, lang)}</option>
                   ))}
                 </select>
               </div>
@@ -1133,6 +1301,16 @@ export default function CalendarPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {customAlert && (
+        <div className="fixed bottom-5 right-5 z-[70] max-w-sm rounded-2xl border border-red-100 bg-white px-4 py-3 shadow-xl flex items-start gap-3">
+          <HelpCircle size={17} className="text-red-500 shrink-0 mt-0.5" />
+          <p className="text-xs font-semibold text-gray-700 leading-relaxed flex-1">{customAlert}</p>
+          <button type="button" onClick={() => setCustomAlert(null)} className="text-gray-400 hover:text-gray-700" aria-label="Close alert">
+            <X size={15} />
+          </button>
         </div>
       )}
     </main>

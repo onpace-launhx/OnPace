@@ -11,7 +11,6 @@ import {
   Loader2,
   Calendar,
   AlertCircle,
-  Tag,
   BookOpen,
   Eye,
   Trash2,
@@ -19,6 +18,13 @@ import {
   MessageSquare
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
+
+const learnerStyleLabels: Record<string, Record<string, string>> = {
+  visual: { en: "Visual learner", tr: "Görsel öğrenen", es: "Aprendiz visual", zh: "视觉学习者" },
+  auditory: { en: "Auditory learner", tr: "İşitsel öğrenen", es: "Aprendiz auditivo", zh: "听觉学习者" },
+  reading: { en: "Reading & writing", tr: "Okuma ve yazma", es: "Lectura y escritura", zh: "读写学习者" },
+  kinesthetic: { en: "Hands-on learner", tr: "Uygulamalı öğrenen", es: "Aprendiz práctico", zh: "动手实践学习者" },
+};
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -30,13 +36,9 @@ export default function ProfilePage() {
   const [fullName, setFullName] = useState("");
   const [gender, setGender] = useState("");
   const [prefGender, setPrefGender] = useState("");
+  const [learningStyles, setLearningStyles] = useState<string[]>([]);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
-
-  // Promocode form
-  const [promoCode, setPromoCode] = useState("");
-  const [applyingPromo, setApplyingPromo] = useState(false);
-  const [promoMsg, setPromoMsg] = useState<{ text: string; error: boolean } | null>(null);
 
   // Social Sharing Hub states
   const [posts, setPosts] = useState<any[]>([]);
@@ -67,6 +69,7 @@ export default function ProfilePage() {
         setFullName(profileData.full_name || "");
         setGender(profileData.gender || "other");
         setPrefGender(profileData.preferred_gender || "any");
+        setLearningStyles(Array.isArray(profileData.learning_styles) ? profileData.learning_styles : []);
       }
 
       // 2. Fetch social feed
@@ -95,7 +98,8 @@ export default function ProfilePage() {
       .update({
         full_name: fullName.trim(),
         gender: gender,
-        preferred_gender: prefGender
+        preferred_gender: prefGender,
+        learning_styles: learningStyles,
       })
       .eq("id", profile.id);
 
@@ -105,76 +109,13 @@ export default function ProfilePage() {
         ...prev,
         full_name: fullName.trim(),
         gender: gender,
-        preferred_gender: prefGender
+        preferred_gender: prefGender,
+        learning_styles: learningStyles,
       }));
     } else {
       setProfileMsg(error.message);
     }
     setSavingProfile(false);
-  };
-
-  const handleApplyPromo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!promoCode.trim()) return;
-    setApplyingPromo(true);
-    setPromoMsg(null);
-
-    try {
-      const res = await fetch("/api/promocode/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: promoCode.trim() })
-      });
-      const data = await res.json();
-      if (data.error) {
-        setPromoMsg({ text: data.error, error: true });
-      } else {
-        setPromoMsg({ text: data.message, error: false });
-        setPromoCode("");
-        // Reload profile data
-        const { data: updated } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", profile.id)
-          .single();
-        if (updated) setProfile(updated);
-      }
-    } catch {
-      setPromoMsg({ text: "Error connecting to promocode validator.", error: true });
-    } finally {
-      setApplyingPromo(false);
-    }
-  };
-
-  const handleCancelPromo = async () => {
-    const confirm = window.confirm(
-      lang === "tr"
-        ? "Aktif promosyon kodu üyeliğinizi iptal etmek istediğinize emin misiniz? (Kod kullanım limitiniz iade edilmez.)"
-        : "Are you sure you want to cancel your active promocode membership? (Your usage count will not be refunded.)"
-    );
-    if (!confirm) return;
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        plan: "free",
-        active_promocode: null,
-        promocode_expires_at: null
-      })
-      .eq("id", profile.id);
-
-    if (!error) {
-      setProfile((prev: any) => ({
-        ...prev,
-        plan: "free",
-        active_promocode: null,
-        promocode_expires_at: null
-      }));
-      setPromoMsg({
-        text: lang === "tr" ? "Üyelik planı iptal edildi ve ücretsiz plana düşürüldü." : "Plan benefits cancelled successfully.",
-        error: false
-      });
-    }
   };
 
   const handleSharePost = async (e: React.FormEvent) => {
@@ -226,6 +167,46 @@ export default function ProfilePage() {
           {lang === "tr" 
             ? "Hesabınızı kişiselleştirin, eşleşme kurallarınızı belirleyin ve sosyal akışta çalışma notlarınızı paylaşın." 
             : "Customize your study rules, match criteria, and share findings with peers in the secure academy stream."}
+        </p>
+      </div>
+
+      <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles size={16} className="text-brand" />
+          <h2 className="text-sm font-extrabold text-surface-dark">
+            {lang === "tr" ? "Öğrenme stilin" : lang === "zh" ? "学习风格" : lang === "es" ? "Tu estilo de aprendizaje" : "Your learning style"}
+          </h2>
+        </div>
+        {learningStyles.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {learningStyles.map((style: string) => (
+              <span key={style} className="rounded-full border border-brand/15 bg-brand/5 px-3 py-1.5 text-xs font-bold text-brand">
+                {learnerStyleLabels[style]?.[lang] || learnerStyleLabels[style]?.en || style}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">
+            {lang === "tr" ? "Henüz bir öğrenme stili seçilmedi." : lang === "zh" ? "尚未选择学习风格。" : lang === "es" ? "Aún no has elegido un estilo." : "No learning style selected yet."}
+          </p>
+        )}
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {Object.entries(learnerStyleLabels).map(([style, labels]) => {
+            const selected = learningStyles.includes(style);
+            return (
+              <button
+                key={style}
+                type="button"
+                onClick={() => setLearningStyles((current) => selected ? current.filter((item) => item !== style) : [...current, style])}
+                className={`rounded-xl border px-3 py-2.5 text-xs font-bold transition-all ${selected ? "border-brand bg-brand text-white shadow-sm" : "border-gray-200 bg-white text-gray-600 hover:border-brand/40 hover:bg-brand/5"}`}
+              >
+                {labels[lang] || labels.en}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-gray-400">
+          {lang === "tr" ? "Bir veya birden fazla stil seçebilirsin; ardından aşağıdaki “Değişiklikleri Kaydet” düğmesine bas." : lang === "zh" ? "可选择一种或多种学习风格，然后点击下方保存。" : lang === "es" ? "Puedes elegir uno o varios estilos; luego guarda los cambios abajo." : "Choose one or more styles, then save your changes below."}
         </p>
       </div>
 
@@ -293,68 +274,6 @@ export default function ProfilePage() {
                 {savingProfile && <Loader2 className="h-3 w-3 animate-spin" />}
                 {lang === "tr" ? "Değişiklikleri Kaydet" : "Save Changes"}
               </button>
-            </form>
-          </div>
-
-          {/* Promocode Details */}
-          <div className="bg-white border border-gray-100 p-6 rounded-3xl shadow-sm space-y-4">
-            <h3 className="text-sm font-extrabold text-surface-dark border-b border-gray-50 pb-2 flex items-center gap-1.5">
-              <Tag className="text-brand" size={16} />
-              {lang === "tr" ? "Aktif Promosyon Kodu & Plan" : "Promocode & Subscription"}
-            </h3>
-
-            <div className="p-3 bg-gray-50 border border-gray-150/50 rounded-xl space-y-1.5 text-xs text-gray-600">
-              <div className="flex justify-between items-center">
-                <span>Active Plan:</span>
-                <span className="font-extrabold text-brand uppercase">{profile?.plan || "free"}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Active Code:</span>
-                <span className="font-semibold text-surface-dark">{profile?.active_promocode || "None"}</span>
-              </div>
-              {profile?.promocode_expires_at && (
-                <div className="flex justify-between items-center">
-                  <span>Expires on:</span>
-                  <span className="font-semibold text-surface-dark">
-                    {new Date(profile.promocode_expires_at).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-US")}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {profile?.active_promocode && (
-              <button
-                onClick={handleCancelPromo}
-                className="w-full py-2 border border-red-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-xl active:scale-95 transition-all cursor-pointer"
-              >
-                {lang === "tr" ? "Promosyon Kodunu İptal Et" : "Cancel Promocode Plan"}
-              </button>
-            )}
-
-            <form onSubmit={handleApplyPromo} className="space-y-3 pt-2">
-              <label className="block text-xs font-bold text-gray-400 uppercase">Enter New Promocode</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. SUPERSTUDENT"
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                />
-                <button
-                  type="submit"
-                  disabled={applyingPromo}
-                  className="px-4 py-2 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover cursor-pointer active:scale-95 transition-all"
-                >
-                  {applyingPromo ? "..." : lang === "tr" ? "Uygula" : "Apply"}
-                </button>
-              </div>
-              {promoMsg && (
-                <p className={`text-[10px] font-bold p-2 rounded border ${promoMsg.error ? "bg-red-50 text-red-500 border-red-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"}`}>
-                  {promoMsg.text}
-                </p>
-              )}
             </form>
           </div>
 

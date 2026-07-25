@@ -24,6 +24,8 @@ import {
   User,
   Users,
   AlertCircle,
+  TriangleAlert,
+  Target,
   Check
 } from "lucide-react";
 import html2canvas from "html2canvas";
@@ -352,6 +354,27 @@ export function Sidebar() {
     }
   };
 
+  const handleCancelPromoCode = async () => {
+    if (!profile?.active_promocode || !user?.id) return;
+    const confirmed = window.confirm(
+      profile.language === "tr"
+        ? "Aktif promosyon kodunu ve buna bağlı plan avantajlarını kaldırmak istiyor musunuz?"
+        : "Do you want to remove this active promocode and its plan benefits?"
+    );
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ plan: "free", active_promocode: null, promocode_expires_at: null })
+      .eq("id", user.id);
+    if (error) {
+      setPromoMsg({ text: error.message, error: true });
+      return;
+    }
+    setProfile((current: any) => ({ ...current, plan: "free", active_promocode: null, promocode_expires_at: null }));
+    setPromoMsg({ text: profile.language === "tr" ? "Promosyon kodu kaldırıldı." : "Promocode removed.", error: false });
+  };
+
   useEffect(() => {
     // Load collapsed preference from local storage if exists
     const storedCollapse = localStorage.getItem("sidebar_collapsed");
@@ -364,7 +387,7 @@ export function Sidebar() {
     // Detect setting parameter to auto-open Google Calendar profile settings modal
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("settings") === "google") {
+      if (["google", "account"].includes(params.get("settings") || "")) {
         setShowProfileModal(true);
       }
     }
@@ -379,11 +402,11 @@ export function Sidebar() {
       // Check if user has Google Calendar linked in user_google_tokens
       const { data: googleToken } = await supabase
         .from("user_google_tokens")
-        .select("id")
+        .select("id, scope")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (googleToken) {
+      if (googleToken?.scope?.includes("https://www.googleapis.com/auth/calendar")) {
         setGoogleConnected(true);
         setGoogleEmail(user.email || "Google Connected");
       } else {
@@ -559,13 +582,13 @@ export function Sidebar() {
   // Select active language translation pack (falls back to English)
   const lang = profile?.language || "en";
   const t = translations[lang] || translations.en;
-  const bugText =
-    bugReportTranslations[editLang] || bugReportTranslations.en;
+  const bugText = bugReportTranslations[lang] || bugReportTranslations.en;
 
   const navItems = [
     { href: "/dashboard", label: t.dashboard, icon: LayoutDashboard, requiresPro: false },
     { href: "/tasks", label: t.tasks, icon: CheckSquare, requiresPro: false },
     { href: "/calendar", label: t.calendar, icon: Calendar, requiresPro: false },
+    { href: "/exam-planner", label: lang === "tr" ? "Sınav Planı" : lang === "zh" ? "考试计划" : lang === "es" ? "Plan de examen" : "Exam Plan", icon: Target, requiresPro: false },
     { href: "/notes", label: t.notes, icon: BookOpen, requiresPro: true },
     { href: "/focus", label: t.focus, icon: Timer, requiresPro: true },
     { href: "/ai-assistant", label: t.ai, icon: Sparkles, requiresPro: true },
@@ -628,13 +651,6 @@ export function Sidebar() {
             )}
             
             <div className="flex items-center gap-1">
-              <button
-                onClick={handleOpenBugModal}
-                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-all cursor-pointer"
-                title={lang === "tr" ? "Hata bildir" : "Report a problem"}
-              >
-                <AlertCircle size={19} className="animate-pulse" />
-              </button>
               <button
                 onClick={handleToggleCollapse}
                 className={`p-1.5 rounded-lg text-gray-400 hover:text-surface-dark hover:bg-gray-100 transition-all cursor-pointer ${
@@ -713,6 +729,17 @@ export function Sidebar() {
               </Link>
             </div>
           )}
+
+          {/* Report a problem: intentionally placed beside account actions, not navigation. */}
+          <button
+            type="button"
+            onClick={handleOpenBugModal}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-all cursor-pointer ${isCollapsed ? "justify-center" : ""}`}
+            title={bugText.title}
+          >
+            <TriangleAlert size={18} className="shrink-0 text-amber-600" />
+            {!isCollapsed && <span className="text-xs font-bold">{bugText.title}</span>}
+          </button>
 
           {/* User profile row (Interactive!) */}
           <div 
@@ -917,11 +944,23 @@ export function Sidebar() {
             {/* Promocode & Subscription Plan Section */}
             <div className="border-t border-gray-100 pt-4 mt-2 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Plan & Promocode</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{profile?.language === "tr" ? "Plan ve promosyon kodu" : "Plan & promocode"}</span>
                 <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-extrabold bg-brand/10 text-brand">
                   {profile?.plan || "Free"}
                 </span>
               </div>
+
+              {profile?.active_promocode && (
+                <div className="rounded-xl border border-brand/15 bg-brand/5 px-3 py-2 text-[10px] text-gray-600">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>{profile?.language === "tr" ? "Aktif kod" : "Active code"}</span>
+                    <span className="font-extrabold text-brand">{profile.active_promocode}</span>
+                  </div>
+                  {profile.promocode_expires_at && (
+                    <p className="mt-1 text-gray-400">{profile?.language === "tr" ? "Bitiş:" : "Expires:"} {new Date(profile.promocode_expires_at).toLocaleDateString(profile?.language === "tr" ? "tr-TR" : "en-US")}</p>
+                  )}
+                </div>
+              )}
 
               <form onSubmit={handleApplyPromoCode} className="space-y-2">
                 <div className="flex gap-2">
@@ -946,6 +985,11 @@ export function Sidebar() {
                   </p>
                 )}
               </form>
+              {profile?.active_promocode && (
+                <button type="button" onClick={handleCancelPromoCode} className="w-full rounded-xl border border-red-200 py-2 text-[10px] font-bold text-red-500 transition-colors hover:bg-red-50">
+                  {profile?.language === "tr" ? "Promosyon kodunu kaldır" : "Remove promocode"}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -27,17 +27,18 @@ export async function DELETE(request: NextRequest) {
   }
 
   const calRes = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
     {
       method: "DELETE",
       headers: { Authorization: `Bearer ${accessToken}` },
     }
   );
 
-  if (!calRes.ok && calRes.status !== 204) {
+  if (!calRes.ok && calRes.status !== 204 && calRes.status !== 404) {
+    const errorData = await calRes.json().catch(() => null);
     return NextResponse.json(
-      { error: "Failed to delete event" },
-      { status: 500 }
+      { error: errorData?.error?.message || "Failed to delete event" },
+      { status: calRes.status || 500 }
     );
   }
 

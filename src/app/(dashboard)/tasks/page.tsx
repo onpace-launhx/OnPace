@@ -20,6 +20,7 @@ import {
   HelpCircle
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
+import { getLocalizedCourseName } from "@/lib/course-labels";
 
 export default function TasksPage() {
   const router = useRouter();
@@ -155,6 +156,31 @@ export default function TasksPage() {
     }
   };
 
+  const handleDeleteCompletedTasks = async () => {
+    if (!profile?.id || completedTasks.length === 0) return;
+    const confirmed = window.confirm(
+      lang === "tr"
+        ? `${completedTasks.length} tamamlanan görevi silmek istediğinize emin misiniz?`
+        : lang === "zh"
+          ? `确定删除 ${completedTasks.length} 个已完成任务吗？`
+          : lang === "es"
+            ? `¿Eliminar ${completedTasks.length} tareas completadas?`
+            : `Delete ${completedTasks.length} completed tasks?`
+    );
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("user_id", profile.id)
+      .eq("status", "completed");
+    if (error) {
+      setCustomAlert(error.message);
+      return;
+    }
+    setTasks((current) => current.filter((task) => task.status !== "completed"));
+  };
+
   const handleBreakdownTask = async (task: any) => {
     if (!isPro) {
       setPremiumModalOpen(true);
@@ -255,7 +281,7 @@ export default function TasksPage() {
               >
                 <option value="">{t.tasks.general}</option>
                 {courses.map(course => (
-                  <option key={course.id} value={course.id}>{course.name}</option>
+                  <option key={course.id} value={course.id}>{getLocalizedCourseName(course.name, lang)}</option>
                 ))}
               </select>
             </div>
@@ -347,7 +373,7 @@ export default function TasksPage() {
                               {task.courses && (
                                 <span className="flex items-center gap-1">
                                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: task.courses.color }}></span>
-                                  {task.courses.name}
+                                  {getLocalizedCourseName(task.courses.name, lang)}
                                 </span>
                               )}
                               {task.due_date && (
@@ -447,7 +473,17 @@ export default function TasksPage() {
           {/* Completed Tasks list */}
           {completedTasks.length > 0 && (
             <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-4 sm:p-6 space-y-4">
-              <h2 className="text-lg font-bold text-gray-500">{t.tasks.completed} ({completedTasks.length})</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold text-gray-500">{t.tasks.completed} ({completedTasks.length})</h2>
+                <button
+                  type="button"
+                  onClick={handleDeleteCompletedTasks}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 px-3 py-2 text-[11px] font-bold text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 size={13} />
+                  {lang === "tr" ? "Tamamlananları temizle" : lang === "zh" ? "清除已完成" : lang === "es" ? "Limpiar completadas" : "Clear completed"}
+                </button>
+              </div>
               
               <div className="space-y-3 opacity-60">
                 {completedTasks.map(task => (

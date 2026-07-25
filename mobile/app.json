@@ -4,17 +4,30 @@
     "slug": "onpace",
     "version": "0.1.0",
     "sdkVersion": "54.0.0",
-    "platforms": ["android", "ios", "web"],
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "onpace",
     "android": {
+      "package": "com.onpace.mobile",
+      "versionCode": 1,
       "usesCleartextTraffic": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.onpace.mobile",
+      "buildNumber": "1"
     },
     "extra": {
       "supabaseUrl": "https://dcnpabvaptjilinfyrwy.supabase.co",
       "supabaseAnonKey": "sb_publishable_sFCTeO8wrgjQWakSLVeldg_gqBMPnWR",
-      "webAppUrl": "http://192.168.1.107:3000"
+      "webAppUrl": "http://192.168.1.107:3000",
+      "eas": {
+        "projectId": "16e05b4c-92ea-406a-812e-331b9cd690bc"
+      }
     }
   }
 }

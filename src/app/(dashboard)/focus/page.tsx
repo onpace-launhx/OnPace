@@ -46,9 +46,11 @@ export default function FocusPage() {
   const [totalSessionSeconds, setTotalSessionSeconds] = useState(25 * 60);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isSavingSession, setIsSavingSession] = useState(false);
+  const [timerRestored, setTimerRestored] = useState(false);
 
-  // Audio references
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Browser-native ambient audio. No external MP3 host is required.
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const noiseSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   // Premium modal popup & Custom alert dialog
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
@@ -72,6 +74,35 @@ export default function FocusPage() {
       
       setProfile(data);
 
+      // Keep an in-progress timer alive when the user navigates away and returns.
+      // The saved timestamp lets the timer continue accurately even while this page is unmounted.
+      const savedTimer = window.localStorage.getItem(`onpace-focus-timer:${user.id}`);
+      if (savedTimer) {
+        try {
+          const parsed = JSON.parse(savedTimer);
+          const savedRemaining = Number(parsed.remainingSeconds);
+          const elapsedSinceSave = parsed.isActive
+            ? Math.max(0, Math.floor((Date.now() - Number(parsed.savedAt || Date.now())) / 1000))
+            : 0;
+          const remaining = Math.max(0, savedRemaining - elapsedSinceSave);
+          const total = parsed.mode === "break" ? Number(parsed.breakLength) * 60 : Number(parsed.studyLength) * 60;
+
+          if (Number.isFinite(remaining) && remaining >= 0) {
+            setStudyLength(Number(parsed.studyLength) || 25);
+            setBreakLength(Number(parsed.breakLength) || 5);
+            setMode(parsed.mode === "break" ? "break" : "study");
+            setMinutes(Math.floor(remaining / 60));
+            setSeconds(remaining % 60);
+            setElapsedSeconds(Math.max(0, (Number(parsed.elapsedSeconds) || 0) + (savedRemaining - remaining)));
+            setTotalSessionSeconds(total || 25 * 60);
+            setIsActive(Boolean(parsed.isActive) && remaining > 0);
+          }
+        } catch {
+          window.localStorage.removeItem(`onpace-focus-timer:${user.id}`);
+        }
+      }
+      setTimerRestored(true);
+
       // Load user's focus history for analytics
       const { data: history } = await supabase
         .from("focus_sessions")
@@ -86,6 +117,20 @@ export default function FocusPage() {
     }
     loadProfile();
   }, [router, supabase]);
+
+  useEffect(() => {
+    if (!profile?.id || !timerRestored) return;
+    const remainingSeconds = Math.max(0, minutes * 60 + seconds);
+    window.localStorage.setItem(`onpace-focus-timer:${profile.id}`, JSON.stringify({
+      studyLength,
+      breakLength,
+      mode,
+      remainingSeconds,
+      elapsedSeconds,
+      isActive,
+      savedAt: Date.now(),
+    }));
+  }, [profile?.id, timerRestored, studyLength, breakLength, mode, minutes, seconds, elapsedSeconds, isActive]);
 
   const now = new Date();
   const trialEnds = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
@@ -193,37 +238,60 @@ export default function FocusPage() {
     return () => clearInterval(interval);
   }, [isActive, minutes, seconds, mode, lang, elapsedSeconds]);
 
-  // Ambient sound player with stable direct MP3 audio
+  // Ambient sound player. Synthesized audio avoids broken third-party sound URLs.
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-
-    if (isPlayingSound && ambientSound !== "none") {
-      let soundUrl = "";
-      if (ambientSound === "rain") {
-        soundUrl = "https://www.soundjay.com/nature/sounds/rain-07.mp3";
-      } else if (ambientSound === "white-noise") {
-        soundUrl = "https://www.soundjay.com/nature/sounds/river-1.mp3";
-      } else if (ambientSound === "forest") {
-        soundUrl = "https://www.soundjay.com/nature/sounds/forest-wind-1.mp3";
-      }
-
-      if (soundUrl) {
-        const audio = new Audio(soundUrl);
-        audio.loop = true;
-        audio.volume = 0.4;
-        audio.play().catch(err => console.log("Audio play blocked", err));
-        audioRef.current = audio;
-      }
-    }
-
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
+    const stopSound = () => {
+      try { noiseSourceRef.current?.stop(); } catch {}
+      noiseSourceRef.current?.disconnect();
+      noiseSourceRef.current = null;
+      if (audioContextRef.current) {
+        void audioContextRef.current.close();
+        audioContextRef.current = null;
       }
     };
-  }, [isPlayingSound, ambientSound]);
+
+    stopSound();
+    if (!isPlayingSound || ambientSound === "none") return stopSound;
+
+    const AudioContextConstructor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) {
+      setCustomAlert(lang === "tr" ? "Tarayıcınız ortam seslerini desteklemiyor." : "Your browser does not support ambient audio.");
+      return stopSound;
+    }
+
+    const context = new AudioContextConstructor();
+    const source = context.createBufferSource();
+    const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+    const samples = buffer.getChannelData(0);
+    for (let index = 0; index < samples.length; index += 1) samples[index] = Math.random() * 2 - 1;
+
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    if (ambientSound === "rain") {
+      filter.type = "highpass";
+      filter.frequency.value = 700;
+      gain.gain.value = 0.075;
+    } else if (ambientSound === "forest") {
+      filter.type = "lowpass";
+      filter.frequency.value = 650;
+      gain.gain.value = 0.06;
+    } else {
+      filter.type = "allpass";
+      gain.gain.value = 0.045;
+    }
+
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(context.destination);
+    source.start();
+    void context.resume();
+    audioContextRef.current = context;
+    noiseSourceRef.current = source;
+
+    return stopSound;
+  }, [isPlayingSound, ambientSound, lang]);
 
   const handleStartSession = async () => {
     setIsActive(true);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 /**
  * Compatibility bridge for projects that still point the Supabase Auth hook at

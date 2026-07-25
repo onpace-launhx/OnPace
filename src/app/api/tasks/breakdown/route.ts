@@ -5,6 +5,7 @@ import {
   generateAIText,
   parseAIJson,
 } from "@/lib/ai/server";
+import { getStudentLearningContext } from "@/lib/ai/student-context";
 
 export async function POST(request: Request) {
   try {
@@ -23,17 +24,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Task title is too short to break down." }, { status: 400 });
     }
 
-    const { data: userProfile } = await supabase
-      .from("profiles")
-      .select("language")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    const userLang = userProfile?.language || "en";
+    const context = await getStudentLearningContext(supabase, user.id);
+    const userLang = context.profile?.language || "en";
 
     // AI prompt for JSON array of subtasks
     const prompt = `Break down the student study task: "${title}" into exactly 3 smaller, highly actionable study sub-tasks (maximum 8 words each).
 The target response language is '${userLang}' (e.g. if 'zh' write in Chinese, if 'tr' write in Turkish, if 'es' in Spanish, if 'en' in English).
+Student courses: ${JSON.stringify(context.courses)}. Upcoming exams: ${JSON.stringify(context.upcomingExams)}. Other open tasks: ${JSON.stringify(context.openTasks.filter((task) => task.title !== title).slice(0, 8))}.
+Avoid duplicating tasks and suggest the smallest next actions that fit the student's actual workload.
 Return ONLY a raw valid JSON array of strings. Example output format:
 ["First subtask details", "Second subtask details", "Third subtask details"]
 

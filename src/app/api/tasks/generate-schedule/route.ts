@@ -5,6 +5,7 @@ import {
   generateAIText,
   parseAIJson,
 } from "@/lib/ai/server";
+import { getStudentLearningContext } from "@/lib/ai/student-context";
 
 export async function POST(request: Request) {
   try {
@@ -17,19 +18,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { courses, language } = await request.json();
-    const lang = language || "en";
+    const { language } = await request.json();
+    const context = await getStudentLearningContext(supabase, user.id);
+    const lang = context.profile?.language || language || "en";
 
     // Build course context
-    const courseContext = Array.isArray(courses) && courses.length > 0 
-      ? `The student is taking the following courses: ${courses.join(", ")}.`
+    const courseContext = context.courses.length > 0 
+      ? `The student is taking the following courses: ${context.courses.join(", ")}.`
       : "The student has not listed specific courses.";
+    const taskContext = context.openTasks.length > 0
+      ? `Existing incomplete tasks (do not duplicate these; break them into the next concrete action instead): ${JSON.stringify(context.openTasks.slice(0, 12))}`
+      : "There are no existing tasks yet, so suggest useful foundational actions.";
+    const goalContext = `Daily focus target: ${context.profile?.daily_study_goal_minutes || 60} minutes. Focus achieved in the last 7 days: ${context.focusMinutesLast7Days} minutes across ${context.focusSessionCountLast7Days} sessions. Upcoming exams: ${JSON.stringify(context.upcomingExams)}.`;
 
     const prompt = `Based on the student's background:
 ${courseContext}
+${taskContext}
+${goalContext}
 
 Generate exactly 3 highly actionable, micro study-tasks for today (maximum 8 words each).
-Tailor the tasks to their courses if specified.
+Prioritize the nearest due work and fit the remaining daily focus time. Tailor the tasks to their courses if specified.
 The tasks MUST be in this language: "${lang === "tr" ? "Turkish" : lang === "es" ? "Spanish" : lang === "zh" ? "Chinese" : "English"}".
 
 Return ONLY a raw valid JSON array of strings. Example format:
