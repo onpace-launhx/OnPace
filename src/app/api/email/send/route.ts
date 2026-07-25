@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
     const { data: settings } = await supabase
       .from("system_settings")
       .select("*")
-      .eq("id", "default")
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     const resendApiKey =
       process.env.RESEND_API_KEY || settings?.resend_api_key;
@@ -125,6 +125,13 @@ export async function POST(request: NextRequest) {
 
         if (resendRes.ok) {
           sentCount++;
+          // Also create in-app notification
+          await supabase.from("notifications").insert({
+            user_id: recipient.id,
+            title: subject,
+            content: content,
+            type: "announcement"
+          });
         } else {
           failedCount++;
         }
