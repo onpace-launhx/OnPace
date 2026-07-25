@@ -262,16 +262,30 @@ export function Sidebar() {
       }
     }
 
-    const { error } = await supabase
+    let { error } = await supabase
       .from("profiles")
       .update({
         full_name: editName.trim(),
         grade_level: editGrade.trim(),
-        daily_study_goal_minutes: parseInt(editGoal),
+        daily_study_goal_minutes: parseInt(editGoal) || 60,
         language: editLang,
         email_notifications_enabled: editEmailNotifications
       })
       .eq("id", user.id);
+
+    // Fallback if email_notifications_enabled column is not in DB schema yet
+    if (error && (error.message?.includes("email_notifications_enabled") || error.code === "PGRST204")) {
+      const fallback = await supabase
+        .from("profiles")
+        .update({
+          full_name: editName.trim(),
+          grade_level: editGrade.trim(),
+          daily_study_goal_minutes: parseInt(editGoal) || 60,
+          language: editLang
+        })
+        .eq("id", user.id);
+      error = fallback.error;
+    }
 
     if (!error) {
       setSaveSuccess(true);
@@ -279,7 +293,7 @@ export function Sidebar() {
         ...profile,
         full_name: editName.trim(),
         grade_level: editGrade.trim(),
-        daily_study_goal_minutes: parseInt(editGoal),
+        daily_study_goal_minutes: parseInt(editGoal) || 60,
         language: editLang,
         email_notifications_enabled: editEmailNotifications
       });
@@ -290,7 +304,7 @@ export function Sidebar() {
         window.location.reload();
       }, 1000);
     } else {
-      alert("Failed to save profile settings.");
+      alert("Failed to save profile settings: " + (error.message || "Unknown error"));
     }
     setSavingProfile(false);
   };
