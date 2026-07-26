@@ -7,43 +7,74 @@ export function escapeHtml(value: unknown) {
     .replaceAll("'", "&#039;")
 }
 
+function formatEmailMessage(value: unknown) {
+  return escapeHtml(value)
+    .replace(
+      /https?:\/\/[^\s<]+/g,
+      (url) =>
+        `<a href="${url}" style="color:#4f46e5;font-weight:700;text-decoration:underline">${url}</a>`
+    )
+    .replaceAll("\n", "<br>")
+}
+
 export function localizedAuthCopy(action: string, language: string) {
   type SupportedLanguage = "tr" | "en" | "es" | "zh"
-  type AuthAction = "signup" | "recovery" | "magiclink" | "email_change"
+  type AuthAction =
+    | "signup"
+    | "invite"
+    | "recovery"
+    | "magiclink"
+    | "reauthentication"
+    | "email_change"
   const lang: SupportedLanguage = ["tr", "en", "es", "zh"].includes(language)
     ? (language as SupportedLanguage)
     : "en"
   const copy = {
     en: {
       signup: ["Confirm your OnPace email", "Welcome to OnPace", "Confirm your email address to activate your account.", "Confirm email"],
+      invite: ["You are invited to OnPace", "Your OnPace invitation", "Accept this invitation to create your account.", "Accept invitation"],
       recovery: ["Reset your OnPace password", "Password reset", "Use the secure button below to choose a new password.", "Reset password"],
       magiclink: ["Your OnPace sign-in link", "Sign in to OnPace", "Use this secure link to sign in to your account.", "Sign in"],
+      reauthentication: ["Your OnPace security code", "Verify your identity", "Use this one-time code to continue securely.", "Verify"],
       email_change: ["Confirm your new email", "Email change request", "Confirm this email address to complete the change.", "Confirm email"],
     },
     tr: {
       signup: ["OnPace e-posta adresinizi doğrulayın", "OnPace'e hoş geldiniz", "Hesabınızı etkinleştirmek için e-posta adresinizi doğrulayın.", "E-postayı doğrula"],
+      invite: ["OnPace'e davet edildiniz", "OnPace davetiniz", "Hesabınızı oluşturmak için bu daveti kabul edin.", "Daveti kabul et"],
       recovery: ["OnPace şifrenizi sıfırlayın", "Şifre sıfırlama", "Yeni bir şifre belirlemek için aşağıdaki güvenli düğmeyi kullanın.", "Şifreyi sıfırla"],
       magiclink: ["OnPace giriş bağlantınız", "OnPace'e giriş yapın", "Hesabınıza giriş yapmak için bu güvenli bağlantıyı kullanın.", "Giriş yap"],
+      reauthentication: ["OnPace güvenlik kodunuz", "Kimliğinizi doğrulayın", "Güvenle devam etmek için bu tek kullanımlık kodu kullanın.", "Doğrula"],
       email_change: ["Yeni e-postanızı doğrulayın", "E-posta değişikliği", "Değişikliği tamamlamak için bu e-posta adresini doğrulayın.", "E-postayı doğrula"],
     },
     es: {
       signup: ["Confirma tu correo de OnPace", "Te damos la bienvenida a OnPace", "Confirma tu correo para activar tu cuenta.", "Confirmar correo"],
+      invite: ["Te han invitado a OnPace", "Tu invitación a OnPace", "Acepta esta invitación para crear tu cuenta.", "Aceptar invitación"],
       recovery: ["Restablece tu contraseña de OnPace", "Restablecer contraseña", "Usa el botón seguro para elegir una nueva contraseña.", "Restablecer contraseña"],
       magiclink: ["Tu enlace de acceso a OnPace", "Inicia sesión en OnPace", "Usa este enlace seguro para acceder a tu cuenta.", "Iniciar sesión"],
+      reauthentication: ["Tu código de seguridad de OnPace", "Verifica tu identidad", "Usa este código de un solo uso para continuar de forma segura.", "Verificar"],
       email_change: ["Confirma tu nuevo correo", "Cambio de correo", "Confirma esta dirección para completar el cambio.", "Confirmar correo"],
     },
     zh: {
       signup: ["验证您的 OnPace 邮箱", "欢迎使用 OnPace", "请验证邮箱以激活您的账户。", "验证邮箱"],
+      invite: ["您已受邀加入 OnPace", "您的 OnPace 邀请", "接受此邀请以创建您的账户。", "接受邀请"],
       recovery: ["重置 OnPace 密码", "密码重置", "请使用下方安全按钮设置新密码。", "重置密码"],
       magiclink: ["您的 OnPace 登录链接", "登录 OnPace", "请使用此安全链接登录您的账户。", "登录"],
+      reauthentication: ["您的 OnPace 安全验证码", "验证您的身份", "请使用此一次性验证码安全地继续。", "验证"],
       email_change: ["验证您的新邮箱", "邮箱变更", "请验证此邮箱以完成变更。", "验证邮箱"],
     },
   } as const
 
-  const actionKey: AuthAction =
-    action === "recovery" || action === "magiclink" || action === "email_change"
-      ? action
-      : "signup"
+  const supportedActions: AuthAction[] = [
+    "signup",
+    "invite",
+    "recovery",
+    "magiclink",
+    "reauthentication",
+    "email_change",
+  ]
+  const actionKey: AuthAction = supportedActions.includes(action as AuthAction)
+    ? (action as AuthAction)
+    : "signup"
   const [subject, heading, message, button] = copy[lang][actionKey]
   const extras = {
     en: {
@@ -197,7 +228,7 @@ export function emailShell(options: {
   </div>
   <div style="background:#fff;padding:32px;border-radius:16px;border:1px solid #e2e8f0;text-align:center">
     <h1 style="font-size:21px;color:#0f172a;margin:0 0 14px">${escapeHtml(options.heading)}</h1>
-    <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 24px">${escapeHtml(options.message).replaceAll("\n", "<br>")}</p>
+    <p style="color:#334155;font-size:15px;line-height:1.7;margin:0 0 24px">${formatEmailMessage(options.message)}</p>
     ${button}${token}
   </div>
   <p style="text-align:center;color:#94a3b8;font-size:11px;margin-top:20px">© ${escapeHtml(options.footer || "OnPace. All rights reserved.")}</p>

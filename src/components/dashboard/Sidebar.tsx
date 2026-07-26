@@ -51,7 +51,12 @@ const translations: Record<string, Record<string, string>> = {
     close: "Close",
     saving: "Saving...",
     saved: "Saved!",
-    emailVerificationSent: "Email change requested. A verification code and secure link were sent to the required address(es).",
+    emailVerificationSent: "A 6-digit code was sent to your new email.",
+    emailChangeCode: "Email change code",
+    emailChangeVerify: "Verify email",
+    emailChangeVerifying: "Verifying...",
+    emailChangeSuccess: "Your email was changed successfully.",
+    emailChangeInvalid: "The code is invalid or expired.",
     emailConsent: "Receive email announcements, feature updates, and campaigns",
     proBannerTitle: "Go Premium",
     proBannerDesc: "Unlock AI planner, quizzes & advanced metrics.",
@@ -80,7 +85,12 @@ const translations: Record<string, Record<string, string>> = {
     close: "Cerrar",
     saving: "Guardando...",
     saved: "¡Guardado!",
-    emailVerificationSent: "Cambio de correo solicitado. Se envió un código y enlace seguro a las direcciones necesarias.",
+    emailVerificationSent: "Se envió un código de 6 dígitos a tu nuevo correo.",
+    emailChangeCode: "Código de cambio de correo",
+    emailChangeVerify: "Verificar correo",
+    emailChangeVerifying: "Verificando...",
+    emailChangeSuccess: "Tu correo se cambió correctamente.",
+    emailChangeInvalid: "El código no es válido o ha caducado.",
     emailConsent: "Recibir anuncios, novedades y campañas por correo",
     proBannerTitle: "Hacerse Premium",
     proBannerDesc: "Desbloquea planificador de IA, exámenes y métricas.",
@@ -109,7 +119,12 @@ const translations: Record<string, Record<string, string>> = {
     close: "关闭",
     saving: "保存中...",
     saved: "已保存!",
-    emailVerificationSent: "已请求更改邮箱。验证代码和安全链接已发送至所需邮箱。",
+    emailVerificationSent: "6 位验证码已发送到您的新邮箱。",
+    emailChangeCode: "邮箱变更验证码",
+    emailChangeVerify: "验证邮箱",
+    emailChangeVerifying: "正在验证...",
+    emailChangeSuccess: "您的邮箱已成功更改。",
+    emailChangeInvalid: "验证码无效或已过期。",
     emailConsent: "接收电子邮件公告、功能更新和活动",
     proBannerTitle: "解锁高级版",
     proBannerDesc: "开启AI学习计划、智能测验与专属数据分析。",
@@ -138,7 +153,12 @@ const translations: Record<string, Record<string, string>> = {
     close: "Kapat",
     saving: "Kaydediliyor...",
     saved: "Kaydedildi!",
-    emailVerificationSent: "E-posta değişikliği isteği oluşturuldu. Doğrulama kodu ve güvenli bağlantı gerekli adreslere gönderildi.",
+    emailVerificationSent: "Yeni e-posta adresinize 6 haneli kod gönderildi.",
+    emailChangeCode: "E-posta değişiklik kodu",
+    emailChangeVerify: "E-postayı doğrula",
+    emailChangeVerifying: "Doğrulanıyor...",
+    emailChangeSuccess: "E-posta adresiniz başarıyla değiştirildi.",
+    emailChangeInvalid: "Kod geçersiz veya süresi dolmuş.",
     emailConsent: "E-posta duyurularına, özellik haberlerine ve kampanyalara izin ver",
     proBannerTitle: "Premium'a Geç",
     proBannerDesc: "Yapay zeka planlayıcı, quizler ve gelişmiş metrikleri aç.",
@@ -240,6 +260,9 @@ export function Sidebar() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [emailVerificationSent, setEmailVerificationSent] = useState(false);
+  const [emailChangeCode, setEmailChangeCode] = useState("");
+  const [verifyingEmailChange, setVerifyingEmailChange] = useState(false);
+  const [emailChangeSuccess, setEmailChangeSuccess] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
 
   // Google Calendar Integration Settings inside Sidebar
@@ -454,6 +477,8 @@ export function Sidebar() {
     setEditEmailNotifications(profile.email_notifications_enabled !== false);
     setSaveSuccess(false);
     setEmailVerificationSent(false);
+    setEmailChangeCode("");
+    setEmailChangeSuccess(false);
     setProfileSaveError(null);
     setShowProfileModal(true);
   };
@@ -468,27 +493,36 @@ export function Sidebar() {
     const emailChanged = requestedEmail !== user.email?.toLowerCase();
     const authLanguageChanged = user.user_metadata?.language !== editLang;
 
-    // Keep email and language metadata inside Supabase Auth so confirmation and
-    // future localized Send Email Hook messages cannot be bypassed.
-    if (emailChanged || authLanguageChanged) {
-      const updatePayload = {
-        ...(emailChanged ? { email: requestedEmail } : {}),
+    if (authLanguageChanged) {
+      const { error: emailError } = await supabase.auth.updateUser({
         data: { ...user.user_metadata, language: editLang },
-      };
-      const { error: emailError } = await supabase.auth.updateUser(
-        updatePayload,
-        emailChanged
-          ? { emailRedirectTo: `${window.location.origin}/auth/callback` }
-          : undefined
-      );
+      });
       if (emailError) {
         setProfileSaveError(getEmailUpdateErrorMessage(emailError));
         setSavingProfile(false);
         return;
       }
-      if (emailChanged) {
-        setEmailVerificationSent(true);
+    }
+
+    if (emailChanged) {
+      const { data: emailData, error: emailError } =
+        await supabase.functions.invoke("account-email-change", {
+          body: {
+            action: "request",
+            newEmail: requestedEmail,
+            language: editLang,
+          },
+        });
+      if (emailError || emailData?.error) {
+        setProfileSaveError(
+          getEmailUpdateErrorMessage(emailData?.error || emailError)
+        );
+        setSavingProfile(false);
+        return;
       }
+      setEmailVerificationSent(true);
+      setEmailChangeCode("");
+      setEmailChangeSuccess(false);
     }
 
     let { error } = await supabase
@@ -526,18 +560,52 @@ export function Sidebar() {
         language: editLang,
         email_notifications_enabled: editEmailNotifications
       });
-      setTimeout(() => {
-        setSaveSuccess(false);
-        setShowProfileModal(false);
-        // Reload pages that translate dynamically
-        window.location.reload();
-      }, emailChanged ? 4000 : 1000);
+      if (!emailChanged) {
+        setTimeout(() => {
+          setSaveSuccess(false);
+          setShowProfileModal(false);
+          window.location.reload();
+        }, 1000);
+      }
     } else {
       setProfileSaveError(
         error.message || "Profil ayarları kaydedilemedi."
       );
     }
     setSavingProfile(false);
+  };
+
+  const handleVerifyEmailChange = async () => {
+    if (emailChangeCode.length !== 6) return;
+    setVerifyingEmailChange(true);
+    setProfileSaveError(null);
+    const requestedEmail = editEmail.trim().toLowerCase();
+    const { data, error } = await supabase.functions.invoke(
+      "account-email-change",
+      {
+        body: {
+          action: "verify",
+          newEmail: requestedEmail,
+          token: emailChangeCode,
+        },
+      }
+    );
+    if (error || data?.error) {
+      setProfileSaveError(
+        typeof data?.error === "string" ? data.error : t.emailChangeInvalid
+      );
+      setVerifyingEmailChange(false);
+      return;
+    }
+
+    await supabase.auth.refreshSession();
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) setUser(userData.user);
+    setEmailVerificationSent(false);
+    setEmailChangeSuccess(true);
+    setEmailChangeCode("");
+    setSaveSuccess(true);
+    setVerifyingEmailChange(false);
   };
 
   const handleRealGoogleOAuth = () => {
@@ -813,10 +881,53 @@ export function Sidebar() {
                    required
                    value={editEmail}
                    onChange={(e) => setEditEmail(e.target.value)}
+                   disabled={emailVerificationSent}
                    placeholder="e.g. alex@school.com"
-                   className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
+                   className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white disabled:bg-gray-50 disabled:text-gray-500"
                 />
               </div>
+
+              {emailVerificationSent && (
+                <div className="rounded-2xl border border-brand/15 bg-brand/5 p-3 space-y-2">
+                  <p className="text-[10px] font-semibold text-brand">
+                    {t.emailVerificationSent}
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={emailChangeCode}
+                      onChange={(event) =>
+                        setEmailChangeCode(
+                          event.target.value.replace(/\D/g, "").slice(0, 6)
+                        )
+                      }
+                      placeholder={t.emailChangeCode}
+                      className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-center text-sm font-extrabold tracking-[0.3em] text-surface-dark outline-none focus:ring-1 focus:ring-brand"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyEmailChange}
+                      disabled={
+                        verifyingEmailChange || emailChangeCode.length !== 6
+                      }
+                      className="rounded-xl bg-brand px-3 py-2 text-[10px] font-bold text-white disabled:opacity-50"
+                    >
+                      {verifyingEmailChange
+                        ? t.emailChangeVerifying
+                        : t.emailChangeVerify}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {emailChangeSuccess && (
+                <p className="rounded-xl bg-emerald-50 p-3 text-[10px] font-bold text-emerald-600">
+                  {t.emailChangeSuccess}
+                </p>
+              )}
 
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.gradeLevel}</label>

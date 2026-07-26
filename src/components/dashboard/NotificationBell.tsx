@@ -6,10 +6,10 @@ import { Bell, Check, CheckCheck, Trash2, X, Info, Megaphone, AlertCircle } from
 import { getTranslations } from "@/lib/translations";
 
 const notificationCopy = {
-  en: { label: "Notifications", unread: "new", clearAll: "Clear all", delete: "Delete notification" },
-  tr: { label: "Bildirimler", unread: "yeni", clearAll: "Tümünü sil", delete: "Bildirimi sil" },
-  es: { label: "Notificaciones", unread: "nuevas", clearAll: "Borrar todas", delete: "Eliminar notificación" },
-  zh: { label: "通知", unread: "条新通知", clearAll: "清除全部", delete: "删除通知" },
+  en: { label: "Notifications", unread: "new", clearAll: "Clear all", delete: "Delete notification", open: "Open" },
+  tr: { label: "Bildirimler", unread: "yeni", clearAll: "Tümünü sil", delete: "Bildirimi sil", open: "Aç" },
+  es: { label: "Notificaciones", unread: "nuevas", clearAll: "Borrar todas", delete: "Eliminar notificación", open: "Abrir" },
+  zh: { label: "通知", unread: "条新通知", clearAll: "清除全部", delete: "删除通知", open: "打开" },
 } as const;
 
 export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
@@ -86,6 +86,16 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
     const { error } = await supabase.from("notifications").delete().eq("id", id);
     if (error) {
       await fetchNotifications();
+    }
+  };
+
+  const handleNotificationClick = async (notification: any) => {
+    if (!notification.read) await handleMarkRead(notification.id);
+    if (!notification.action_url) return;
+
+    const destination = new URL(notification.action_url, window.location.origin);
+    if (destination.origin === window.location.origin) {
+      window.location.assign(`${destination.pathname}${destination.search}${destination.hash}`);
     }
   };
 
@@ -175,7 +185,7 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
                 notifications.map((n) => (
                   <div
                     key={n.id}
-                    onClick={() => !n.read && handleMarkRead(n.id)}
+                    onClick={() => handleNotificationClick(n)}
                     className={`p-3.5 flex items-start gap-3 transition-colors cursor-pointer ${
                       !n.read ? "bg-brand/5 hover:bg-brand/10" : "hover:bg-gray-50"
                     }`}
@@ -204,6 +214,11 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
                       <p className="text-xs text-gray-500 mt-0.5 leading-relaxed line-clamp-2">
                         {n.content}
                       </p>
+                      {n.action_url && (
+                        <span className="mt-1.5 inline-block text-[10px] font-bold text-brand">
+                          {ui.open} →
+                        </span>
+                      )}
                     </div>
                     {!n.read && (
                       <span className="h-2 w-2 rounded-full bg-brand shrink-0 mt-1.5" />

@@ -4,6 +4,25 @@ import { corsPreflight, json, readProviderError } from "../_shared/http.ts"
 
 const BATCH_SIZE = 100
 
+function createCampaignToken() {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "")
+}
+
+async function sha256(value: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value)
+  )
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+}
+
 function chunks<T>(items: T[], size: number) {
   const result: T[][] = []
   for (let index = 0; index < items.length; index += size) {
@@ -68,6 +87,17 @@ Deno.serve(async (request) => {
       isMandatory = false,
       targetUserId = null,
       targetPlan = null,
+      targetLanguage = null,
+      targetGrade = null,
+      targetRole = null,
+      targetUserIds = [],
+      emailSearch = null,
+      ctaLabel = null,
+      ctaUrl = null,
+      rewardEnabled = false,
+      rewardPlan = "pro",
+      rewardDays = 7,
+      rewardValidDays = 7,
       sendEmail = true,
       sendInApp = true,
     } = await request.json()
@@ -83,9 +113,31 @@ Deno.serve(async (request) => {
     })
     let query = admin
       .from("profiles")
-      .select("id, email, full_name, language, email_notifications_enabled")
+      .select("id, email, full_name, language, grade_level, role, plan, email_notifications_enabled")
     if (targetUserId) query = query.eq("id", targetUserId)
-    else if (targetPlan) query = query.eq("plan", targetPlan)
+    else {
+      if (targetPlan) query = query.eq("plan", targetPlan)
+      if (targetLanguage) query = query.eq("language", targetLanguage)
+      if (targetGrade) query = query.eq("grade_level", targetGrade)
+      if (targetRole) query = query.eq("role", targetRole)
+      if (Array.isArray(targetUserIds) && targetUserIds.length) {
+        const safeIds = targetUserIds
+          .filter((id) => typeof id === "string")
+          .slice(0, 500)
+        if (safeIds.length) query = query.in("id", safeIds)
+      }
+      if (typeof emailSearch === "string" && emailSearch.trim()) {
+        const safeSearch = emailSearch
+          .trim()
+          .slice(0, 100)
+          .replace(/[,%()]/g, "")
+        if (safeSearch) {
+          query = query.or(
+            `email.ilike.%${safeSearch}%,full_name.ilike.%${safeSearch}%`
+          )
+        }
+      }
+    }
     // Marketing/feature emails always respect consent. Only explicitly mandatory
     // security or service communications may reach opted-out users.
     if (sendEmail && !isMandatory) {
@@ -96,6 +148,52 @@ Deno.serve(async (request) => {
     const { data: recipients, error: recipientsError } = await query
     if (recipientsError) return json({ error: recipientsError.message }, 400)
     if (!recipients?.length) return json({ error: "No recipients matched" }, 404)
+
+    let actionUrl =
+      typeof ctaUrl === "string" && /^https:\/\//i.test(ctaUrl.trim())
+        ? ctaUrl.trim()
+        : null
+    const normalizedRewardDays = Math.max(1, Math.min(3650, Number(rewardDays) || 7))
+    const normalizedValidDays = Math.max(1, Math.min(365, Number(rewardValidDays) || 7))
+    let rewardCampaignId: string | null = null
+    if (rewardEnabled) {
+      if (!["pro", "plus"].includes(rewardPlan)) {
+        return json({ error: "Unsupported reward plan" }, 400)
+      }
+      const rawToken = createCampaignToken()
+      const { data: campaign, error: campaignError } = await admin
+        .from("email_reward_campaigns")
+        .insert({
+          name: localizedField(subject, "en").slice(0, 180),
+          token_hash: await sha256(rawToken),
+          reward_plan: rewardPlan,
+          reward_days: normalizedRewardDays,
+          expires_at: new Date(
+            Date.now() + normalizedValidDays * 24 * 60 * 60 * 1000
+          ).toISOString(),
+          max_claims: recipients.length,
+          created_by: user.id,
+        })
+        .select("id")
+        .single()
+      if (campaignError || !campaign) {
+        return json({ error: campaignError?.message || "Reward campaign failed" }, 400)
+      }
+      rewardCampaignId = campaign.id
+      const eligibilityRows = recipients.map((recipient) => ({
+        campaign_id: campaign.id,
+        user_id: recipient.id,
+      }))
+      for (const group of chunks(eligibilityRows, 500)) {
+        const { error } = await admin
+          .from("email_reward_eligibility")
+          .insert(group)
+        if (error) return json({ error: error.message }, 400)
+      }
+      const appUrl = (Deno.env.get("APP_URL") || "https://onpace-ai.xyz")
+        .replace(/\/+$/, "")
+      actionUrl = `${appUrl}/rewards/claim?token=${encodeURIComponent(rawToken)}`
+    }
 
     const { data: integrationData } = await admin.rpc(
       "get_edge_integration_config"
@@ -128,6 +226,17 @@ Deno.serve(async (request) => {
           body: JSON.stringify(
             group.map((recipient) => {
               const chrome = localizedEmailChrome(recipient.language)
+              const localizedCtaLabel =
+                localizedField(ctaLabel, recipient.language) ||
+                (rewardEnabled
+                  ? ({
+                      en: "Activate my reward",
+                      tr: "Ödülümü etkinleştir",
+                      es: "Activar mi recompensa",
+                      zh: "激活我的奖励",
+                    }[String(recipient.language || "en")] ||
+                    "Activate my reward")
+                  : "")
               return {
                 from: `${fromName} <${fromAddress}>`,
                 to: [recipient.email],
@@ -135,6 +244,8 @@ Deno.serve(async (request) => {
                 html: emailShell({
                   heading: localizedField(subject, recipient.language),
                   message: `${recipient.full_name ? `${recipient.full_name},\n\n` : ""}${localizedField(content, recipient.language)}`,
+                  buttonLabel: actionUrl ? localizedCtaLabel : undefined,
+                  buttonUrl: actionUrl || undefined,
                   tagline: chrome.tagline,
                   footer: chrome.footer,
                 }),
@@ -157,6 +268,7 @@ Deno.serve(async (request) => {
         title: localizedField(subject, recipient.language),
         content: localizedField(content, recipient.language),
         type: isMandatory ? "alert" : "announcement",
+        action_url: actionUrl,
       }))
       for (const group of chunks(rows, 500)) {
         const { error } = await admin.from("notifications").insert(group)
@@ -170,6 +282,7 @@ Deno.serve(async (request) => {
       failedCount,
       inAppCount: sendInApp ? recipients.length : 0,
       totalRecipients: recipients.length,
+      rewardCampaignId,
     })
   } catch (error) {
     console.error("Broadcast function error", error)

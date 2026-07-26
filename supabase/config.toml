@@ -3,6 +3,9 @@ project_id = "onpace"
 [functions.auth-email-hook]
 verify_jwt = false
 
+[functions.account-email-change]
+verify_jwt = true
+
 [functions.admin-email-broadcast]
 verify_jwt = true
 

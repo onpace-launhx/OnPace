@@ -58,11 +58,18 @@ export default function RegisterPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    const callback = new URL("/auth/callback", window.location.origin);
+    callback.searchParams.set(
+      "next",
+      `/verify-email?verified=1&mode=signup&lang=${language}`
+    );
+    localStorage.setItem("language", language);
+
     const { error, data } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: callback.toString(),
         data: {
           full_name: fullName,
           grade_level: gradeLevel,
@@ -80,8 +87,12 @@ export default function RegisterPage() {
       if (data.session) {
         router.push("/dashboard");
       } else {
-        setSuccessMsg("Registration successful! Please check your email to verify your account.");
-        setLoading(false);
+        const query = new URLSearchParams({
+          email: email.trim().toLowerCase(),
+          mode: "signup",
+          lang: language,
+        });
+        router.push(`/verify-email?${query.toString()}`);
       }
     }
   };

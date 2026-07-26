@@ -42,6 +42,7 @@ export async function updateSession(request: NextRequest) {
     '/notes',
     '/onboarding',
     '/profile',
+    '/rewards',
     '/study-groups',
     '/tasks',
     '/admin',
@@ -56,7 +57,10 @@ export async function updateSession(request: NextRequest) {
   if (!user && isProtected) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('next', request.nextUrl.pathname)
+    url.searchParams.set(
+      'next',
+      `${request.nextUrl.pathname}${request.nextUrl.search}`
+    )
     return NextResponse.redirect(url)
   }
 

@@ -17,6 +17,7 @@ export const config = {
     "/notes/:path*",
     "/onboarding/:path*",
     "/profile/:path*",
+    "/rewards/:path*",
     "/study-groups/:path*",
     "/tasks/:path*",
     "/admin/:path*",

@@ -278,6 +278,20 @@ export default function AdminPage() {
   const [emailSendEmail, setEmailSendEmail] = useState(true);
   const [emailSendInApp, setEmailSendInApp] = useState(true);
   const [emailTargetPlan, setEmailTargetPlan] = useState("all");
+  const [emailTargetLanguage, setEmailTargetLanguage] = useState("all");
+  const [emailTargetGrade, setEmailTargetGrade] = useState("all");
+  const [emailTargetRole, setEmailTargetRole] = useState("all");
+  const [emailUserSearch, setEmailUserSearch] = useState("");
+  const [emailSelectedUserIds, setEmailSelectedUserIds] = useState<string[]>([]);
+  const [emailCtaLabel, setEmailCtaLabel] = useState("");
+  const [emailCtaLabelTR, setEmailCtaLabelTR] = useState("");
+  const [emailCtaLabelES, setEmailCtaLabelES] = useState("");
+  const [emailCtaLabelZH, setEmailCtaLabelZH] = useState("");
+  const [emailCtaUrl, setEmailCtaUrl] = useState("");
+  const [emailRewardEnabled, setEmailRewardEnabled] = useState(false);
+  const [emailRewardPlan, setEmailRewardPlan] = useState("pro");
+  const [emailRewardDays, setEmailRewardDays] = useState("7");
+  const [emailRewardValidDays, setEmailRewardValidDays] = useState("7");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [translatingEmail, setTranslatingEmail] = useState(false);
   const [emailResult, setEmailResult] = useState<string | null>(null);
@@ -1197,7 +1211,24 @@ export default function AdminPage() {
           isMandatory: emailIsMandatory,
           sendEmail: emailSendEmail,
           sendInApp: emailSendInApp,
-          targetPlan: emailTargetPlan === "all" ? null : emailTargetPlan
+          targetPlan: emailTargetPlan === "all" ? null : emailTargetPlan,
+          targetLanguage:
+            emailTargetLanguage === "all" ? null : emailTargetLanguage,
+          targetGrade: emailTargetGrade === "all" ? null : emailTargetGrade,
+          targetRole: emailTargetRole === "all" ? null : emailTargetRole,
+          targetUserIds: emailSelectedUserIds,
+          emailSearch: emailUserSearch.trim() || null,
+          ctaLabel: {
+            en: emailCtaLabel,
+            tr: emailCtaLabelTR,
+            es: emailCtaLabelES,
+            zh: emailCtaLabelZH,
+          },
+          ctaUrl: emailRewardEnabled ? null : emailCtaUrl.trim() || null,
+          rewardEnabled: emailRewardEnabled,
+          rewardPlan: emailRewardPlan,
+          rewardDays: Number(emailRewardDays),
+          rewardValidDays: Number(emailRewardValidDays),
         })
       });
 
@@ -1214,6 +1245,11 @@ export default function AdminPage() {
         setEmailContentES("");
         setEmailSubjectZH("");
         setEmailContentZH("");
+        setEmailCtaLabel("");
+        setEmailCtaLabelTR("");
+        setEmailCtaLabelES("");
+        setEmailCtaLabelZH("");
+        setEmailCtaUrl("");
       } else {
         setEmailResult("Error sending email: " + (data.error || ""));
       }
@@ -2676,8 +2712,9 @@ export default function AdminPage() {
               </div>
 
               <form onSubmit={handleSendEmailBroadcast} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Recipient plan</label>
+                <div className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-100 bg-gray-50/60 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Plan filter</label>
                   <select
                     value={emailTargetPlan}
                     onChange={(event) => setEmailTargetPlan(event.target.value)}
@@ -2689,6 +2726,114 @@ export default function AdminPage() {
                     <option value="pro">Pro</option>
                     <option value="founding">Founding</option>
                   </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Language filter</label>
+                    <select
+                      value={emailTargetLanguage}
+                      onChange={(event) => setEmailTargetLanguage(event.target.value)}
+                      className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                    >
+                      <option value="all">All languages</option>
+                      <option value="en">English</option>
+                      <option value="tr">Türkçe</option>
+                      <option value="es">Español</option>
+                      <option value="zh">中文</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Grade filter</label>
+                    <select
+                      value={emailTargetGrade}
+                      onChange={(event) => setEmailTargetGrade(event.target.value)}
+                      className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                    >
+                      <option value="all">All grades</option>
+                      {[...new Set(
+                        profiles
+                          .map((profile) => profile.grade_level)
+                          .filter((grade): grade is string => Boolean(grade))
+                      )]
+                        .sort()
+                        .map((grade) => (
+                          <option key={grade} value={grade}>{grade}</option>
+                        ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Role filter</label>
+                    <select
+                      value={emailTargetRole}
+                      onChange={(event) => setEmailTargetRole(event.target.value)}
+                      className="w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                    >
+                      <option value="all">All roles</option>
+                      <option value="student">Students</option>
+                      <option value="admin">Admins</option>
+                      <option value="super_admin">Super admins</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Select individual users (optional)</label>
+                      <p className="mt-1 text-[10px] text-gray-400">Leave empty to use the filters above.</p>
+                    </div>
+                    {emailSelectedUserIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setEmailSelectedUserIds([])}
+                        className="text-[10px] font-bold text-red-500"
+                      >
+                        Clear {emailSelectedUserIds.length}
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="search"
+                    value={emailUserSearch}
+                    onChange={(event) => setEmailUserSearch(event.target.value)}
+                    placeholder="Filter by email or name..."
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-xs text-surface-dark outline-none focus:ring-1 focus:ring-brand"
+                  />
+                  {emailUserSearch.trim() && (
+                    <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl bg-gray-50 p-2">
+                      {profiles
+                        .filter((profile) => {
+                          const query = emailUserSearch.trim().toLowerCase();
+                          return (
+                            profile.email?.toLowerCase().includes(query) ||
+                            profile.full_name?.toLowerCase().includes(query)
+                          );
+                        })
+                        .slice(0, 50)
+                        .map((profile) => (
+                          <label
+                            key={profile.id}
+                            className="flex cursor-pointer items-center gap-2 rounded-lg bg-white px-3 py-2 text-[11px] text-gray-600"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={emailSelectedUserIds.includes(profile.id)}
+                              onChange={(event) =>
+                                setEmailSelectedUserIds((current) =>
+                                  event.target.checked
+                                    ? [...current, profile.id]
+                                    : current.filter((id) => id !== profile.id)
+                                )
+                              }
+                              className="accent-brand"
+                            />
+                            <span className="font-bold text-surface-dark">
+                              {profile.full_name || "Unnamed"}
+                            </span>
+                            <span className="truncate text-gray-400">{profile.email}</span>
+                          </label>
+                        ))}
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {[
@@ -2731,6 +2876,93 @@ export default function AdminPage() {
                     {translatingEmail ? "AI çeviriyor..." : "AI ile TR / ES / ZH çevir"}
                   </button>
                   <p className="text-[11px] text-violet-700">İngilizce metni temel alır; bağlantıları, kodları ve değişkenleri korur.</p>
+                </div>
+
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
+                  <div>
+                    <h3 className="text-xs font-extrabold text-indigo-900">Clickable email action</h3>
+                    <p className="mt-1 text-[10px] text-indigo-700">
+                      URLs typed in the message body become clickable automatically. You can also add one prominent action button.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {[
+                      ["EN", emailCtaLabel, setEmailCtaLabel],
+                      ["TR", emailCtaLabelTR, setEmailCtaLabelTR],
+                      ["ES", emailCtaLabelES, setEmailCtaLabelES],
+                      ["ZH", emailCtaLabelZH, setEmailCtaLabelZH],
+                    ].map(([code, value, setter]) => (
+                      <input
+                        key={code as string}
+                        type="text"
+                        value={value as string}
+                        onChange={(event) =>
+                          (setter as React.Dispatch<React.SetStateAction<string>>)(
+                            event.target.value
+                          )
+                        }
+                        placeholder={`${code} button label`}
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-surface-dark outline-none"
+                      />
+                    ))}
+                  </div>
+                  <input
+                    type="url"
+                    value={emailCtaUrl}
+                    onChange={(event) => setEmailCtaUrl(event.target.value)}
+                    disabled={emailRewardEnabled}
+                    placeholder="https://onpace-ai.xyz/..."
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-surface-dark outline-none disabled:bg-gray-100"
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 space-y-3">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={emailRewardEnabled}
+                      onChange={(event) => setEmailRewardEnabled(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 accent-emerald-600"
+                    />
+                    <span>
+                      <span className="block text-xs font-extrabold text-emerald-900">
+                        Add a one-click plan reward
+                      </span>
+                      <span className="mt-1 block text-[10px] leading-4 text-emerald-700">
+                        Each matched user can activate the reward once. Forwarding the link does not grant access to users outside this recipient list.
+                      </span>
+                    </span>
+                  </label>
+                  {emailRewardEnabled && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <select
+                        value={emailRewardPlan}
+                        onChange={(event) => setEmailRewardPlan(event.target.value)}
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-surface-dark"
+                      >
+                        <option value="pro">Pro plan</option>
+                        <option value="plus">Plus plan</option>
+                      </select>
+                      <input
+                        type="number"
+                        min={1}
+                        max={3650}
+                        value={emailRewardDays}
+                        onChange={(event) => setEmailRewardDays(event.target.value)}
+                        placeholder="Reward days"
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-surface-dark"
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={emailRewardValidDays}
+                        onChange={(event) => setEmailRewardValidDays(event.target.value)}
+                        placeholder="Link valid days"
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-surface-dark"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-blue-50/50 rounded-xl border border-blue-100">

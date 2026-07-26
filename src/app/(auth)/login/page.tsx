@@ -24,6 +24,19 @@ export default function LoginPage() {
     });
 
     if (error || !data.session) {
+      if (
+        error?.code === "email_not_confirmed" ||
+        error?.message?.toLowerCase().includes("email not confirmed")
+      ) {
+        const query = new URLSearchParams({
+          email: email.trim().toLowerCase(),
+          mode: "signup",
+          reason: "required",
+          lang: localStorage.getItem("language") || "en",
+        });
+        window.location.assign(`/verify-email?${query.toString()}`);
+        return;
+      }
       setErrorMsg(error?.message || "Oturum oluşturulamadı. Lütfen tekrar deneyin.");
       setLoading(false);
     } else {
