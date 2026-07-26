@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   Calendar as CalendarIcon,
@@ -55,8 +55,54 @@ type ExistingDuplicatePair = {
   reason: string;
 };
 
+type CalendarTimeConflict = {
+  sessionIndex: number;
+  title: string;
+  startTime: string;
+  endTime: string;
+  alternativeStart: string | null;
+  alternativeEnd: string | null;
+  conflictingSessions: Array<{ title: string; startTime: string; endTime: string }>;
+};
+
+function getSessionEndTime(session: Record<string, any>) {
+  if (typeof session.end_time === "string") return new Date(session.end_time);
+  return new Date(
+    new Date(String(session.start_time)).getTime() +
+      Math.max(15, Number(session.duration) || 60) * 60_000
+  );
+}
+
+function findNextAvailableStart(
+  startTime: string,
+  durationMinutes: number,
+  sessions: Array<Record<string, any>>
+) {
+  let candidate = new Date(startTime);
+  const durationMs = durationMinutes * 60_000;
+
+  for (let attempt = 0; attempt < 96; attempt += 1) {
+    const candidateEnd = new Date(candidate.getTime() + durationMs);
+    const conflicts = sessions.filter((session) => {
+      const sessionStart = new Date(String(session.start_time));
+      const sessionEnd = getSessionEndTime(session);
+      return sessionStart < candidateEnd && sessionEnd > candidate;
+    });
+    if (conflicts.length === 0) return candidate.toISOString();
+    candidate = new Date(
+      Math.ceil(
+        Math.max(...conflicts.map((session) => getSessionEndTime(session).getTime())) /
+          900_000
+      ) * 900_000
+    );
+  }
+
+  return null;
+}
+
 export default function CalendarPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
@@ -110,6 +156,10 @@ export default function CalendarPage() {
   const [existingDuplicateReview, setExistingDuplicateReview] = useState<ExistingDuplicatePair[] | null>(null);
   const [existingDuplicateKeepSeparate, setExistingDuplicateKeepSeparate] = useState<string[]>([]);
   const [mergingExistingDuplicates, setMergingExistingDuplicates] = useState(false);
+  const [timeConflictReview, setTimeConflictReview] = useState<{
+    batch: CalendarInsertBatch;
+    conflicts: CalendarTimeConflict[];
+  } | null>(null);
 
   // ── Vision OCR Schedule Upload States ──────────────────────────────────────
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
@@ -122,6 +172,7 @@ export default function CalendarPage() {
   const [isPlanningDay, setIsPlanningDay] = useState(false);
   const [dayPlanBlocks, setDayPlanBlocks] = useState<any[]>([]);
   const [dayPlanNote, setDayPlanNote] = useState("");
+  const autoPlanHandled = useRef(false);
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
@@ -195,7 +246,7 @@ export default function CalendarPage() {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
-  const loadAllData = async () => {
+  const loadAllData = async (skipGoogleSync = false) => {
     setLoading(true);
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -241,7 +292,7 @@ export default function CalendarPage() {
     // Reconcile Google and OnPace first, then render the canonical local rows.
     // Every synced row keeps its Google event id, so edits and deletes affect
     // the same event instead of creating a second, synthetic calendar item.
-    if (isGConnected) {
+    if (isGConnected && !skipGoogleSync) {
       try {
         setCalendarSyncing(true);
         const response = await fetch("/api/calendar/sync", { method: "POST" });
@@ -317,6 +368,9 @@ export default function CalendarPage() {
           title: editTitle.trim(),
           course_id: editCourseId || null,
           start_time: startTimeIso,
+          end_time: new Date(
+            new Date(startTimeIso).getTime() + durationMinutes * 60_000
+          ).toISOString(),
           duration: durationMinutes,
           sync_status: selectedSession.google_event_id ? "pending_update" : "local_only",
           sync_error: null,
@@ -460,10 +514,30 @@ export default function CalendarPage() {
 
     try {
       let addedSessions: any[] = [];
-      if (sessionsToInsert.length > 0) {
+      const normalizedSessions = sessionsToInsert.map((session) => {
+        const startTime = String(session.start_time || "");
+        const durationMinutes = Math.min(
+          1_440,
+          Math.max(15, Number(session.duration) || 60)
+        );
+        return {
+          ...session,
+          duration: durationMinutes,
+          end_time:
+            typeof session.end_time === "string" && session.end_time
+              ? session.end_time
+              : new Date(
+                  new Date(startTime).getTime() + durationMinutes * 60_000
+                ).toISOString(),
+          is_ai_scheduled:
+            Boolean(session.is_ai_scheduled) || batch.source.includes("AI"),
+        };
+      });
+
+      if (normalizedSessions.length > 0) {
         const { data, error } = await supabase
           .from("study_sessions")
-          .insert(sessionsToInsert)
+          .insert(normalizedSessions)
           .select("*, courses(name, color)");
         if (error) throw new Error(error.message);
         addedSessions = data || [];
@@ -494,10 +568,14 @@ export default function CalendarPage() {
       // The calendar updates above are intentionally committed before the
       // network sync starts, so the user sees the new item immediately.
       if (addedSessions.length > 0) {
+        window.dispatchEvent(new CustomEvent("onpace-calendar-updated"));
         void syncSessionsToGoogle(
           addedSessions,
           batch.source
         );
+      }
+      if (tasksToInsert.length > 0) {
+        window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
       }
     } catch (error) {
       setCustomAlert(
@@ -514,7 +592,63 @@ export default function CalendarPage() {
     }
   };
 
-  const analyzeAndCommitCalendarBatch = async (batch: CalendarInsertBatch) => {
+  const analyzeAndCommitCalendarBatch = async (
+    batch: CalendarInsertBatch,
+    allowOverlaps = false
+  ) => {
+    if (!allowOverlaps) {
+      const scheduledSessions = [...studySessions];
+      const timeConflicts: CalendarTimeConflict[] = [];
+
+      batch.sessions.forEach((session, sessionIndex) => {
+        const startTime = String(session.start_time || "");
+        const durationMinutes = Math.max(15, Number(session.duration) || 60);
+        const start = new Date(startTime);
+        if (Number.isNaN(start.getTime())) return;
+        const end = new Date(start.getTime() + durationMinutes * 60_000);
+        const conflicts = scheduledSessions.filter((existing) => {
+          const existingStart = new Date(String(existing.start_time));
+          const existingEnd = getSessionEndTime(existing);
+          return existingStart < end && existingEnd > start;
+        });
+
+        if (conflicts.length > 0) {
+          const alternativeStart = findNextAvailableStart(
+            start.toISOString(),
+            durationMinutes,
+            scheduledSessions
+          );
+          timeConflicts.push({
+            sessionIndex,
+            title: String(session.title || "Study session"),
+            startTime: start.toISOString(),
+            endTime: end.toISOString(),
+            alternativeStart,
+            alternativeEnd: alternativeStart
+              ? new Date(
+                  new Date(alternativeStart).getTime() + durationMinutes * 60_000
+                ).toISOString()
+              : null,
+            conflictingSessions: conflicts.map((existing) => ({
+              title: String(existing.title || "Calendar event"),
+              startTime: String(existing.start_time),
+              endTime: getSessionEndTime(existing).toISOString(),
+            })),
+          });
+        }
+        scheduledSessions.push({ ...session, end_time: end.toISOString() });
+      });
+
+      if (timeConflicts.length > 0) {
+        setTimeConflictReview({ batch, conflicts: timeConflicts });
+        setIsSyncing(false);
+        setIsPlanning(false);
+        setIsPlanningDay(false);
+        setOcrLoading(false);
+        return;
+      }
+    }
+
     const items = [
       ...batch.sessions.map((session, index) => ({
         key: `session:${index}`,
@@ -559,6 +693,29 @@ export default function CalendarPage() {
     }
 
     await commitCalendarBatch(batch);
+  };
+
+  const resolveTimeConflicts = async (useAlternatives: boolean) => {
+    if (!timeConflictReview) return;
+    const conflictByIndex = new Map(
+      timeConflictReview.conflicts.map((conflict) => [conflict.sessionIndex, conflict])
+    );
+    const batch = {
+      ...timeConflictReview.batch,
+      sessions: timeConflictReview.batch.sessions.map((session, index) => {
+        const conflict = conflictByIndex.get(index);
+        if (!useAlternatives || !conflict?.alternativeStart || !conflict.alternativeEnd) {
+          return session;
+        }
+        return {
+          ...session,
+          start_time: conflict.alternativeStart,
+          end_time: conflict.alternativeEnd,
+        };
+      }),
+    };
+    setTimeConflictReview(null);
+    await analyzeAndCommitCalendarBatch(batch, !useAlternatives);
   };
 
   const handleManualCalendarSync = async (reviewDuplicates = false) => {
@@ -689,6 +846,16 @@ export default function CalendarPage() {
       document.removeEventListener("visibilitychange", syncWhenVisible);
     };
   }, [googleConnected]);
+
+  useEffect(() => {
+    const refreshCalendar = () => void loadAllData(true);
+    window.addEventListener("onpace-calendar-updated", refreshCalendar);
+    window.addEventListener("onpace-tasks-updated", refreshCalendar);
+    return () => {
+      window.removeEventListener("onpace-calendar-updated", refreshCalendar);
+      window.removeEventListener("onpace-tasks-updated", refreshCalendar);
+    };
+  }, [router, supabase]);
 
   const handleSaveSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -867,7 +1034,7 @@ export default function CalendarPage() {
   };
 
   // ── Plan My Day Interactive AI Handler ──────────────────────────────────
-  const handleOpenPlanMyDay = async () => {
+  const handleOpenPlanMyDay = useCallback(async () => {
     setPlanMyDayOpen(true);
     setIsPlanningDay(true);
     setDayPlanBlocks([]);
@@ -904,7 +1071,7 @@ export default function CalendarPage() {
     } finally {
       setIsPlanningDay(false);
     }
-  };
+  }, []);
 
   const handleConfirmDayPlan = async () => {
     if (dayPlanBlocks.length === 0) return;
@@ -990,6 +1157,27 @@ export default function CalendarPage() {
     const dayTasks = tasks.filter(t => t.due_date && new Date(t.due_date).toDateString() === dStr);
     const daySessions = studySessions.filter(s => s.start_time && new Date(s.start_time).toDateString() === dStr);
     return { tasks: dayTasks, sessions: daySessions };
+  };
+
+  useEffect(() => {
+    if (
+      searchParams.get("plan") !== "today" ||
+      loading ||
+      autoPlanHandled.current
+    ) {
+      return;
+    }
+    autoPlanHandled.current = true;
+    void handleOpenPlanMyDay();
+    window.history.replaceState(null, "", "/calendar");
+  }, [handleOpenPlanMyDay, loading, searchParams]);
+
+  const formatSessionRange = (start: string, end: string) => {
+    const formatter = new Intl.DateTimeFormat(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))}`;
   };
 
   return (
@@ -1555,6 +1743,72 @@ export default function CalendarPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {timeConflictReview && (
+        <div className="fixed inset-0 z-[76] bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-5 border border-gray-100 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Clock size={20} className="text-amber-500" />
+                  <h3 className="text-base font-bold text-surface-dark">
+                    {lang === "tr" ? "Bu saat takvimde dolu" : lang === "zh" ? "该时段已有日程" : lang === "es" ? "Este horario ya está ocupado" : "This time is already booked"}
+                  </h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                  {lang === "tr" ? "İstediğiniz etkinliği yine ekleyebilir veya önerilen boş saate taşıyabilirsiniz." : lang === "zh" ? "您可以继续按原时间添加，也可以使用建议的空闲时间。" : lang === "es" ? "Puedes mantener el horario solicitado o usar el siguiente horario libre sugerido." : "You can keep the requested time or use the suggested available time."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTimeConflictReview(null)}
+                className="text-gray-400 hover:text-gray-700"
+                aria-label="Close time conflict review"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+              {timeConflictReview.conflicts.map((conflict) => (
+                <div key={`${conflict.sessionIndex}-${conflict.startTime}`} className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 space-y-2">
+                  <p className="text-xs font-bold text-surface-dark">{conflict.title}</p>
+                  <p className="text-[11px] text-gray-600">
+                    {formatSessionRange(conflict.startTime, conflict.endTime)}
+                    {" · "}
+                    {conflict.conflictingSessions.map((session) => `${session.title} (${formatSessionRange(session.startTime, session.endTime)})`).join(", ")}
+                  </p>
+                  {conflict.alternativeStart && conflict.alternativeEnd && (
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      {lang === "tr" ? "Önerilen boş saat" : lang === "zh" ? "建议空闲时段" : lang === "es" ? "Horario libre sugerido" : "Suggested available time"}: {formatSessionRange(conflict.alternativeStart, conflict.alternativeEnd)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={!timeConflictReview.conflicts.every((conflict) => conflict.alternativeStart)}
+                onClick={() => void resolveTimeConflicts(true)}
+                className="rounded-xl bg-emerald-600 text-white py-3 text-xs font-bold shadow-sm hover:bg-emerald-700 disabled:opacity-45 flex items-center justify-center gap-2"
+              >
+                <Check size={15} />
+                {lang === "tr" ? "Evet, boş saati kullan" : lang === "zh" ? "是，使用空闲时段" : lang === "es" ? "Sí, usar horario libre" : "Yes, use free time"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void resolveTimeConflicts(false)}
+                className="rounded-xl bg-brand text-white py-3 text-xs font-bold shadow-sm hover:bg-brand-hover flex items-center justify-center gap-2"
+              >
+                <CalendarIcon size={15} />
+                {lang === "tr" ? "Hayır, yine de ekle" : lang === "zh" ? "否，仍按原时间添加" : lang === "es" ? "No, añadir de todos modos" : "No, add anyway"}
+              </button>
+            </div>
           </div>
         </div>
       )}

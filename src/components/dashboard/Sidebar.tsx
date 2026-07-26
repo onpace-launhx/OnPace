@@ -598,7 +598,7 @@ export function Sidebar() {
 
   if (loading) {
     return (
-      <aside className="hidden lg:flex w-64 flex-col border-r border-gray-200 bg-white p-6 justify-between shrink-0 h-screen sticky top-0">
+      <aside className="hidden h-full min-h-0 w-64 shrink-0 flex-col justify-between overflow-y-auto border-r border-gray-200 bg-white p-6 lg:flex">
         <div className="space-y-8 animate-pulse">
           <div className="h-6 w-32 bg-gray-200 rounded-lg"></div>
           <div className="space-y-3 pt-6">
@@ -630,7 +630,7 @@ export function Sidebar() {
         />
       )}
       <aside 
-        className={`${mobileOpen ? "flex" : "hidden"} lg:flex fixed lg:static inset-y-0 left-0 z-50 lg:z-auto flex-col border-r border-gray-200 bg-white p-5 justify-between shrink-0 h-screen transition-all duration-300 w-64 ${
+        className={`${mobileOpen ? "flex" : "hidden"} fixed inset-y-0 left-0 z-50 h-dvh min-h-0 w-64 shrink-0 flex-col justify-between overflow-y-auto overscroll-contain border-r border-gray-200 bg-white p-5 transition-all duration-300 lg:static lg:z-auto lg:flex lg:h-full ${
           isCollapsed ? "lg:w-20" : "lg:w-64"
         }`}
       >

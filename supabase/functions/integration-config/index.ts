@@ -66,8 +66,18 @@ Deno.serve(async (request) => {
     if (body.activeProvider === "gemini" || body.activeProvider === "openai") {
       updates.active_provider = body.activeProvider
     }
-    if (typeof body.emailFromAddress === "string" && body.emailFromAddress.trim()) {
-      updates.email_from_address = body.emailFromAddress.trim().toLowerCase()
+    if (typeof body.emailFromAddress === "string") {
+      const requestedAddress = body.emailFromAddress.trim().toLowerCase()
+      if (requestedAddress !== "no-reply@onpace-ai.xyz") {
+        return json(
+          {
+            error:
+              "Announcement sender must be no-reply@onpace-ai.xyz.",
+          },
+          400
+        )
+      }
+      updates.email_from_address = requestedAddress
     }
     if (typeof body.emailFromName === "string" && body.emailFromName.trim()) {
       updates.email_from_name = body.emailFromName.trim()

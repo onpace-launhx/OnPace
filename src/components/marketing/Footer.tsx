@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import Image from "next/image";
 import { getTranslations } from "@/lib/translations";
 
 export function Footer() {
@@ -28,9 +28,7 @@ export function Footer() {
         <div className="xl:grid xl:grid-cols-3 xl:gap-8">
           <div className="space-y-8">
             <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand">
-                <CheckCircle2 className="h-5 w-5 text-white" />
-              </div>
+              <Image src="/logo.png" alt="OnPace" width={32} height={32} className="rounded-lg object-contain" />
               <span className="text-xl font-bold tracking-tight text-surface-dark">OnPace</span>
             </Link>
             <p className="text-sm leading-6 text-gray-600 max-w-xs">

@@ -5,6 +5,13 @@ import { createClient } from "@/lib/supabase/client";
 import { Bell, Check, CheckCheck, Trash2, X, Info, Megaphone, AlertCircle } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 
+const notificationCopy = {
+  en: { label: "Notifications", unread: "new", clearAll: "Clear all", delete: "Delete notification" },
+  tr: { label: "Bildirimler", unread: "yeni", clearAll: "Tümünü sil", delete: "Bildirimi sil" },
+  es: { label: "Notificaciones", unread: "nuevas", clearAll: "Borrar todas", delete: "Eliminar notificación" },
+  zh: { label: "通知", unread: "条新通知", clearAll: "清除全部", delete: "删除通知" },
+} as const;
+
 export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
   const supabase = createClient();
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -14,6 +21,7 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
 
   const lang = userLanguage || "en";
   const t = getTranslations(lang);
+  const ui = notificationCopy[["en", "tr", "es", "zh"].includes(lang) ? lang as keyof typeof notificationCopy : "en"];
 
   const fetchNotifications = async () => {
     try {
@@ -104,7 +112,7 @@ export function NotificationBell({ userLanguage }: { userLanguage?: string }) {
           if (!isOpen) fetchNotifications();
         }}
         className="relative p-2 rounded-xl text-gray-500 hover:text-surface-dark hover:bg-gray-100/70 transition-all cursor-pointer active:scale-95 flex items-center justify-center"
-        aria-label="Notifications"
+        aria-label={ui.label}
       >
         <Bell size={18} />
         {unreadCount > 0 && (

@@ -64,6 +64,25 @@ type MaintenanceContent = Record<MaintenanceLanguage, {
   back_soon: string;
 }>;
 
+const ADMIN_UI_COPY = {
+  en: {
+    back: "Back to Dashboard", title: "Administrator Panel", subtitle: "Manage user profiles, promotional discount campaigns, and system parameters.",
+    superConsole: "Super Admin Console", subConsole: "Sub-Admin Console", totalStudents: "Total Registered Students", proMembers: "Active Pro Members", proRatio: "Pro Ratio", totalAdmins: "Total Administrators",
+  },
+  tr: {
+    back: "Panele dön", title: "Yönetici Paneli", subtitle: "Kullanıcı profillerini, promosyon kampanyalarını ve sistem ayarlarını yönetin.",
+    superConsole: "Süper Yönetici Konsolu", subConsole: "Alt Yönetici Konsolu", totalStudents: "Toplam kayıtlı öğrenci", proMembers: "Aktif Pro üyeler", proRatio: "Pro oranı", totalAdmins: "Toplam yönetici",
+  },
+  es: {
+    back: "Volver al panel", title: "Panel de administración", subtitle: "Gestiona perfiles de usuario, campañas promocionales y parámetros del sistema.",
+    superConsole: "Consola de superadministrador", subConsole: "Consola de subadministrador", totalStudents: "Total de estudiantes registrados", proMembers: "Miembros Pro activos", proRatio: "Proporción Pro", totalAdmins: "Total de administradores",
+  },
+  zh: {
+    back: "返回工作台", title: "管理面板", subtitle: "管理用户资料、优惠活动和系统参数。",
+    superConsole: "超级管理员控制台", subConsole: "子管理员控制台", totalStudents: "注册学生总数", proMembers: "活跃 Pro 会员", proRatio: "Pro 占比", totalAdmins: "管理员总数",
+  },
+} as const;
+
 const DEFAULT_MAINTENANCE_CONTENT: MaintenanceContent = {
   en: {
     badge: "Scheduled upgrade in progress",
@@ -240,7 +259,7 @@ export default function AdminPage() {
   const [legalEditorDocument, setLegalEditorDocument] = useState<LegalDocumentType>("privacy");
   const [resendApiKey, setResendApiKey] = useState("");
   const [hasResend, setHasResend] = useState(false);
-  const [emailFromAddress, setEmailFromAddress] = useState("noreply@onpace.app");
+  const [emailFromAddress] = useState("no-reply@onpace-ai.xyz");
   const [emailFromName, setEmailFromName] = useState("OnPace");
   const [savingSystemSettings, setSavingSystemSettings] = useState(false);
   const [saveSystemSettingsSuccess, setSaveSystemSettingsSuccess] = useState(false);
@@ -433,9 +452,6 @@ export default function AdminPage() {
       setHasOpenai(integrationData.has_openai || false);
       setHasResend(integrationData.has_resend || false);
       setActiveProvider(integrationData.active_provider || "gemini");
-      setEmailFromAddress(
-        integrationData.email_from_address || "noreply@onpace.app"
-      );
       setEmailFromName(integrationData.email_from_name || "OnPace");
       setHasR2AccessKey(integrationData.has_r2_access_key || false);
       setHasR2SecretKey(integrationData.has_r2_secret_key || false);
@@ -1008,6 +1024,10 @@ export default function AdminPage() {
 
   // Permission shortcut checks
   const isSuperAdmin = currentUserProfile?.role === "super_admin";
+  const adminLocale = ["en", "tr", "es", "zh"].includes(currentUserProfile?.language)
+    ? currentUserProfile.language as keyof typeof ADMIN_UI_COPY
+    : "en";
+  const adminText = ADMIN_UI_COPY[adminLocale];
   const perms = currentUserProfile?.permissions || [];
   const canManageUsers = isSuperAdmin || perms.includes("manage_users");
   const canManagePromocodes = isSuperAdmin || perms.includes("manage_promocodes");
@@ -1280,7 +1300,7 @@ export default function AdminPage() {
             You are registered as a **Sub-Admin**. However, the Super Admin has not assigned any specific panel permissions to your profile yet.
           </p>
           <Link href="/dashboard" className="inline-block px-5 py-2.5 bg-brand text-white font-bold rounded-xl text-xs hover:bg-brand-hover transition-all active:scale-95 shadow-sm">
-            Return to Dashboard
+            {adminText.back}
           </Link>
         </div>
       </main>
@@ -1296,18 +1316,18 @@ export default function AdminPage() {
           <div>
             <div className="flex items-center gap-2 text-brand mb-2">
               <Link href="/dashboard" className="flex items-center gap-1.5 text-xs font-bold hover:underline">
-                <ArrowLeft size={14} /> Back to Dashboard
+                <ArrowLeft size={14} /> {adminText.back}
               </Link>
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight text-surface-dark flex items-center gap-2">
-              <UserCog className="text-brand" size={24} /> Administrator Panel
+              <UserCog className="text-brand" size={24} /> {adminText.title}
             </h1>
-            <p className="text-xs text-gray-500 mt-1">Manage user profiles, promotional discount campaigns, and system parameters.</p>
+            <p className="text-xs text-gray-500 mt-1">{adminText.subtitle}</p>
           </div>
           
           <div className="flex items-center gap-2">
             <div className="bg-brand/10 text-brand px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-brand/20">
-              <Shield size={14} /> {isSuperAdmin ? "Super Admin Console" : "Sub-Admin Console"}
+              <Shield size={14} /> {isSuperAdmin ? adminText.superConsole : adminText.subConsole}
             </div>
           </div>
         </div>
@@ -1388,19 +1408,19 @@ export default function AdminPage() {
         {activeTab === "users" && canManageUsers && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-white border border-gray-150 p-5 rounded-2xl shadow-sm">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Registered Students</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{adminText.totalStudents}</h3>
               <p className="text-2xl font-bold text-surface-dark mt-2">{totalUsers}</p>
             </div>
             <div className="bg-white border border-gray-150 p-5 rounded-2xl shadow-sm">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Active Pro Members</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{adminText.proMembers}</h3>
               <p className="text-2xl font-bold text-brand mt-2">{proUsers}</p>
             </div>
             <div className="bg-white border border-gray-150 p-5 rounded-2xl shadow-sm">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pro Ratio</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{adminText.proRatio}</h3>
               <p className="text-2xl font-bold text-green-600 mt-2">{premiumRatio}%</p>
             </div>
             <div className="bg-white border border-gray-150 p-5 rounded-2xl shadow-sm">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Administrators</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{adminText.totalAdmins}</h3>
               <p className="text-2xl font-bold text-surface-dark mt-2">{adminUsers}</p>
             </div>
           </div>
@@ -1962,9 +1982,16 @@ export default function AdminPage() {
                     <input
                       type="email"
                       value={emailFromAddress}
-                      onChange={(e) => setEmailFromAddress(e.target.value)}
-                      placeholder="noreply@onpace.app"
-                      className="px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none"
+                      readOnly
+                      aria-label="Announcement sender address"
+                      className="px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-gray-50 text-surface-dark outline-none"
+                    />
+                    <input
+                      type="email"
+                      value="security@onpace-ai.xyz"
+                      readOnly
+                      aria-label="Security sender address"
+                      className="px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-gray-50 text-surface-dark outline-none"
                     />
                     <input
                       type="text"
@@ -1975,7 +2002,10 @@ export default function AdminPage() {
                     />
                   </div>
                   <p className="text-[10px] text-gray-400">
-                    The API key is written to Supabase Vault through an authenticated Edge Function and is never returned to the browser.
+                    Announcements are sent from no-reply@onpace-ai.xyz. Account
+                    and security messages are sent from security@onpace-ai.xyz.
+                    The API key is stored in Supabase Vault and is never returned
+                    to the browser.
                   </p>
                 </div>
 

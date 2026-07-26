@@ -10,8 +10,20 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "OnPace | Smart Study Productivity",
-  description: "A premium productivity platform for students.",
+  title: {
+    default: "OnPace | AI Study Planner for Students",
+    template: "%s | OnPace",
+  },
+  description:
+    "OnPace is an AI-powered study planning application for students with task, exam, notes, focus, personalized learning, and optional Google Calendar synchronization tools.",
+  applicationName: "OnPace",
+  creator: "OnPace",
+  publisher: "OnPace",
+  category: "Education",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

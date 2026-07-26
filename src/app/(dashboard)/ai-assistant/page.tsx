@@ -18,11 +18,12 @@ import {
   X
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
+import { PersonalizedLearningStudio } from "@/components/dashboard/PersonalizedLearningStudio";
 
 export default function AiAssistantPage() {
   const router = useRouter();
   const supabase = createClient();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
@@ -44,6 +45,12 @@ export default function AiAssistantPage() {
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [chatSessions, setChatSessions] = useState<any[]>([]);
   const [showChatHistory, setShowChatHistory] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<"chat" | "personalized">("chat");
+
+  useEffect(() => {
+    const requestedMode = new URLSearchParams(window.location.search).get("mode");
+    if (requestedMode === "personalized") setWorkspaceMode("personalized");
+  }, []);
 
   useEffect(() => {
     async function loadProfileAndChat() {
@@ -195,10 +202,20 @@ export default function AiAssistantPage() {
     }
   }, [loading, t, messages.length]);
 
-  // Scroll to bottom of chat
+  // Keep scrolling scoped to the message panel. scrollIntoView here would also
+  // move the dashboard's parent scroller and hide the page header.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const panel = chatScrollRef.current;
+    if (panel) panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  const switchWorkspaceMode = (mode: "chat" | "personalized") => {
+    setWorkspaceMode(mode);
+    const url = new URL(window.location.href);
+    if (mode === "personalized") url.searchParams.set("mode", "personalized");
+    else url.searchParams.delete("mode");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+  };
 
   const now = new Date();
   const trialEnds = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
@@ -300,7 +317,7 @@ export default function AiAssistantPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-surface-secondary">
+      <div className="flex h-full min-h-[60vh] w-full items-center justify-center bg-surface-secondary">
         <div className="flex flex-col items-center gap-2">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent"></div>
           <p className="text-sm font-medium text-gray-500">{t.common.loading}</p>
@@ -331,6 +348,13 @@ export default function AiAssistantPage() {
         "Create 3 practice questions for SAT math"
       ];
 
+  const workspaceLabels = {
+    title: lang === "tr" ? "AI Öğrenme Alanı" : lang === "zh" ? "AI 学习空间" : lang === "es" ? "Espacio de aprendizaje con IA" : "AI Learning Studio",
+    subtitle: lang === "tr" ? "Serbestçe sohbet et veya materyallerini kendi öğrenme araçlarınla çalış." : lang === "zh" ? "自由对话，或使用你的个性化学习工具处理学习材料。" : lang === "es" ? "Conversa libremente o trabaja tus materiales con tus herramientas personalizadas." : "Chat freely or study your materials with personalized learning tools.",
+    chat: lang === "tr" ? "AI Sohbet" : lang === "zh" ? "AI 对话" : lang === "es" ? "Chat con IA" : "AI Chat",
+    personalized: lang === "tr" ? "Kişiselleştirilmiş Çalışma" : lang === "zh" ? "个性化学习" : lang === "es" ? "Estudio personalizado" : "Personalized Study",
+  };
+
   const chatLabels = {
     newChat: lang === "tr" ? "Yeni sohbet" : lang === "zh" ? "新对话" : lang === "es" ? "Nuevo chat" : "New chat",
     history: lang === "tr" ? "Sohbet geçmişi" : lang === "zh" ? "对话历史" : lang === "es" ? "Historial de chats" : "Chat history",
@@ -340,19 +364,19 @@ export default function AiAssistantPage() {
   };
 
   return (
-    <main className="flex-1 p-4 sm:p-6 lg:p-10 flex flex-col h-[calc(100vh-2rem)] overflow-hidden max-w-5xl mx-auto w-full">
+    <main className="mx-auto flex h-[calc(100%_-_4rem)] min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden p-4 sm:p-6 lg:h-full lg:p-8">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-surface-dark flex items-center gap-2">
-            <BrainCircuit className="text-brand" /> {t.ai.title}
+            <BrainCircuit className="text-brand" /> {workspaceLabels.title}
           </h1>
-          <p className="text-xs text-gray-500 mt-0.5">{t.ai.subtitle}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{workspaceLabels.subtitle}</p>
         </div>
 
         {/* Course Context Selector */}
-        <div className="flex items-center gap-2">
+        {workspaceMode === "chat" && <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-gray-400">{t.ai.context}:</span>
           <select
             value={selectedCourse}
@@ -366,9 +390,31 @@ export default function AiAssistantPage() {
               </option>
             ))}
           </select>
-        </div>
+        </div>}
       </div>
 
+      <div className="mt-4 flex shrink-0 items-center gap-1 rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => switchWorkspaceMode("chat")}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+            workspaceMode === "chat" ? "bg-brand text-white shadow-sm" : "text-gray-500 hover:bg-gray-50 hover:text-brand"
+          }`}
+        >
+          <MessageSquare size={15} /> {workspaceLabels.chat}
+        </button>
+        <button
+          type="button"
+          onClick={() => switchWorkspaceMode("personalized")}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+            workspaceMode === "personalized" ? "bg-brand text-white shadow-sm" : "text-gray-500 hover:bg-gray-50 hover:text-brand"
+          }`}
+        >
+          <Sparkles size={15} /> {workspaceLabels.personalized}
+        </button>
+      </div>
+
+      {workspaceMode === "chat" ? <>
       <div className="mt-4 flex items-center gap-2 shrink-0">
         <button
           type="button"
@@ -388,7 +434,7 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Chat Messages Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto border border-gray-150 rounded-3xl bg-white p-4 sm:p-6 my-4 space-y-4 shadow-sm">
+      <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain border border-gray-150 rounded-3xl bg-white p-4 sm:p-6 my-4 space-y-4 shadow-sm">
         {messages.map((msg) => {
           const isAi = msg.sender === "ai";
           return (
@@ -438,7 +484,7 @@ export default function AiAssistantPage() {
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
+        <div />
       </div>
 
       {/* Input Message Form */}
@@ -458,6 +504,11 @@ export default function AiAssistantPage() {
           <Send size={16} />
         </button>
       </form>
+      </> : (
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4 pr-1">
+          <PersonalizedLearningStudio embedded />
+        </div>
+      )}
 
       {showChatHistory && (
         <div className="fixed inset-0 z-50 flex justify-end">

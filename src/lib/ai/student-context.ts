@@ -9,7 +9,7 @@ export async function getStudentLearningContext(supabase: SupabaseClient, userId
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
 
   const [profileResult, coursesResult, tasksResult, notesResult, sessionsResult, focusResult, examsResult] = await Promise.all([
-    supabase.from("profiles").select("full_name, language, learning_styles, daily_study_goal_minutes").eq("id", userId).maybeSingle(),
+    supabase.from("profiles").select("full_name, language, learning_styles, customization_settings, daily_study_goal_minutes").eq("id", userId).maybeSingle(),
     supabase.from("courses").select("name").eq("user_id", userId).limit(20),
     supabase.from("tasks").select("title, priority, due_date, estimated_minutes").eq("user_id", userId).neq("status", "completed").order("due_date", { ascending: true, nullsFirst: false }).limit(20),
     supabase.from("notes").select("title, updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(10),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
@@ -15,6 +15,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const supabase = createClient();
+  const contentScrollRef = useRef<HTMLDivElement>(null);
 
   // Maintenance & Auth state
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
@@ -35,6 +36,10 @@ export default function DashboardLayout({
   const isFullscreenPage = pathname === "/onboarding";
 
   useEffect(() => {
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [pathname]);
+
+  useEffect(() => {
     async function checkMaintenanceAndUser() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -49,6 +54,17 @@ export default function DashboardLayout({
             setUserLang(prof.language || "en");
             setIsAdminUser(["admin", "super_admin"].includes(prof.role));
             setHasMaintenanceAccess(prof.maintenance_access === true);
+            const now = new Date();
+            const localDate = [
+              now.getFullYear(),
+              String(now.getMonth() + 1).padStart(2, "0"),
+              String(now.getDate()).padStart(2, "0"),
+            ].join("-");
+            void fetch("/api/daily-briefing", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ date: localDate }),
+            });
           }
         }
 
@@ -200,7 +216,7 @@ export default function DashboardLayout({
       {/* Main content row */}
       <div className="flex flex-1 overflow-hidden relative">
         <Sidebar />
-        <div className="flex-1 h-full overflow-y-auto relative">
+        <div ref={contentScrollRef} className="relative h-full min-w-0 flex-1 overflow-y-auto overscroll-contain">
           {/* Global Topbar Notification Bell */}
           <div className="absolute top-4 right-6 z-30 pointer-events-auto">
             <NotificationBell userLanguage={userLang} />

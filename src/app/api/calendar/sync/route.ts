@@ -30,6 +30,7 @@ type CalendarSession = {
   title: string;
   description?: string | null;
   start_time: string;
+  end_time?: string | null;
   duration?: number | null;
   google_event_id?: string | null;
   sync_origin?: "onpace" | "google";
@@ -43,6 +44,7 @@ function googleEventTimes(event: GoogleEvent) {
     const end = new Date(event.end?.dateTime || start.getTime() + 60 * 60_000);
     return {
       startTime: start.toISOString(),
+      endTime: end.toISOString(),
       duration: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60_000)),
     };
   }
@@ -50,6 +52,7 @@ function googleEventTimes(event: GoogleEvent) {
   if (event.start?.date) {
     return {
       startTime: new Date(`${event.start.date}T09:00:00Z`).toISOString(),
+      endTime: new Date(`${event.start.date}T10:00:00Z`).toISOString(),
       duration: 60,
     };
   }
@@ -59,7 +62,9 @@ function googleEventTimes(event: GoogleEvent) {
 
 function localEventBody(session: CalendarSession) {
   const start = new Date(session.start_time);
-  const end = new Date(start.getTime() + Math.max(15, Number(session.duration) || 60) * 60_000);
+  const end = session.end_time
+    ? new Date(session.end_time)
+    : new Date(start.getTime() + Math.max(15, Number(session.duration) || 60) * 60_000);
   return {
     summary: session.title,
     description: session.description || "OnPace study session",
@@ -240,6 +245,7 @@ export async function POST() {
           .update({
             title: event.summary || "Google Calendar event",
             start_time: times.startTime,
+            end_time: times.endTime,
             duration: times.duration,
             google_event_id: event.id,
             google_calendar_id: "primary",
@@ -256,6 +262,7 @@ export async function POST() {
           user_id: user.id,
           title: event.summary || "Google Calendar event",
           start_time: times.startTime,
+          end_time: times.endTime,
           duration: times.duration,
           google_event_id: event.id,
           google_calendar_id: "primary",

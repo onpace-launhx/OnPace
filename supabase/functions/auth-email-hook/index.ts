@@ -1,6 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { Webhook } from "npm:standardwebhooks@1"
-import { emailShell, localizedAuthCopy } from "../_shared/email.ts"
+import {
+  emailShell,
+  localizedAuthCopy,
+  localizedSecurityCopy,
+} from "../_shared/email.ts"
 import { json, readProviderError } from "../_shared/http.ts"
 
 function hookError(message: string, httpCode = 500) {
@@ -12,23 +16,30 @@ function hookError(message: string, httpCode = 500) {
 interface HookPayload {
   user: {
     email: string
+    phone?: string
     new_email?: string
     user_metadata?: { language?: string; locale?: string }
   }
   email_data: {
-    token: string
-    token_hash: string
-    redirect_to: string
+    token?: string
+    token_hash?: string
+    redirect_to?: string
     email_action_type: string
     token_new?: string
     token_hash_new?: string
+    old_email?: string
+    old_phone?: string
+    provider?: string
+    factor_type?: string
   }
 }
 
 async function getEmailConfig() {
   let apiKey = Deno.env.get("RESEND_API_KEY") || ""
-  let fromAddress = Deno.env.get("EMAIL_FROM_ADDRESS") || "noreply@onpace.app"
-  let fromName = Deno.env.get("EMAIL_FROM_NAME") || "OnPace"
+  const fromAddress =
+    Deno.env.get("SECURITY_EMAIL_FROM_ADDRESS") || "security@onpace-ai.xyz"
+  const fromName =
+    Deno.env.get("SECURITY_EMAIL_FROM_NAME") || "OnPace Security"
 
   if (!apiKey) {
     const url = Deno.env.get("SUPABASE_URL")
@@ -40,8 +51,6 @@ async function getEmailConfig() {
       const { data } = await admin.rpc("get_edge_integration_config")
       const config = Array.isArray(data) ? data[0] : data
       apiKey = config?.resend_api_key || ""
-      fromAddress = config?.email_from_address || fromAddress
-      fromName = config?.email_from_name || fromName
     }
   }
 
@@ -77,14 +86,26 @@ Deno.serve(async (request) => {
       payload.user.user_metadata?.language ||
       payload.user.user_metadata?.locale ||
       "en"
-    const copy = localizedAuthCopy(action, language)
     const emailData = payload.email_data
-    const targets: Array<{ to: string; token: string; tokenHash: string }> = []
+    const isSecurityNotification = action.endsWith("_notification")
+    const copy = isSecurityNotification
+      ? localizedSecurityCopy(action, language, {
+          oldEmail: emailData.old_email,
+          email: payload.user.email,
+          oldPhone: emailData.old_phone,
+          phone: payload.user.phone,
+          provider: emailData.provider,
+          factorType: emailData.factor_type,
+        })
+      : localizedAuthCopy(action, language)
+    const targets: Array<{ to: string; token?: string; tokenHash?: string }> = []
 
     // Supabase intentionally reverses the *_new hash naming for secure email
     // change. The current address uses token_hash_new; the new address uses
     // token_hash. Both confirmations are required when secure change is enabled.
-    if (
+    if (isSecurityNotification) {
+      targets.push({ to: payload.user.email })
+    } else if (
       action === "email_change" &&
       payload.user.new_email &&
       emailData.token_hash_new
@@ -113,10 +134,11 @@ Deno.serve(async (request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
     const responses = await Promise.all(
       targets.map((target) => {
-        const verifyUrl =
-          `${supabaseUrl}/auth/v1/verify?token=${encodeURIComponent(target.tokenHash)}` +
-          `&type=${encodeURIComponent(action)}` +
-          `&redirect_to=${encodeURIComponent(emailData.redirect_to)}`
+        const verifyUrl = target.tokenHash
+          ? `${supabaseUrl}/auth/v1/verify?token=${encodeURIComponent(target.tokenHash)}` +
+            `&type=${encodeURIComponent(action)}` +
+            `&redirect_to=${encodeURIComponent(emailData.redirect_to || "")}`
+          : undefined
 
         return fetch("https://api.resend.com/emails", {
           method: "POST",
@@ -131,14 +153,18 @@ Deno.serve(async (request) => {
             html: emailShell({
               heading: copy.heading,
               message: copy.message,
-              buttonLabel: copy.button,
+              buttonLabel: "button" in copy ? copy.button : undefined,
               buttonUrl: verifyUrl,
               token: target.token,
               preheader: copy.message,
-              codeLabel: copy.codeLabel,
+              codeLabel: "codeLabel" in copy ? copy.codeLabel : undefined,
               tagline: copy.tagline,
               footer: copy.footer,
             }),
+            tags: [
+              { name: "source", value: "onpace_security" },
+              { name: "auth_action", value: action },
+            ],
           }),
         })
       })

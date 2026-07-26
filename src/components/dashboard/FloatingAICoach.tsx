@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Sparkles, X, Send, Loader2, MessageSquare } from "lucide-react";
+import { Sparkles, X, Send, Loader2, MessageSquare, CalendarPlus, Check, Clock } from "lucide-react";
 
 interface CoachMessage {
   sender: "user" | "coach";
@@ -12,6 +12,20 @@ interface CoachMessage {
 
 interface CoachProfile {
   language?: string;
+}
+
+interface PendingAction {
+  type: "calendar" | "task";
+  title: string;
+  priority?: "low" | "medium" | "high";
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  conflict?: {
+    events: Array<{ title: string; startTime: string; endTime: string }>;
+    alternativeStart: string | null;
+    alternativeEnd: string | null;
+  } | null;
 }
 
 export function FloatingAICoach() {
@@ -28,6 +42,8 @@ export function FloatingAICoach() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [guestLanguage, setGuestLanguage] = useState("en");
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [savingAction, setSavingAction] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const lang = profile?.language || guestLanguage;
@@ -253,6 +269,7 @@ export function FloatingAICoach() {
 
     const userText = input.trim();
     setInput("");
+    setPendingAction(null);
 
     const newMessages: CoachMessage[] = [
       ...messages,
@@ -275,7 +292,19 @@ export function FloatingAICoach() {
         ]);
       }
 
-      const response = await fetch("/api/chat", {
+      const actionKeywords = /\b(calendar|schedule|add|create|task|takvim|planla|ekle|oluştur|görev)\b/i.test(userText);
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const dateParts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
+      const datePart = (type: Intl.DateTimeFormatPartTypes) =>
+        dateParts.find((part) => part.type === type)?.value || "";
+      const today = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
+
+      const chatRequest = fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -286,6 +315,19 @@ export function FloatingAICoach() {
           })),
         }),
       });
+      const proposalRequest = actionKeywords
+        ? fetch("/api/assistant/propose", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: userText, today, timeZone, language: lang }),
+          })
+            .then((response) => response.json().catch(() => null))
+            .catch(() => null)
+        : Promise.resolve(null);
+      const [response, proposalResult] = await Promise.all([
+        chatRequest,
+        proposalRequest,
+      ]);
 
       const data = await response.json();
       if (!response.ok) {
@@ -297,6 +339,14 @@ export function FloatingAICoach() {
       }
 
       setMessages((prev) => [...prev, { sender: "coach", text: reply }]);
+      if (proposalResult?.proposal) {
+        setPendingAction(proposalResult.proposal as PendingAction);
+      } else if (typeof proposalResult?.followUp === "string") {
+        setMessages((prev) => [
+          ...prev,
+          { sender: "coach", text: proposalResult.followUp },
+        ]);
+      }
 
       // Save assistant reply to persistent DB session
       if (activeSessionId) {
@@ -319,6 +369,77 @@ export function FloatingAICoach() {
       ]);
     }
     setLoading(false);
+  };
+
+  const formatTimeRange = (start?: string, end?: string) => {
+    if (!start || !end) return "";
+    const formatter = new Intl.DateTimeFormat(
+      lang === "tr" ? "tr-TR" : lang === "es" ? "es-ES" : lang === "zh" ? "zh-CN" : "en-US",
+      { hour: "2-digit", minute: "2-digit" }
+    );
+    return `${formatter.format(new Date(start))}–${formatter.format(new Date(end))}`;
+  };
+
+  const confirmPendingAction = async (choice: "original" | "alternative") => {
+    if (!pendingAction || savingAction) return;
+    setSavingAction(true);
+    try {
+      const response = await fetch("/api/assistant/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposal: pendingAction, choice }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "The action could not be saved.");
+      }
+
+      let syncWarning = false;
+      if (result.type === "calendar") {
+        window.dispatchEvent(new CustomEvent("onpace-calendar-updated"));
+        if (result.shouldSync) {
+          const syncResponse = await fetch("/api/calendar/sync", { method: "POST" });
+          if (!syncResponse.ok) {
+            syncWarning = true;
+          }
+        }
+      } else {
+        window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "coach",
+          text:
+            result.type === "calendar"
+              ? lang === "tr"
+                ? syncWarning
+                  ? "Takvim etkinliği kaydedildi; Google Takvim senkronizasyonu daha sonra yeniden denenecek."
+                  : "Takvim etkinliği kaydedildi ve görünüm güncellendi."
+                : syncWarning
+                  ? "The calendar event was saved; Google Calendar sync will be retried later."
+                  : "The calendar event was saved and your schedule has been updated."
+              : lang === "tr"
+                ? "Yeni görev kaydedildi."
+                : "Your new task was saved.",
+        },
+      ]);
+      setPendingAction(null);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "coach",
+          text:
+            error instanceof Error
+              ? error.message
+              : "The action could not be completed.",
+        },
+      ]);
+    } finally {
+      setSavingAction(false);
+    }
   };
 
   if (!sessionChecked || (!isAuthenticated && pathname !== "/")) {
@@ -422,6 +543,80 @@ export function FloatingAICoach() {
                 <div className="bg-white border border-gray-150 px-3.5 py-2.5 rounded-2xl rounded-bl-none text-xs text-gray-400 flex items-center gap-2 shadow-xs">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
                   <span>{copy.thinking}</span>
+                </div>
+              </div>
+            )}
+            {pendingAction && (
+              <div className="rounded-2xl border border-brand/20 bg-brand/5 p-3.5 space-y-3 shadow-sm">
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-0.5 rounded-xl bg-brand/10 p-2 text-brand">
+                    {pendingAction.type === "calendar" ? <CalendarPlus size={15} /> : <Check size={15} />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-surface-dark truncate">{pendingAction.title}</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
+                      {pendingAction.type === "calendar"
+                        ? formatTimeRange(pendingAction.startTime, pendingAction.endTime)
+                        : lang === "tr"
+                          ? "Yeni görev olarak eklenecek"
+                          : "Will be added as a new task"}
+                    </p>
+                  </div>
+                </div>
+
+                {pendingAction.type === "calendar" && pendingAction.conflict && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <Clock size={13} />
+                      {lang === "tr" ? "Bu saat dolu" : "This time is booked"}
+                    </div>
+                    <p>
+                      {pendingAction.conflict.events
+                        .map((event) => `${event.title} (${formatTimeRange(event.startTime, event.endTime)})`)
+                        .join(", ")}
+                    </p>
+                    {pendingAction.conflict.alternativeStart && pendingAction.conflict.alternativeEnd && (
+                      <p className="font-semibold text-emerald-700">
+                        {lang === "tr" ? "Önerilen boş saat" : "Suggested free time"}: {formatTimeRange(pendingAction.conflict.alternativeStart, pendingAction.conflict.alternativeEnd)}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  {pendingAction.type === "calendar" && pendingAction.conflict?.alternativeStart ? (
+                    <button
+                      type="button"
+                      onClick={() => void confirmPendingAction("alternative")}
+                      disabled={savingAction}
+                      className="rounded-xl bg-emerald-600 px-2 py-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {lang === "tr" ? "Evet, boş saati kullan" : "Yes, use free time"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void confirmPendingAction("original")}
+                      disabled={savingAction}
+                      className="rounded-xl bg-emerald-600 px-2 py-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {lang === "tr" ? "Evet, ekle" : "Yes, add it"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      pendingAction.type === "calendar" && pendingAction.conflict
+                        ? void confirmPendingAction("original")
+                        : setPendingAction(null)
+                    }
+                    disabled={savingAction}
+                    className="rounded-xl bg-brand px-2 py-2.5 text-[11px] font-bold text-white hover:bg-brand-hover disabled:opacity-50"
+                  >
+                    {pendingAction.type === "calendar" && pendingAction.conflict
+                      ? lang === "tr" ? "Hayır, yine de ekle" : "No, add anyway"
+                      : lang === "tr" ? "Hayır, vazgeç" : "No, cancel"}
+                  </button>
                 </div>
               </div>
             )}

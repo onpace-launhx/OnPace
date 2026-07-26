@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   LogOut,
   CheckSquare,
+  CalendarDays,
   Timer,
   Sparkles,
   Trophy,
@@ -56,6 +57,8 @@ export default function DashboardPage() {
   // Tasks loaded from Supabase
   const [tasks, setTasks] = useState<any[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
+  const [todaySessions, setTodaySessions] = useState<any[]>([]);
+  const [upcomingExam, setUpcomingExam] = useState<any | null>(null);
 
   const [showTrialEndedModal, setShowTrialEndedModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
@@ -165,6 +168,7 @@ export default function DashboardPage() {
     }));
     setTasks((previous) => [...previous, ...newTasks]);
     setScheduleDraft([]);
+    window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
   };
 
   const updateScheduleDraftTitle = (index: number, title: string) => {
@@ -329,6 +333,30 @@ export default function DashboardPage() {
         })));
       }
 
+      const startOfLocalToday = new Date();
+      startOfLocalToday.setHours(0, 0, 0, 0);
+      const startOfTomorrow = new Date(startOfLocalToday);
+      startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+      const [todaySessionsResult, upcomingExamResult] = await Promise.all([
+        supabase
+          .from("study_sessions")
+          .select("id, title, start_time, end_time, duration, courses(name, color)")
+          .eq("user_id", user.id)
+          .gte("start_time", startOfLocalToday.toISOString())
+          .lt("start_time", startOfTomorrow.toISOString())
+          .order("start_time", { ascending: true }),
+        supabase
+          .from("exam_roadmaps")
+          .select("id, title, exam_date, color")
+          .eq("user_id", user.id)
+          .gte("exam_date", startOfLocalToday.toISOString().slice(0, 10))
+          .order("exam_date", { ascending: true })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      if (todaySessionsResult.data) setTodaySessions(todaySessionsResult.data);
+      if (upcomingExamResult.data) setUpcomingExam(upcomingExamResult.data);
+
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
       const { data: focusData } = await supabase
@@ -362,6 +390,45 @@ export default function DashboardPage() {
     }
     getUserData();
   }, [router, supabase]);
+
+  useEffect(() => {
+    const refreshTodayCenter = async () => {
+      const { data: { user: activeUser } } = await supabase.auth.getUser();
+      if (!activeUser) return;
+
+      const startOfLocalToday = new Date();
+      startOfLocalToday.setHours(0, 0, 0, 0);
+      const startOfTomorrow = new Date(startOfLocalToday);
+      startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+      const [tasksResult, sessionsResult] = await Promise.all([
+        supabase.from("tasks").select("*").eq("user_id", activeUser.id).order("created_at", { ascending: false }),
+        supabase
+          .from("study_sessions")
+          .select("id, title, start_time, end_time, duration, courses(name, color)")
+          .eq("user_id", activeUser.id)
+          .gte("start_time", startOfLocalToday.toISOString())
+          .lt("start_time", startOfTomorrow.toISOString())
+          .order("start_time", { ascending: true }),
+      ]);
+      if (tasksResult.data) {
+        setTasks(tasksResult.data.map((task: any) => ({
+          id: task.id,
+          text: task.title,
+          done: task.status === "completed",
+          priority: task.priority,
+          dueDate: task.due_date,
+        })));
+      }
+      if (sessionsResult.data) setTodaySessions(sessionsResult.data);
+    };
+
+    window.addEventListener("onpace-calendar-updated", refreshTodayCenter);
+    window.addEventListener("onpace-tasks-updated", refreshTodayCenter);
+    return () => {
+      window.removeEventListener("onpace-calendar-updated", refreshTodayCenter);
+      window.removeEventListener("onpace-tasks-updated", refreshTodayCenter);
+    };
+  }, [supabase]);
 
   // Pomodoro Countdown Logic
   useEffect(() => {
@@ -449,6 +516,7 @@ export default function DashboardPage() {
       .from("tasks")
       .update({ status: newDone ? "completed" : "todo", completed_at: newDone ? new Date().toISOString() : null })
       .eq("id", id);
+    window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
   };
 
   const handleAddTask = async (e: React.FormEvent) => {
@@ -466,6 +534,7 @@ export default function DashboardPage() {
       { id: inserted?.id || Date.now(), text: title, done: false, priority: "medium", dueDate: inserted?.due_date || null },
       ...prev
     ]);
+    window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
   };
 
   const handleSignOut = async () => {
@@ -544,6 +613,20 @@ export default function DashboardPage() {
   const startOfTodayForTasks = new Date();
   startOfTodayForTasks.setHours(0, 0, 0, 0);
   const overdueTaskCount = orderedTasks.filter((task) => task.dueDate && new Date(task.dueDate) < startOfTodayForTasks).length;
+  const nextScheduledSession = todaySessions.find((session) => {
+    const endTime = session.end_time
+      ? new Date(session.end_time).getTime()
+      : new Date(session.start_time).getTime() + (Number(session.duration) || 60) * 60_000;
+    return endTime > now.getTime();
+  });
+  const todaySessionMinutes = todaySessions.reduce(
+    (total, session) => total + (Number(session.duration) || 60),
+    0
+  );
+  const examDaysRemaining = upcomingExam
+    ? Math.max(0, Math.ceil((new Date(`${upcomingExam.exam_date}T00:00:00`).getTime() - startOfTodayForTasks.getTime()) / 86_400_000))
+    : null;
+  const timeFormatter = new Intl.DateTimeFormat(dateLocale, { hour: "2-digit", minute: "2-digit" });
 
   // SVG parameters for progress ring
   const ringRadius = 50;
@@ -615,6 +698,59 @@ export default function DashboardPage() {
               </Link>
             </div>
           )}
+
+          {/* Today Center: one actionable view of tasks, calendar, focus, and exams. */}
+          <section className="overflow-hidden rounded-3xl border border-brand/15 bg-gradient-to-br from-brand/10 via-white to-indigo-50 p-5 sm:p-6 shadow-sm">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-brand shadow-sm">
+                  <Sparkles size={13} /> {lang === "tr" ? "Bugünün çalışma merkezi" : "Today at a glance"}
+                </div>
+                <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-surface-dark">
+                  {nextScheduledSession
+                    ? (lang === "tr" ? `Sıradaki blok: ${nextScheduledSession.title}` : `Next up: ${nextScheduledSession.title}`)
+                    : (lang === "tr" ? "Bugünün temposunu sen belirle." : "Set the pace for your day.")}
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600">
+                  {nextScheduledSession
+                    ? `${timeFormatter.format(new Date(nextScheduledSession.start_time))} · ${Number(nextScheduledSession.duration) || 60} ${lang === "tr" ? "dk" : "min"}${nextScheduledSession.courses?.name ? ` · ${nextScheduledSession.courses.name}` : ""}`
+                    : (lang === "tr" ? "Açık görevlerini, hedefini ve uygun saatlerini kullanarak onaylayabileceğin bir çalışma planı oluştur." : "Use your open tasks, goal, and available time to create a plan you can review before it is added.")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/calendar?plan=today"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-brand-hover active:scale-95"
+                >
+                  <Sparkles size={15} /> {lang === "tr" ? "AI günümü planla" : "Plan my day with AI"}
+                </Link>
+                <Link
+                  href="/focus"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand/20 bg-white px-4 py-3 text-xs font-bold text-brand transition-colors hover:bg-brand/5"
+                >
+                  <Timer size={15} /> {lang === "tr" ? "Odaklanmaya başla" : "Start focus"}
+                </Link>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Link href="/tasks" className="rounded-2xl border border-white bg-white/80 p-4 transition-colors hover:border-brand/25 hover:bg-white">
+                <div className="flex items-center justify-between"><CheckSquare size={17} className="text-brand" /><ChevronRight size={15} className="text-gray-300" /></div>
+                <p className="mt-3 text-2xl font-extrabold text-surface-dark">{orderedTasks.length}</p>
+                <p className="text-xs font-semibold text-gray-500">{lang === "tr" ? "açık görev" : "open tasks"}</p>
+              </Link>
+              <Link href="/calendar" className="rounded-2xl border border-white bg-white/80 p-4 transition-colors hover:border-brand/25 hover:bg-white">
+                <div className="flex items-center justify-between"><CalendarDays size={17} className="text-brand" /><ChevronRight size={15} className="text-gray-300" /></div>
+                <p className="mt-3 text-2xl font-extrabold text-surface-dark">{todaySessions.length}</p>
+                <p className="text-xs font-semibold text-gray-500">{lang === "tr" ? `${todaySessionMinutes} dk takvimde` : `${todaySessionMinutes} min scheduled`}</p>
+              </Link>
+              <Link href="/exam-planner" className="rounded-2xl border border-white bg-white/80 p-4 transition-colors hover:border-brand/25 hover:bg-white">
+                <div className="flex items-center justify-between"><Award size={17} className="text-brand" /><ChevronRight size={15} className="text-gray-300" /></div>
+                <p className="mt-3 truncate text-base font-extrabold text-surface-dark">{upcomingExam?.title || (lang === "tr" ? "Sınav ekle" : "Add an exam")}</p>
+                <p className="text-xs font-semibold text-gray-500">{upcomingExam ? (examDaysRemaining === 0 ? (lang === "tr" ? "bugün" : "today") : `${examDaysRemaining} ${lang === "tr" ? "gün kaldı" : "days left"}`) : (lang === "tr" ? "sınav geri sayımı" : "exam countdown")}</p>
+              </Link>
+            </div>
+          </section>
 
           {/* Trial Expired Alert Modal */}
           {showTrialEndedModal && (
@@ -869,6 +1005,7 @@ export default function DashboardPage() {
                               e.stopPropagation();
                               setTasks(prev => prev.filter(t => t.id !== task.id));
                               await supabase.from("tasks").delete().eq("id", task.id);
+                              window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
                             }}
                             className="p-1 text-gray-300 hover:text-red-500 transition-colors cursor-pointer"
                             title="Delete task"

@@ -105,11 +105,10 @@ Deno.serve(async (request) => {
       : integrationData
     const apiKey = Deno.env.get("RESEND_API_KEY") || integration?.resend_api_key
     const fromAddress =
-      Deno.env.get("EMAIL_FROM_ADDRESS") ||
-      integration?.email_from_address ||
-      "noreply@onpace.app"
+      Deno.env.get("ANNOUNCEMENT_EMAIL_FROM_ADDRESS") ||
+      "no-reply@onpace-ai.xyz"
     const fromName =
-      Deno.env.get("EMAIL_FROM_NAME") ||
+      Deno.env.get("ANNOUNCEMENT_EMAIL_FROM_NAME") ||
       integration?.email_from_name ||
       "OnPace"
 

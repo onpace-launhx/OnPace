@@ -32,6 +32,13 @@ export async function POST(request: Request) {
 
     const context = await getStudentLearningContext(supabase, user.id);
     const profile = context.profile;
+    const personalizedTools =
+      profile?.customization_settings &&
+      typeof profile.customization_settings === "object" &&
+      !Array.isArray(profile.customization_settings)
+        ? (profile.customization_settings as { learning_preferences?: { modes?: unknown } })
+            .learning_preferences?.modes
+        : [];
 
     const userLanguage = profile?.language || "en";
     const systemInstruction = `You are the OnPace AI Study Coach: warm, concise, practical, and honest.
@@ -39,6 +46,7 @@ The student's name is ${profile?.full_name || "Student"}.
 The interface language is "${userLanguage}". Always answer naturally in that language unless the student explicitly requests another language.
 Current timestamp: ${new Date().toISOString()}.
 Learning styles: ${JSON.stringify(profile?.learning_styles || [])}.
+Selected explanation tools: ${JSON.stringify(Array.isArray(personalizedTools) ? personalizedTools : [])}. These are optional response tools, not fixed traits. When they fit the student's request, use them naturally; never invent statistics or visuals just to satisfy a selected tool.
 Daily study target: ${profile?.daily_study_goal_minutes || 60} minutes.
 Courses: ${JSON.stringify(context.courses)}.
 Incomplete tasks: ${JSON.stringify(context.openTasks)}.

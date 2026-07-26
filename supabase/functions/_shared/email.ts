@@ -70,6 +70,104 @@ export function localizedAuthCopy(action: string, language: string) {
   return { subject, heading, message, button, ...extras[lang] }
 }
 
+export function localizedSecurityCopy(
+  action: string,
+  language: string,
+  context: {
+    oldEmail?: string
+    email?: string
+    oldPhone?: string
+    phone?: string
+    provider?: string
+    factorType?: string
+  }
+) {
+  type SupportedLanguage = "tr" | "en" | "es" | "zh"
+  type SecurityAction =
+    | "password_changed_notification"
+    | "email_changed_notification"
+    | "phone_changed_notification"
+    | "identity_linked_notification"
+    | "identity_unlinked_notification"
+    | "mfa_factor_enrolled_notification"
+    | "mfa_factor_unenrolled_notification"
+  const lang: SupportedLanguage = ["tr", "en", "es", "zh"].includes(language)
+    ? (language as SupportedLanguage)
+    : "en"
+  const actionKey: SecurityAction = [
+    "password_changed_notification",
+    "email_changed_notification",
+    "phone_changed_notification",
+    "identity_linked_notification",
+    "identity_unlinked_notification",
+    "mfa_factor_enrolled_notification",
+    "mfa_factor_unenrolled_notification",
+  ].includes(action)
+    ? (action as SecurityAction)
+    : "password_changed_notification"
+  const value = {
+    oldEmail: context.oldEmail || "",
+    email: context.email || "",
+    oldPhone: context.oldPhone || "",
+    phone: context.phone || "",
+    provider: context.provider || "external",
+    factorType: context.factorType || "MFA",
+  }
+  const common = {
+    en: "If you did not make this change, secure your account and contact support immediately.",
+    tr: "Bu değişikliği siz yapmadıysanız hesabınızı güvene alın ve hemen destek ekibiyle iletişime geçin.",
+    es: "Si no realizaste este cambio, protege tu cuenta y contacta con soporte de inmediato.",
+    zh: "如果这不是您的操作，请立即保护您的账户并联系支持团队。",
+  } as const
+  const copy = {
+    en: {
+      password_changed_notification: ["Your OnPace password was changed", "Password changed", "The password for your OnPace account was recently changed."],
+      email_changed_notification: ["Your OnPace email was changed", "Email address changed", `Your account email changed from ${value.oldEmail} to ${value.email}.`],
+      phone_changed_notification: ["Your OnPace phone number was changed", "Phone number changed", `Your account phone number changed from ${value.oldPhone} to ${value.phone}.`],
+      identity_linked_notification: ["A sign-in method was linked", "Sign-in method linked", `${value.provider} was linked as a sign-in method for your account.`],
+      identity_unlinked_notification: ["A sign-in method was removed", "Sign-in method removed", `${value.provider} was removed as a sign-in method for your account.`],
+      mfa_factor_enrolled_notification: ["A verification method was added", "Verification method added", `${value.factorType} was added as a verification method for your account.`],
+      mfa_factor_unenrolled_notification: ["A verification method was removed", "Verification method removed", `${value.factorType} was removed as a verification method from your account.`],
+    },
+    tr: {
+      password_changed_notification: ["OnPace şifreniz değiştirildi", "Şifre değiştirildi", "OnPace hesabınızın şifresi kısa süre önce değiştirildi."],
+      email_changed_notification: ["OnPace e-postanız değiştirildi", "E-posta adresi değiştirildi", `Hesap e-postanız ${value.oldEmail} adresinden ${value.email} adresine değiştirildi.`],
+      phone_changed_notification: ["OnPace telefon numaranız değiştirildi", "Telefon numarası değiştirildi", `Hesap telefonunuz ${value.oldPhone} numarasından ${value.phone} numarasına değiştirildi.`],
+      identity_linked_notification: ["Bir giriş yöntemi bağlandı", "Giriş yöntemi bağlandı", `${value.provider} hesabınıza giriş yöntemi olarak bağlandı.`],
+      identity_unlinked_notification: ["Bir giriş yöntemi kaldırıldı", "Giriş yöntemi kaldırıldı", `${value.provider} hesabınızdan giriş yöntemi olarak kaldırıldı.`],
+      mfa_factor_enrolled_notification: ["Bir doğrulama yöntemi eklendi", "Doğrulama yöntemi eklendi", `${value.factorType} hesabınıza doğrulama yöntemi olarak eklendi.`],
+      mfa_factor_unenrolled_notification: ["Bir doğrulama yöntemi kaldırıldı", "Doğrulama yöntemi kaldırıldı", `${value.factorType} hesabınızdan doğrulama yöntemi olarak kaldırıldı.`],
+    },
+    es: {
+      password_changed_notification: ["Tu contraseña de OnPace cambió", "Contraseña cambiada", "La contraseña de tu cuenta de OnPace se cambió recientemente."],
+      email_changed_notification: ["Tu correo de OnPace cambió", "Correo electrónico cambiado", `El correo de tu cuenta cambió de ${value.oldEmail} a ${value.email}.`],
+      phone_changed_notification: ["Tu teléfono de OnPace cambió", "Número de teléfono cambiado", `El teléfono de tu cuenta cambió de ${value.oldPhone} a ${value.phone}.`],
+      identity_linked_notification: ["Se vinculó un método de acceso", "Método de acceso vinculado", `${value.provider} se vinculó como método de acceso a tu cuenta.`],
+      identity_unlinked_notification: ["Se eliminó un método de acceso", "Método de acceso eliminado", `${value.provider} se eliminó como método de acceso de tu cuenta.`],
+      mfa_factor_enrolled_notification: ["Se añadió un método de verificación", "Método de verificación añadido", `${value.factorType} se añadió como método de verificación a tu cuenta.`],
+      mfa_factor_unenrolled_notification: ["Se eliminó un método de verificación", "Método de verificación eliminado", `${value.factorType} se eliminó como método de verificación de tu cuenta.`],
+    },
+    zh: {
+      password_changed_notification: ["您的 OnPace 密码已更改", "密码已更改", "您的 OnPace 账户密码最近已更改。"],
+      email_changed_notification: ["您的 OnPace 邮箱已更改", "邮箱地址已更改", `您的账户邮箱已从 ${value.oldEmail} 更改为 ${value.email}。`],
+      phone_changed_notification: ["您的 OnPace 电话号码已更改", "电话号码已更改", `您的账户电话号码已从 ${value.oldPhone} 更改为 ${value.phone}。`],
+      identity_linked_notification: ["已关联登录方式", "登录方式已关联", `${value.provider} 已作为登录方式关联到您的账户。`],
+      identity_unlinked_notification: ["已移除登录方式", "登录方式已移除", `${value.provider} 已从您的账户登录方式中移除。`],
+      mfa_factor_enrolled_notification: ["已添加验证方式", "验证方式已添加", `${value.factorType} 已作为验证方式添加到您的账户。`],
+      mfa_factor_unenrolled_notification: ["已移除验证方式", "验证方式已移除", `${value.factorType} 已从您的账户验证方式中移除。`],
+    },
+  } as const
+  const [subject, heading, message] = copy[lang][actionKey]
+  const authChrome = localizedAuthCopy("magiclink", lang)
+  return {
+    subject,
+    heading,
+    message: `${message}\n\n${common[lang]}`,
+    tagline: authChrome.tagline,
+    footer: authChrome.footer,
+  }
+}
+
 export function emailShell(options: {
   heading: string
   message: string

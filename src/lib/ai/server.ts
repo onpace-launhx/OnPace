@@ -21,6 +21,17 @@ export interface GenerateAIOptions {
   history?: AIHistoryMessage[]
   temperature?: number
   json?: boolean
+  /**
+   * A document sent only from a server-side route. Unlike an image, documents
+   * bypass the legacy gateway because older deployed versions do not forward
+   * arbitrary binary parts to providers.
+   */
+  document?: {
+    base64: string
+    mimeType: string
+    filename: string
+  }
+  skipGateway?: boolean
   image?: {
     base64: string
     mimeType: string
@@ -123,7 +134,7 @@ export async function generateAIText(
   supabase: SupabaseLike,
   options: GenerateAIOptions
 ): Promise<string> {
-  if (supabase.functions) {
+  if (supabase.functions && !options.skipGateway) {
     const { data, error, response } = await supabase.functions.invoke("ai-gateway", {
       body: options,
     })
@@ -157,6 +168,66 @@ export async function generateAIText(
   const config = await getAIConfig(supabase)
 
   if (config.provider === "openai") {
+    if (options.document) {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: config.model,
+          input: [
+            ...(options.systemInstruction
+              ? [{
+                  role: "developer",
+                  content: [{ type: "input_text", text: options.systemInstruction }],
+                }]
+              : []),
+            ...(options.history || []).map((message) => ({
+              role: message.role,
+              content: [{ type: "input_text", text: message.content }],
+            })),
+            {
+              role: "user",
+              content: [
+                { type: "input_text", text: options.prompt },
+                {
+                  type: "input_file",
+                  filename: options.document.filename,
+                  file_data: cleanBase64(options.document.base64),
+                },
+              ],
+            },
+          ],
+          temperature: options.temperature ?? 0.3,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      })
+
+      if (!response.ok) {
+        throw new AIServiceError(
+          `OpenAI document request failed: ${await readError(response)}`,
+          response.status,
+          "openai"
+        )
+      }
+
+      const data = await response.json()
+      const text =
+        data?.output_text ||
+        data?.output
+          ?.flatMap((item: { content?: Array<{ text?: string }> }) => item.content || [])
+          .map((part: { text?: string }) => part.text || "")
+          .join("")
+
+      if (typeof text !== "string" || !text.trim()) {
+        throw new AIServiceError("OpenAI returned an empty document response.", 502, "openai")
+      }
+
+      return text.trim()
+    }
+
     const messages = [
       ...(options.systemInstruction
         ? [{ role: "system", content: options.systemInstruction }]
@@ -219,6 +290,14 @@ export async function generateAIText(
       inline_data: {
         mime_type: options.image.mimeType,
         data: cleanBase64(options.image.base64),
+      },
+    })
+  }
+  if (options.document) {
+    parts.push({
+      inline_data: {
+        mime_type: options.document.mimeType,
+        data: cleanBase64(options.document.base64),
       },
     })
   }

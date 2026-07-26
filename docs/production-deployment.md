@@ -35,7 +35,7 @@ in production.
    - Gemini or OpenAI API key and active provider
    - Resend API key
    - Cloudflare R2 access key, secret key, endpoint, bucket, and public URL
-   - verified sender address and sender name
+   - sender name (sender addresses are fixed by the application)
    - localized payment-disabled messages and all paid-plan prices
 
    Secrets are written to Supabase Vault by `integration-config`. They are never
@@ -44,26 +44,36 @@ in production.
 
 ## Resend and email verification
 
-1. In Resend, add the production sending domain and complete its DNS
-   verification. Use an address on that verified domain in the admin panel.
-2. In Supabase Authentication, enable **Confirm email** and **Secure email
+1. In Resend, add `onpace-ai.xyz` and copy the exact SPF, DKIM, and MX records
+   shown by Resend into the domain's DNS provider. Wait until Resend reports the
+   domain as **Verified**. Add the recommended DMARC record as well.
+2. Once the domain is verified, OnPace uses these fixed sender identities:
+
+   - Admin announcements and campaigns: `OnPace <no-reply@onpace-ai.xyz>`
+   - Authentication and security: `OnPace Security <security@onpace-ai.xyz>`
+
+   Resend does not require creating these as inboxes; domain verification is
+   sufficient for sending. If replies must be received, provision or forward
+   those inboxes separately.
+3. In Supabase Authentication, enable **Confirm email** and **Secure email
    change**.
-3. Add the production site URL and these redirect URLs:
+4. Add the production site URL and these redirect URLs:
 
    - `https://<APP_DOMAIN>/auth/callback`
    - `https://<APP_DOMAIN>/set-password`
 
-4. In Authentication Hooks, enable the **Send Email Hook** and set its URL to:
+5. In Authentication Hooks, enable the **Send Email Hook** and set its URL to:
 
    `https://<PROJECT_REF>.supabase.co/functions/v1/auth-email-hook`
 
-5. Copy the generated hook secret into Edge Function secrets:
+6. Copy the generated hook secret into Edge Function secrets:
 
    ```powershell
    supabase secrets set SEND_EMAIL_HOOK_SECRET="<HOOK_SECRET>"
    ```
 
-6. Test signup, password recovery, and email change in every supported language
+7. Test signup, password recovery, email change, and enabled security events in
+   every supported language
    (`en`, `tr`, `es`, `zh`). Do this before enabling signups for real users.
 
 Security/account emails ignore marketing consent. Admin announcements and
