@@ -477,7 +477,12 @@ begin
 end;
 $$;
 
-create or replace function public.get_public_system_settings()
+-- The legacy function may expose a different OUT-parameter row type. PostgreSQL
+-- cannot change that shape via CREATE OR REPLACE, so rebuild it before exposing
+-- the restricted public settings projection below.
+drop function if exists public.get_public_system_settings();
+
+create function public.get_public_system_settings()
 returns table (
   payment_gateway_enabled boolean,
   payment_disabled_message jsonb,
