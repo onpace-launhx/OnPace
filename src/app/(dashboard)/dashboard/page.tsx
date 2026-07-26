@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   LogOut,
-  LayoutDashboard,
-  Calendar,
   CheckSquare,
   Timer,
   Sparkles,
@@ -1057,26 +1055,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Mobile Bottom Navigation Bar */}
-
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 py-2 px-6 flex justify-around items-center z-40">
-          <Link href="/dashboard" className="flex flex-col items-center gap-1 text-brand">
-            <LayoutDashboard size={20} />
-            <span className="text-[10px] font-medium">{lang === "zh" ? "主页" : lang === "es" ? "Inicio" : "Home"}</span>
-          </Link>
-          <Link href="/tasks" className="flex flex-col items-center gap-1 text-gray-400">
-            <CheckSquare size={20} />
-            <span className="text-[10px] font-medium">{lang === "zh" ? "学习任务" : lang === "es" ? "Tareas" : "Tasks"}</span>
-          </Link>
-          <Link href="/calendar" className="flex flex-col items-center gap-1 text-gray-400">
-            <Calendar size={20} />
-            <span className="text-[10px] font-medium">{lang === "zh" ? "日历日程" : lang === "es" ? "Calendario" : "Calendar"}</span>
-          </Link>
-          <Link href="/billing" className="flex flex-col items-center gap-1 text-gray-400">
-            <Sparkles size={20} />
-            <span className="text-[10px] font-medium">{lang === "zh" ? "订阅账单" : lang === "es" ? "Suscripción" : "Billing"}</span>
-          </Link>
-        </nav>
       </main>
   );
 }
