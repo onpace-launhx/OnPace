@@ -101,12 +101,12 @@ export function Footer() {
                 </h3>
                 <ul role="list" className="mt-6 space-y-4">
                   <li>
-                    <Link href="#" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
+                    <Link href={`/privacy?lang=${lang}`} className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
                       {lang === "zh" ? "隐私政策" : lang === "es" ? "Política de Privacidad" : lang === "tr" ? "Gizlilik Politikası" : "Privacy Policy"}
                     </Link>
                   </li>
                   <li>
-                    <Link href="#" className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
+                    <Link href={`/terms?lang=${lang}`} className="text-sm leading-6 text-gray-600 hover:text-brand transition-colors">
                       {lang === "zh" ? "服务条款" : lang === "es" ? "Términos de Servicio" : lang === "tr" ? "Kullanım Şartları" : "Terms of Service"}
                     </Link>
                   </li>

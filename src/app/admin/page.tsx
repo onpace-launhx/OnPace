@@ -5,6 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
+  DEFAULT_LEGAL_DOCUMENTS,
+  normalizeLegalDocuments,
+  type LegalDocuments,
+  type LegalDocumentType,
+  type LegalLanguage,
+} from "@/lib/legal-documents";
+import {
   ArrowLeft,
   User,
   Shield,
@@ -45,6 +52,75 @@ interface IntegrationConfigResponse {
   r2_endpoint?: string;
   r2_bucket_name?: string;
   r2_public_url?: string;
+}
+
+type MaintenanceLanguage = "en" | "tr" | "es" | "zh";
+type MaintenanceContent = Record<MaintenanceLanguage, {
+  badge: string;
+  title: string;
+  description: string;
+  coming_title: string;
+  coming_items: string[];
+  back_soon: string;
+}>;
+
+const DEFAULT_MAINTENANCE_CONTENT: MaintenanceContent = {
+  en: {
+    badge: "Scheduled upgrade in progress",
+    title: "We are improving OnPace",
+    description: "We are performing planned maintenance to make your study experience faster and more reliable.",
+    coming_title: "Coming with this update",
+    coming_items: [],
+    back_soon: "We will be back shortly.",
+  },
+  tr: {
+    badge: "Planlı güncelleme devam ediyor",
+    title: "OnPace’i geliştiriyoruz",
+    description: "Çalışma deneyiminizi daha hızlı ve güvenilir hale getirmek için planlı bakım yapıyoruz.",
+    coming_title: "Bu güncellemeyle gelecekler",
+    coming_items: [],
+    back_soon: "Kısa süre içinde tekrar buradayız.",
+  },
+  es: {
+    badge: "Actualización programada en curso",
+    title: "Estamos mejorando OnPace",
+    description: "Realizamos mantenimiento programado para que tu experiencia de estudio sea más rápida y fiable.",
+    coming_title: "Novedades de esta actualización",
+    coming_items: [],
+    back_soon: "Volveremos muy pronto.",
+  },
+  zh: {
+    badge: "计划更新正在进行",
+    title: "我们正在改进 OnPace",
+    description: "我们正在进行计划维护，让您的学习体验更快速、更可靠。",
+    coming_title: "本次更新内容",
+    coming_items: [],
+    back_soon: "我们很快回来。",
+  },
+};
+
+function normalizeMaintenanceContent(value: unknown): MaintenanceContent {
+  const source =
+    value && typeof value === "object"
+      ? value as Partial<Record<MaintenanceLanguage, Partial<MaintenanceContent[MaintenanceLanguage]>>>
+      : {};
+  return (["en", "tr", "es", "zh"] as MaintenanceLanguage[]).reduce(
+    (result, language) => {
+      const localized = source[language] || {};
+      result[language] = {
+        badge: typeof localized.badge === "string" ? localized.badge : DEFAULT_MAINTENANCE_CONTENT[language].badge,
+        title: typeof localized.title === "string" ? localized.title : DEFAULT_MAINTENANCE_CONTENT[language].title,
+        description: typeof localized.description === "string" ? localized.description : DEFAULT_MAINTENANCE_CONTENT[language].description,
+        coming_title: typeof localized.coming_title === "string" ? localized.coming_title : DEFAULT_MAINTENANCE_CONTENT[language].coming_title,
+        coming_items: Array.isArray(localized.coming_items)
+          ? localized.coming_items.filter((item): item is string => typeof item === "string")
+          : [],
+        back_soon: typeof localized.back_soon === "string" ? localized.back_soon : DEFAULT_MAINTENANCE_CONTENT[language].back_soon,
+      };
+      return result;
+    },
+    {} as MaintenanceContent
+  );
 }
 
 async function requestIntegrationConfig(
@@ -154,6 +230,14 @@ export default function AdminPage() {
   const [proYearlyPrice, setProYearlyPrice] = useState(59.99);
   const [foundingPrice, setFoundingPrice] = useState(99);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [maintenanceContent, setMaintenanceContent] = useState<MaintenanceContent>(
+    DEFAULT_MAINTENANCE_CONTENT
+  );
+  const [legalDocuments, setLegalDocuments] = useState<LegalDocuments>(
+    DEFAULT_LEGAL_DOCUMENTS
+  );
+  const [legalEditorLanguage, setLegalEditorLanguage] = useState<LegalLanguage>("en");
+  const [legalEditorDocument, setLegalEditorDocument] = useState<LegalDocumentType>("privacy");
   const [resendApiKey, setResendApiKey] = useState("");
   const [hasResend, setHasResend] = useState(false);
   const [emailFromAddress, setEmailFromAddress] = useState("noreply@onpace.app");
@@ -380,6 +464,10 @@ export default function AdminPage() {
       setProYearlyPrice(sysData.plan_prices?.pro_yearly ?? 59.99);
       setFoundingPrice(sysData.plan_prices?.founding_member ?? sysData.plan_prices?.founding ?? 99);
       setMaintenanceMode(sysData.maintenance_mode || false);
+      setMaintenanceContent(
+        normalizeMaintenanceContent(sysData.maintenance_content)
+      );
+      setLegalDocuments(normalizeLegalDocuments(sysData.legal_documents));
       setDisabledMsgES(sysData.payment_disabled_message?.es || "");
       setDisabledMsgZH(sysData.payment_disabled_message?.zh || "");
       setMaxFailedAttempts(sysData.max_failed_payment_attempts ?? 3);
@@ -393,10 +481,31 @@ export default function AdminPage() {
     setSystemSettingsError(null);
 
     try {
+      const { error: maintenanceError } = await supabase.rpc(
+        "admin_update_maintenance_settings",
+        {
+          p_enabled: maintenanceMode,
+          p_content: maintenanceContent,
+        }
+      );
+      if (maintenanceError) {
+        throw new Error(maintenanceError.message);
+      }
+      const { error: legalDocumentsError } = await supabase.rpc(
+        "admin_update_legal_documents",
+        {
+          p_documents: legalDocuments,
+        }
+      );
+      if (legalDocumentsError) {
+        throw new Error(legalDocumentsError.message);
+      }
+
       const data = await requestIntegrationConfig({
         paymentGatewayEnabled:
           paymentProviderConfigured && paymentGatewayEnabled,
         maintenanceMode,
+        maintenanceContent,
         planPrices: {
           pro_monthly: Number(proMonthlyPrice),
           pro_yearly: Number(proYearlyPrice),
@@ -426,6 +535,50 @@ export default function AdminPage() {
     } finally {
       setSavingSystemSettings(false);
     }
+  };
+
+  const handleMaintenanceModeChange = async (enabled: boolean) => {
+    const previous = maintenanceMode;
+    setMaintenanceMode(enabled);
+    setSavingSystemSettings(true);
+    setSystemSettingsError(null);
+    try {
+      const { error } = await supabase.rpc(
+        "admin_update_maintenance_settings",
+        {
+          p_enabled: enabled,
+          p_content: maintenanceContent,
+        }
+      );
+      if (error) throw new Error(error.message);
+      setSaveSystemSettingsSuccess(true);
+      setTimeout(() => setSaveSystemSettingsSuccess(false), 3000);
+    } catch (error) {
+      setMaintenanceMode(previous);
+      setSystemSettingsError(
+        error instanceof Error
+          ? error.message
+          : "Bakım modu değiştirilemedi."
+      );
+    } finally {
+      setSavingSystemSettings(false);
+    }
+  };
+
+  const updateLegalDocumentField = (
+    field: keyof LegalDocuments[LegalDocumentType][LegalLanguage],
+    value: string
+  ) => {
+    setLegalDocuments((current) => ({
+      ...current,
+      [legalEditorDocument]: {
+        ...current[legalEditorDocument],
+        [legalEditorLanguage]: {
+          ...current[legalEditorDocument][legalEditorLanguage],
+          [field]: value,
+        },
+      },
+    }));
   };
 
   async function fetchLogs() {
@@ -1479,11 +1632,217 @@ export default function AdminPage() {
                     <input
                       type="checkbox"
                       checked={maintenanceMode}
-                      onChange={(e) => setMaintenanceMode(e.target.checked)}
+                      onChange={(e) => void handleMaintenanceModeChange(e.target.checked)}
+                      disabled={savingSystemSettings}
                       className="h-5 w-5 rounded border-gray-300 text-amber-500 focus:ring-amber-500 cursor-pointer accent-amber-500"
                     />
                   </div>
                 </div>
+
+                <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4 space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-surface-dark">Maintenance Page Content</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">
+                        Edit the maintenance message in all four languages. “Coming soon” items are optional; leave the list empty to hide that section.
+                      </p>
+                    </div>
+                    <a
+                      href="/maintenance?preview=1"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-[10px] font-bold text-amber-700 hover:bg-amber-50"
+                    >
+                      Preview maintenance page ↗
+                    </a>
+                  </div>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    {([
+                      ["en", "English"],
+                      ["tr", "Türkçe"],
+                      ["es", "Español"],
+                      ["zh", "中文"],
+                    ] as Array<[MaintenanceLanguage, string]>).map(([language, label]) => {
+                      const localized = maintenanceContent[language];
+                      const updateField = (
+                        field: keyof Omit<typeof localized, "coming_items">,
+                        value: string
+                      ) => {
+                        setMaintenanceContent((current) => ({
+                          ...current,
+                          [language]: {
+                            ...current[language],
+                            [field]: value,
+                          },
+                        }));
+                      };
+                      return (
+                        <div key={language} className="rounded-2xl border border-gray-150 bg-white p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-extrabold text-surface-dark">{label}</p>
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-bold uppercase text-gray-500">
+                              {language}
+                            </span>
+                          </div>
+                          <input
+                            value={localized.badge}
+                            onChange={(event) => updateField("badge", event.target.value)}
+                            placeholder="Status badge (optional)"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-surface-dark outline-none focus:border-amber-400"
+                          />
+                          <input
+                            value={localized.title}
+                            onChange={(event) => updateField("title", event.target.value)}
+                            placeholder="Page title"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-surface-dark outline-none focus:border-amber-400"
+                          />
+                          <textarea
+                            rows={3}
+                            value={localized.description}
+                            onChange={(event) => updateField("description", event.target.value)}
+                            placeholder="Maintenance explanation"
+                            className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-surface-dark outline-none focus:border-amber-400"
+                          />
+                          <input
+                            value={localized.coming_title}
+                            onChange={(event) => updateField("coming_title", event.target.value)}
+                            placeholder="Coming soon heading (optional)"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-surface-dark outline-none focus:border-amber-400"
+                          />
+                          <textarea
+                            rows={4}
+                            value={localized.coming_items.join("\n")}
+                            onChange={(event) =>
+                              setMaintenanceContent((current) => ({
+                                ...current,
+                                [language]: {
+                                  ...current[language],
+                                  coming_items: event.target.value
+                                    .split("\n")
+                                    .map((item) => item.trim())
+                                    .filter(Boolean),
+                                },
+                              }))
+                            }
+                            placeholder={"Optional upcoming features\nOne item per line"}
+                            className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-surface-dark outline-none focus:border-amber-400"
+                          />
+                          <input
+                            value={localized.back_soon}
+                            onChange={(event) => updateField("back_soon", event.target.value)}
+                            placeholder="Closing message (optional)"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-surface-dark outline-none focus:border-amber-400"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-surface-dark">Public Legal Pages</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">
+                        Edit the public Privacy Policy and Terms of Service used for Google OAuth verification.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href={`/privacy?lang=${legalEditorLanguage}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-[10px] font-bold text-indigo-700 hover:bg-indigo-50"
+                      >
+                        Preview privacy ↗
+                      </a>
+                      <a
+                        href={`/terms?lang=${legalEditorLanguage}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-[10px] font-bold text-indigo-700 hover:bg-indigo-50"
+                      >
+                        Preview terms ↗
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {(["privacy", "terms"] as LegalDocumentType[]).map((documentType) => (
+                      <button
+                        key={documentType}
+                        type="button"
+                        onClick={() => setLegalEditorDocument(documentType)}
+                        className={`rounded-xl px-3 py-2 text-[11px] font-bold ${
+                          legalEditorDocument === documentType
+                            ? "bg-indigo-600 text-white"
+                            : "border border-gray-200 bg-white text-gray-600"
+                        }`}
+                      >
+                        {documentType === "privacy" ? "Privacy Policy" : "Terms of Service"}
+                      </button>
+                    ))}
+                    <span className="mx-1 h-8 w-px bg-gray-200" />
+                    {(["en", "tr", "es", "zh"] as LegalLanguage[]).map((language) => (
+                      <button
+                        key={language}
+                        type="button"
+                        onClick={() => setLegalEditorLanguage(language)}
+                        className={`rounded-xl px-3 py-2 text-[11px] font-bold uppercase ${
+                          legalEditorLanguage === language
+                            ? "bg-brand text-white"
+                            : "border border-gray-200 bg-white text-gray-600"
+                        }`}
+                      >
+                        {language}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    <input
+                      value={legalDocuments[legalEditorDocument][legalEditorLanguage].title}
+                      onChange={(event) => updateLegalDocumentField("title", event.target.value)}
+                      placeholder="Document title"
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-bold text-surface-dark outline-none focus:border-indigo-400"
+                    />
+                    <input
+                      value={legalDocuments[legalEditorDocument][legalEditorLanguage].last_updated}
+                      onChange={(event) => updateLegalDocumentField("last_updated", event.target.value)}
+                      placeholder="Last updated"
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-surface-dark outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={legalDocuments[legalEditorDocument][legalEditorLanguage].summary}
+                    onChange={(event) => updateLegalDocumentField("summary", event.target.value)}
+                    placeholder="Short public summary"
+                    className="w-full resize-y rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-surface-dark outline-none focus:border-indigo-400"
+                  />
+                  <textarea
+                    rows={18}
+                    value={legalDocuments[legalEditorDocument][legalEditorLanguage].content}
+                    onChange={(event) => updateLegalDocumentField("content", event.target.value)}
+                    placeholder={"## Section heading\nSection content"}
+                    className="w-full resize-y rounded-xl border border-gray-200 bg-white px-3 py-3 font-mono text-[11px] leading-5 text-surface-dark outline-none focus:border-indigo-400"
+                  />
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                      Public contact email
+                    </label>
+                    <input
+                      type="email"
+                      value={legalDocuments[legalEditorDocument][legalEditorLanguage].contact_email}
+                      onChange={(event) => updateLegalDocumentField("contact_email", event.target.value)}
+                      className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-surface-dark outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <p className="text-[10px] leading-relaxed text-gray-500">
+                    Use <code className="rounded bg-white px-1 py-0.5">## Heading</code> on a separate line to create a new section. Legal changes are published after saving this form.
+                  </p>
+                </div>
+
                 {!paymentProviderConfigured && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs text-amber-800">
                     <p className="font-bold">Gerçek ödeme sağlayıcısı henüz yapılandırılmadı.</p>

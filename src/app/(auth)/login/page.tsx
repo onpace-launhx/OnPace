@@ -211,6 +211,16 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
+          <p className="mt-5 text-center text-[11px] leading-relaxed text-gray-400">
+            By continuing, you agree to the{" "}
+            <Link href="/terms?lang=en" target="_blank" className="font-semibold text-brand hover:underline">
+              Terms of Service
+            </Link>{" "}
+            and acknowledge the{" "}
+            <Link href="/privacy?lang=en" target="_blank" className="font-semibold text-brand hover:underline">
+              Privacy Policy
+            </Link>.
+          </p>
         </div>
       </div>
     </div>

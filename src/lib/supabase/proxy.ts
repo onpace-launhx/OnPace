@@ -15,7 +15,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -37,6 +37,7 @@ export async function updateSession(request: NextRequest) {
     '/ai-assistant',
     '/billing',
     '/calendar',
+    '/exam-planner',
     '/focus',
     '/notes',
     '/onboarding',
@@ -44,6 +45,7 @@ export async function updateSession(request: NextRequest) {
     '/study-groups',
     '/tasks',
     '/admin',
+    '/maintenance',
   ]
   const isProtected = protectedPrefixes.some(
     (prefix) =>
@@ -56,6 +58,47 @@ export async function updateSession(request: NextRequest) {
     url.pathname = '/login'
     url.searchParams.set('next', request.nextUrl.pathname)
     return NextResponse.redirect(url)
+  }
+
+  if (user && isProtected) {
+    const [{ data: profile }, { data: settingsRows, error: settingsError }] =
+      await Promise.all([
+        supabase
+          .from('profiles')
+          .select('role, maintenance_access')
+          .eq('id', user.id)
+          .maybeSingle(),
+        supabase.rpc('get_public_system_settings'),
+      ])
+
+    const settings = Array.isArray(settingsRows)
+      ? settingsRows[0]
+      : settingsRows
+    const maintenanceEnabled =
+      !settingsError && settings?.maintenance_mode === true
+    const hasBypass =
+      profile?.role === 'admin' ||
+      profile?.role === 'super_admin' ||
+      profile?.maintenance_access === true
+    const isMaintenancePage = request.nextUrl.pathname === '/maintenance'
+    const isMaintenancePreview =
+      isMaintenancePage &&
+      request.nextUrl.searchParams.get('preview') === '1' &&
+      (profile?.role === 'admin' || profile?.role === 'super_admin')
+
+    if (maintenanceEnabled && !hasBypass && !isMaintenancePage) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/maintenance'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+
+    if ((!maintenanceEnabled || (hasBypass && !isMaintenancePreview)) && isMaintenancePage) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse

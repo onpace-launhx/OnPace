@@ -1,22 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+function appUrl(path: string, request: NextRequest) {
+  const configuredOrigin =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (() => {
+      try {
+        return process.env.GOOGLE_REDIRECT_URI
+          ? new URL(process.env.GOOGLE_REDIRECT_URI).origin
+          : "";
+      } catch {
+        return "";
+      }
+    })();
+  const fallbackOrigin = request.nextUrl.origin.replace(
+    /^http:\/\/0\.0\.0\.0(?=[:/]|$)/,
+    "http://localhost"
+  );
+  return new URL(path, configuredOrigin || fallbackOrigin);
+}
+
 // Step 2: Handle callback from Google with auth code
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(appUrl("/login", request));
   }
 
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const state = searchParams.get("state");
+  const expectedState = request.cookies.get("google_calendar_oauth_state")?.value;
 
-  if (error || !code) {
+  if (error || !code || !state || !expectedState || state !== expectedState) {
     return NextResponse.redirect(
-      new URL("/dashboard?calendar_error=access_denied", request.url)
+      appUrl(`/dashboard?calendar_error=${state !== expectedState ? "invalid_state" : "access_denied"}`, request)
     );
   }
 
@@ -38,13 +59,19 @@ export async function GET(request: NextRequest) {
   if (!tokenData.access_token) {
     console.error("Failed to get access token:", tokenData);
     return NextResponse.redirect(
-      new URL("/dashboard?calendar_error=token_failed", request.url)
+      appUrl("/dashboard?calendar_error=token_failed", request)
     );
   }
 
   const expiresAt = new Date(
     Date.now() + (tokenData.expires_in || 3600) * 1000
   ).toISOString();
+
+  const { data: existingToken } = await supabase
+    .from("user_google_tokens")
+    .select("refresh_token")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
   // Upsert token into Supabase
   const { error: dbError } = await supabase
@@ -53,7 +80,7 @@ export async function GET(request: NextRequest) {
       {
         user_id: user.id,
         access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token || "",
+        refresh_token: tokenData.refresh_token || existingToken?.refresh_token || "",
         expires_at: expiresAt,
         scope: tokenData.scope,
         updated_at: new Date().toISOString(),
@@ -64,11 +91,13 @@ export async function GET(request: NextRequest) {
   if (dbError) {
     console.error("Failed to save token to Supabase:", dbError);
     return NextResponse.redirect(
-      new URL("/dashboard?calendar_error=db_failed", request.url)
+      appUrl("/dashboard?calendar_error=db_failed", request)
     );
   }
 
-  return NextResponse.redirect(
-    new URL("/dashboard?calendar_connected=true", request.url)
+  const response = NextResponse.redirect(
+    appUrl("/calendar?calendar_connected=true", request)
   );
+  response.cookies.delete("google_calendar_oauth_state");
+  return response;
 }

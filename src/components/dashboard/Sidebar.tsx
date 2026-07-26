@@ -552,18 +552,17 @@ export function Sidebar() {
     setGoogleEmail("");
 
     try {
-      // 1. Remove google tokens from Supabase DB to un-link the calendar
+      // Keep synchronized sessions and their remote ids. This preserves local
+      // data and prevents duplicate imports if the account is connected again.
+      await supabase
+        .from("calendar_sync_state")
+        .delete()
+        .eq("user_id", user.id);
+
       await supabase
         .from("user_google_tokens")
         .delete()
         .eq("user_id", user.id);
-
-      // 2. Clear any study sessions pulled from Google calendar
-      await supabase
-        .from("study_sessions")
-        .delete()
-        .eq("user_id", user.id)
-        .like("title", "📅 [Google]%");
 
       window.dispatchEvent(new Event("calendar-sync"));
     } catch (e) {

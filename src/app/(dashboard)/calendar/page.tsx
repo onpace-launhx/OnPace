@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -24,10 +24,36 @@ import {
   Check,
   MessageSquare,
   Trash2,
-  X
+  X,
+  RefreshCw
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import { getLocalizedCourseName } from "@/lib/course-labels";
+
+type DuplicateConflict = {
+  incomingKey: string;
+  existingId: string;
+  existingType: "session" | "task" | "incoming";
+  existingTitle: string;
+  reason: string;
+  confidence: number;
+};
+
+type CalendarInsertBatch = {
+  sessions: Array<Record<string, unknown>>;
+  tasks: Array<Record<string, unknown>>;
+  source: string;
+  closeAfter: "session" | "ocr" | "day-plan" | "ai-plan";
+};
+
+type ExistingDuplicatePair = {
+  duplicateId: string;
+  canonicalId: string;
+  type: "session" | "task";
+  title: string;
+  canonicalTitle: string;
+  reason: string;
+};
 
 export default function CalendarPage() {
   const router = useRouter();
@@ -45,6 +71,9 @@ export default function CalendarPage() {
   const [googleConnected, setGoogleConnected] = useState(false);
   const [googleEmail, setGoogleEmail] = useState("");
   const [showLinkPrompt, setShowLinkPrompt] = useState(false);
+  const [calendarSyncing, setCalendarSyncing] = useState(false);
+  const [lastCalendarSyncAt, setLastCalendarSyncAt] = useState<string | null>(null);
+  const calendarSyncLock = useRef(false);
 
   // Session Modal State
   const [sessionOpen, setSessionOpen] = useState(false);
@@ -72,6 +101,15 @@ export default function CalendarPage() {
   const [editDuration, setEditDuration] = useState("60");
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingSession, setDeletingSession] = useState(false);
+  const [duplicateReview, setDuplicateReview] = useState<{
+    batch: CalendarInsertBatch;
+    conflicts: DuplicateConflict[];
+  } | null>(null);
+  const [duplicateSeparateKeys, setDuplicateSeparateKeys] = useState<string[]>([]);
+  const [committingBatch, setCommittingBatch] = useState(false);
+  const [existingDuplicateReview, setExistingDuplicateReview] = useState<ExistingDuplicatePair[] | null>(null);
+  const [existingDuplicateKeepSeparate, setExistingDuplicateKeepSeparate] = useState<string[]>([]);
+  const [mergingExistingDuplicates, setMergingExistingDuplicates] = useState(false);
 
   // ── Vision OCR Schedule Upload States ──────────────────────────────────────
   const [ocrModalOpen, setOcrModalOpen] = useState(false);
@@ -200,57 +238,37 @@ export default function CalendarPage() {
       .eq("user_id", user.id);
     if (tasksData) setTasks(tasksData);
 
-    // Load local sessions
-    const { data: sessionsData } = await supabase
-      .from("study_sessions")
-      .select("*, courses(name, color)")
-      .eq("user_id", user.id);
-
-    let localSessions = sessionsData || [];
-
-    // Load Google Calendar events dynamically if connected
-    let fetchedGoogleEvents: any[] = [];
+    // Reconcile Google and OnPace first, then render the canonical local rows.
+    // Every synced row keeps its Google event id, so edits and deletes affect
+    // the same event instead of creating a second, synthetic calendar item.
     if (isGConnected) {
       try {
-        const res = await fetch("/api/calendar/list");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.events && Array.isArray(data.events)) {
-            fetchedGoogleEvents = data.events.map((ev: any) => {
-              const startObj = new Date(ev.start);
-              const endObj = new Date(ev.end);
-              const durationMins = Math.round((endObj.getTime() - startObj.getTime()) / (1000 * 60)) || 60;
-              const formattedTime = startObj.toTimeString().substring(0, 5);
-
-              return {
-                id: "google_" + ev.id,
-                google_event_id: ev.id,
-                user_id: user.id,
-                title: `📅 [Google] ${ev.summary}`,
-                start_time: ev.start,
-                duration: durationMins,
-                formattedTime: formattedTime,
-                isGoogleEvent: true,
-                description: ev.description,
-                htmlLink: ev.htmlLink,
-                courses: { name: "Google Calendar", color: "#4285F4" }
-              };
-            });
-          }
-        } else {
-          const data = await res.json().catch(() => ({}));
-          setGoogleConnected(false);
-          setCustomAlert(data.error || "Google Calendar connection needs to be renewed.");
+        setCalendarSyncing(true);
+        const response = await fetch("/api/calendar/sync", { method: "POST" });
+        const syncResult = await response.json().catch(() => ({}));
+        if (!response.ok || !syncResult.success) {
+          throw new Error(syncResult.error || "Google Calendar synchronization failed.");
         }
+        setLastCalendarSyncAt(syncResult.lastSyncAt || new Date().toISOString());
       } catch (err) {
-        console.error("Failed to load Google Calendar events:", err);
+        console.error("Failed to synchronize Google Calendar:", err);
+        setCustomAlert(err instanceof Error ? err.message : "Google Calendar synchronization failed.");
+      } finally {
+        setCalendarSyncing(false);
       }
     }
 
-    const cleanLocalSessions = localSessions.filter(
-      (s: { title: string }) => !s.title.startsWith("📅 [Google]")
-    );
-    setStudySessions([...cleanLocalSessions, ...fetchedGoogleEvents]);
+    const { data: sessionsData, error: sessionsError } = await supabase
+      .from("study_sessions")
+      .select("*, courses(name, color)")
+      .eq("user_id", user.id);
+    if (sessionsError) {
+      setCustomAlert(sessionsError.message);
+    }
+    setStudySessions((sessionsData || []).map((session) => ({
+      ...session,
+      isGoogleEvent: Boolean(session.google_event_id),
+    })));
     setLoading(false);
 
     // Avoid repeatedly interrupting the same browser session after dismissal.
@@ -269,7 +287,7 @@ export default function CalendarPage() {
   const openSessionDetails = (session: any) => {
     const start = session.start_time ? new Date(session.start_time) : new Date();
     setSelectedSession(session);
-    setEditTitle(String(session.title || "").replace(/^📅 \[Google\] /, ""));
+    setEditTitle(String(session.title || ""));
     setEditCourseId(session.course_id || "");
     setEditDateStr(
       [start.getFullYear(), String(start.getMonth() + 1).padStart(2, "0"), String(start.getDate()).padStart(2, "0")].join("-")
@@ -290,50 +308,37 @@ export default function CalendarPage() {
 
     const durationMinutes = Math.max(15, Number(editDuration) || 60);
     const startTimeIso = new Date(`${editDateStr}T${editStartTime}:00`).toISOString();
-    const endTimeIso = new Date(new Date(startTimeIso).getTime() + durationMinutes * 60_000).toISOString();
     setSavingEdit(true);
 
     try {
-      if (selectedSession.isGoogleEvent) {
-        const response = await fetch("/api/calendar/update", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            eventId: selectedSession.google_event_id,
-            summary: editTitle.trim(),
-            start: startTimeIso,
-            end: endTimeIso,
-          }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.success) throw new Error(data.error || "Google Calendar event could not be updated.");
+      const { data, error } = await supabase
+        .from("study_sessions")
+        .update({
+          title: editTitle.trim(),
+          course_id: editCourseId || null,
+          start_time: startTimeIso,
+          duration: durationMinutes,
+          sync_status: selectedSession.google_event_id ? "pending_update" : "local_only",
+          sync_error: null,
+        })
+        .eq("id", selectedSession.id)
+        .select("*, courses(name, color)")
+        .single();
+      if (error) throw new Error(error.message);
 
-        setStudySessions((current) => current.map((session) =>
-          session.id === selectedSession.id
-            ? {
-                ...session,
-                title: `📅 [Google] ${editTitle.trim()}`,
-                start_time: startTimeIso,
-                duration: durationMinutes,
-                formattedTime: editStartTime,
-                description: data.event?.description || session.description,
-              }
-            : session
-        ));
-      } else {
-        const { data, error } = await supabase
-          .from("study_sessions")
-          .update({
-            title: editTitle.trim(),
-            course_id: editCourseId || null,
-            start_time: startTimeIso,
-            duration: durationMinutes,
-          })
-          .eq("id", selectedSession.id)
-          .select("*, courses(name, color)")
-          .single();
-        if (error) throw new Error(error.message);
-        setStudySessions((current) => current.map((session) => session.id === selectedSession.id ? data : session));
+      setStudySessions((current) => current.map((session) =>
+        session.id === selectedSession.id
+          ? { ...data, isGoogleEvent: Boolean(data.google_event_id) }
+          : session
+      ));
+
+      if (googleConnected) {
+        const response = await fetch("/api/calendar/sync", { method: "POST" });
+        const syncResult = await response.json().catch(() => ({}));
+        if (!response.ok || !syncResult.success) {
+          throw new Error(syncResult.error || "Saved in OnPace, but Google Calendar could not be updated.");
+        }
+        setLastCalendarSyncAt(syncResult.lastSyncAt || new Date().toISOString());
       }
       setSelectedSession(null);
     } catch (error) {
@@ -347,15 +352,27 @@ export default function CalendarPage() {
     if (!selectedSession) return;
     setDeletingSession(true);
     try {
-      if (selectedSession.isGoogleEvent) {
+      if (googleConnected) {
         const response = await fetch("/api/calendar/delete", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eventId: selectedSession.google_event_id }),
+          body: JSON.stringify({ localSessionId: selectedSession.id }),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) throw new Error(data.error || "Google Calendar event could not be deleted.");
       } else {
+        if (selectedSession.google_event_id) {
+          const { error: tombstoneError } = await supabase
+            .from("calendar_sync_tombstones")
+            .upsert({
+              user_id: selectedSession.user_id,
+              calendar_id: selectedSession.google_calendar_id || "primary",
+              google_event_id: selectedSession.google_event_id,
+            }, {
+              onConflict: "user_id,calendar_id,google_event_id",
+            });
+          if (tombstoneError) throw new Error(tombstoneError.message);
+        }
         const { error } = await supabase.from("study_sessions").delete().eq("id", selectedSession.id);
         if (error) throw new Error(error.message);
       }
@@ -389,36 +406,289 @@ export default function CalendarPage() {
 
   const syncSessionsToGoogle = async (
     sessions: Array<{ title: string; start_time: string; duration: number }>,
-    description: string
+    _description: string
   ) => {
     if (!googleConnected || sessions.length === 0) return true;
-    const results = await Promise.all(
-      sessions.map(async (session) => {
-        try {
-          const response = await fetch("/api/calendar/add", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: session.title,
-              startTime: session.start_time,
-              durationMinutes: session.duration,
-              description,
-            }),
-          });
-          const data = await response.json().catch(() => ({}));
-          return response.ok && data.success ? null : data.error || "Google Calendar event could not be created.";
-        } catch {
-          return "Google Calendar could not be reached. Please try again.";
-        }
-      })
-    );
-    const failure = results.find(Boolean);
-    if (failure) {
-      setCustomAlert(String(failure));
+    try {
+      setCalendarSyncing(true);
+      const response = await fetch("/api/calendar/sync", { method: "POST" });
+      const syncResult = await response.json().catch(() => ({}));
+      if (!response.ok || !syncResult.success) {
+        throw new Error(syncResult.error || "Google Calendar synchronization failed.");
+      }
+      setLastCalendarSyncAt(syncResult.lastSyncAt || new Date().toISOString());
+      return true;
+    } catch (error) {
+      setCustomAlert(error instanceof Error ? error.message : "Google Calendar could not be reached. Please try again.");
       return false;
+    } finally {
+      setCalendarSyncing(false);
     }
-    return true;
   };
+
+  const closeBatchSource = (source: CalendarInsertBatch["closeAfter"]) => {
+    if (source === "session") {
+      setSessionOpen(false);
+      setTitle("");
+      setCourseId("");
+    } else if (source === "ocr") {
+      setOcrModalOpen(false);
+      setOcrPreviewEvents([]);
+    } else if (source === "day-plan") {
+      setPlanMyDayOpen(false);
+    } else if (source === "ai-plan") {
+      setAiPlannerOpen(false);
+    }
+  };
+
+  const commitCalendarBatch = async (
+    batch: CalendarInsertBatch,
+    conflicts: DuplicateConflict[] = [],
+    addSeparately: string[] = []
+  ) => {
+    setCommittingBatch(true);
+    const duplicateKeys = new Set(conflicts.map((item) => item.incomingKey));
+    const separateKeys = new Set(addSeparately);
+    const sessionsToInsert = batch.sessions.filter((_, index) => {
+      const key = `session:${index}`;
+      return !duplicateKeys.has(key) || separateKeys.has(key);
+    });
+    const tasksToInsert = batch.tasks.filter((_, index) => {
+      const key = `task:${index}`;
+      return !duplicateKeys.has(key) || separateKeys.has(key);
+    });
+
+    try {
+      let addedSessions: any[] = [];
+      if (sessionsToInsert.length > 0) {
+        const { data, error } = await supabase
+          .from("study_sessions")
+          .insert(sessionsToInsert)
+          .select("*, courses(name, color)");
+        if (error) throw new Error(error.message);
+        addedSessions = data || [];
+        setStudySessions((current) => [
+          ...current,
+          ...addedSessions.map((session) => ({
+            ...session,
+            isGoogleEvent: Boolean(session.google_event_id),
+          })),
+        ]);
+        const firstStart = addedSessions[0]?.start_time;
+        if (firstStart) setCurrentDate(new Date(firstStart));
+      }
+
+      if (tasksToInsert.length > 0) {
+        const { data, error } = await supabase
+          .from("tasks")
+          .insert(tasksToInsert)
+          .select("*, courses(name, color)");
+        if (error) throw new Error(error.message);
+        if (data) setTasks((current) => [...current, ...data]);
+      }
+
+      closeBatchSource(batch.closeAfter);
+      setDuplicateReview(null);
+      setDuplicateSeparateKeys([]);
+
+      // The calendar updates above are intentionally committed before the
+      // network sync starts, so the user sees the new item immediately.
+      if (addedSessions.length > 0) {
+        void syncSessionsToGoogle(
+          addedSessions,
+          batch.source
+        );
+      }
+    } catch (error) {
+      setCustomAlert(
+        error instanceof Error
+          ? error.message
+          : "Calendar items could not be saved."
+      );
+    } finally {
+      setCommittingBatch(false);
+      setIsSyncing(false);
+      setOcrLoading(false);
+      setIsPlanning(false);
+      setIsPlanningDay(false);
+    }
+  };
+
+  const analyzeAndCommitCalendarBatch = async (batch: CalendarInsertBatch) => {
+    const items = [
+      ...batch.sessions.map((session, index) => ({
+        key: `session:${index}`,
+        type: "session",
+        title: String(session.title || ""),
+        at: typeof session.start_time === "string" ? session.start_time : null,
+        duration: Number(session.duration) || 60,
+      })),
+      ...batch.tasks.map((task, index) => ({
+        key: `task:${index}`,
+        type: "task",
+        title: String(task.title || ""),
+        at: typeof task.due_date === "string" ? task.due_date : null,
+        duration: Number(task.estimated_minutes) || 30,
+      })),
+    ];
+
+    try {
+      const response = await fetch("/api/calendar/deduplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || "Duplicate analysis failed.");
+      }
+      const conflicts = Array.isArray(result.conflicts)
+        ? result.conflicts as DuplicateConflict[]
+        : [];
+      if (conflicts.length > 0) {
+        setDuplicateReview({ batch, conflicts });
+        setDuplicateSeparateKeys([]);
+        setIsSyncing(false);
+        setOcrLoading(false);
+        setIsPlanning(false);
+        setIsPlanningDay(false);
+        return;
+      }
+    } catch (error) {
+      console.warn("Duplicate analysis unavailable; exact database constraints still apply.", error);
+    }
+
+    await commitCalendarBatch(batch);
+  };
+
+  const handleManualCalendarSync = async (reviewDuplicates = false) => {
+    if (!googleConnected || calendarSyncLock.current) return;
+    if (reviewDuplicates) {
+      try {
+        const duplicateResponse = await fetch("/api/calendar/duplicates", {
+          cache: "no-store",
+        });
+        const duplicateResult = await duplicateResponse.json().catch(() => ({}));
+        if (duplicateResponse.ok && Array.isArray(duplicateResult.duplicates) && duplicateResult.duplicates.length > 0) {
+          setExistingDuplicateReview(duplicateResult.duplicates);
+          setExistingDuplicateKeepSeparate([]);
+          return;
+        }
+      } catch (error) {
+        console.warn("Existing duplicate scan could not be completed.", error);
+      }
+    }
+    calendarSyncLock.current = true;
+    setCalendarSyncing(true);
+    try {
+      const response = await fetch("/api/calendar/sync", { method: "POST" });
+      const syncResult = await response.json().catch(() => ({}));
+      if (!response.ok || !syncResult.success) {
+        throw new Error(syncResult.error || "Google Calendar synchronization failed.");
+      }
+      const { data: refreshedSessions, error } = await supabase
+        .from("study_sessions")
+        .select("*, courses(name, color)")
+        .order("start_time", { ascending: true });
+      if (error) throw new Error(error.message);
+      setStudySessions((refreshedSessions || []).map((session) => ({
+        ...session,
+        isGoogleEvent: Boolean(session.google_event_id),
+      })));
+      setLastCalendarSyncAt(syncResult.lastSyncAt || new Date().toISOString());
+    } catch (error) {
+      setCustomAlert(error instanceof Error ? error.message : "Google Calendar synchronization failed.");
+    } finally {
+      calendarSyncLock.current = false;
+      setCalendarSyncing(false);
+    }
+  };
+
+  const handleMergeExistingDuplicates = async () => {
+    if (!existingDuplicateReview) return;
+    setMergingExistingDuplicates(true);
+    try {
+      const keepSeparate = new Set(existingDuplicateKeepSeparate);
+      for (const duplicate of existingDuplicateReview) {
+        if (keepSeparate.has(duplicate.duplicateId)) continue;
+        if (duplicate.type === "task") {
+          const { error } = await supabase
+            .from("tasks")
+            .delete()
+            .eq("id", duplicate.duplicateId);
+          if (error) throw new Error(error.message);
+          setTasks((current) => current.filter((task) => task.id !== duplicate.duplicateId));
+          continue;
+        }
+
+        if (googleConnected) {
+          const response = await fetch("/api/calendar/delete", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ localSessionId: duplicate.duplicateId }),
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result.success) {
+            throw new Error(result.error || "Duplicate calendar event could not be merged.");
+          }
+        } else {
+          const duplicateSession = studySessions.find(
+            (session) => session.id === duplicate.duplicateId
+          );
+          if (duplicateSession?.google_event_id) {
+            const { error: tombstoneError } = await supabase
+              .from("calendar_sync_tombstones")
+              .upsert({
+                user_id: duplicateSession.user_id,
+                calendar_id: duplicateSession.google_calendar_id || "primary",
+                google_event_id: duplicateSession.google_event_id,
+              }, {
+                onConflict: "user_id,calendar_id,google_event_id",
+              });
+            if (tombstoneError) throw new Error(tombstoneError.message);
+          }
+          const { error } = await supabase
+            .from("study_sessions")
+            .delete()
+            .eq("id", duplicate.duplicateId);
+          if (error) throw new Error(error.message);
+        }
+        setStudySessions((current) =>
+          current.filter((session) => session.id !== duplicate.duplicateId)
+        );
+      }
+      setExistingDuplicateReview(null);
+      setExistingDuplicateKeepSeparate([]);
+      await handleManualCalendarSync(false);
+    } catch (error) {
+      setCustomAlert(
+        error instanceof Error
+          ? error.message
+          : "Duplicate items could not be merged."
+      );
+    } finally {
+      setMergingExistingDuplicates(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!googleConnected) return;
+
+    const syncWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void handleManualCalendarSync(false);
+      }
+    };
+    const intervalId = window.setInterval(syncWhenVisible, 60_000);
+    window.addEventListener("focus", syncWhenVisible);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", syncWhenVisible);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+    };
+  }, [googleConnected]);
 
   const handleSaveSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -438,23 +708,12 @@ export default function CalendarPage() {
       duration: parseInt(duration) || 60
     };
 
-    const { data, error } = await supabase
-      .from("study_sessions")
-      .insert([newSessionPayload])
-      .select("*, courses(name, color)")
-      .single();
-
-    if (!error && data) {
-      setStudySessions(prev => [...prev, data]);
-      setSessionOpen(false);
-      setTitle("");
-      setCourseId("");
-
-      await syncSessionsToGoogle([data], "Created via OnPace Study Calendar");
-    } else {
-      setCustomAlert("Error saving session: " + (error?.message || ""));
-    }
-    setIsSyncing(false);
+    await analyzeAndCommitCalendarBatch({
+      sessions: [newSessionPayload],
+      tasks: [],
+      source: "Created via OnPace Study Calendar",
+      closeAfter: "session",
+    });
   };
 
   const handleInitAIPlanner = async () => {
@@ -505,17 +764,12 @@ export default function CalendarPage() {
       duration: p.duration
     }));
 
-    const { data, error } = await supabase
-      .from("study_sessions")
-      .insert(insertPayloads)
-      .select("*, courses(name, color)");
-
-    if (!error && data) {
-      setStudySessions(prev => [...prev, ...data]);
-      await syncSessionsToGoogle(data, "Created by OnPace AI Study Schedule");
-      setAiPlannerOpen(false);
-    }
-    setIsPlanning(false);
+    await analyzeAndCommitCalendarBatch({
+      sessions: insertPayloads,
+      tasks: [],
+      source: "Created by OnPace AI Study Schedule",
+      closeAfter: "ai-plan",
+    });
   };
 
   // ── Vision OCR Image Upload Handler ──────────────────────────────────────
@@ -604,28 +858,12 @@ export default function CalendarPage() {
       }
     });
 
-    if (insertSessions.length > 0) {
-      const { data: addedSessions } = await supabase
-        .from("study_sessions")
-        .insert(insertSessions)
-        .select("*, courses(name, color)");
-      if (addedSessions) {
-        setStudySessions((prev) => [...prev, ...addedSessions]);
-        await syncSessionsToGoogle(addedSessions, "Imported from an image by OnPace Vision AI");
-      }
-    }
-
-    if (insertTasks.length > 0) {
-      const { data: addedTasks } = await supabase
-        .from("tasks")
-        .insert(insertTasks)
-        .select("*, courses(name, color)");
-      if (addedTasks) setTasks((prev) => [...prev, ...addedTasks]);
-    }
-
-    setOcrModalOpen(false);
-    setOcrPreviewEvents([]);
-    setOcrLoading(false);
+    await analyzeAndCommitCalendarBatch({
+      sessions: insertSessions,
+      tasks: insertTasks,
+      source: "Imported from an image by OnPace Vision AI",
+      closeAfter: "ocr",
+    });
   };
 
   // ── Plan My Day Interactive AI Handler ──────────────────────────────────
@@ -703,17 +941,12 @@ export default function CalendarPage() {
       duration: Number(b.duration),
     }));
 
-    const { data, error } = await supabase
-      .from("study_sessions")
-      .insert(payloads)
-      .select("*, courses(name, color)");
-
-    if (!error && data) {
-      setStudySessions((prev) => [...prev, ...data]);
-      await syncSessionsToGoogle(data, "Created by OnPace AI Day Planner");
-      setPlanMyDayOpen(false);
-    }
-    setIsPlanningDay(false);
+    await analyzeAndCommitCalendarBatch({
+      sessions: payloads,
+      tasks: [],
+      source: "Created by OnPace AI Day Planner",
+      closeAfter: "day-plan",
+    });
   };
 
   const getDaysInMonth = (year: number, month: number) => {
@@ -769,15 +1002,37 @@ export default function CalendarPage() {
             <CalendarDays className="text-brand" /> {t.calendar.title}
             {googleConnected && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-100/50">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                {lang === "zh" ? "已同步 Google" : lang === "es" ? "Google Activo" : "Google Synced"}
+                <span className={`h-1.5 w-1.5 rounded-full bg-emerald-500 ${calendarSyncing ? "animate-pulse" : ""}`}></span>
+                {calendarSyncing
+                  ? (lang === "tr" ? "Senkronize ediliyor" : lang === "zh" ? "正在同步" : lang === "es" ? "Sincronizando" : "Syncing")
+                  : (lang === "tr" ? "Google bağlı" : lang === "zh" ? "Google 已连接" : lang === "es" ? "Google conectado" : "Google connected")}
               </span>
             )}
           </h1>
           <p className="text-sm text-gray-500 mt-1">{t.calendar.subtitle}</p>
+          {googleConnected && lastCalendarSyncAt && (
+            <p className="text-[11px] text-gray-400 mt-1">
+              {lang === "tr" ? "Son senkronizasyon" : lang === "zh" ? "上次同步" : lang === "es" ? "Última sincronización" : "Last sync"}:{" "}
+              {new Intl.DateTimeFormat(lang === "tr" ? "tr-TR" : lang === "zh" ? "zh-CN" : lang === "es" ? "es-ES" : "en-US", {
+                dateStyle: "short",
+                timeStyle: "short",
+              }).format(new Date(lastCalendarSyncAt))}
+            </p>
+          )}
         </div>
         
         <div className="flex gap-2 flex-wrap items-center">
+          {googleConnected && (
+            <button
+              onClick={() => void handleManualCalendarSync(true)}
+              disabled={calendarSyncing}
+              className="rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 px-3.5 py-2.5 text-xs font-bold hover:bg-emerald-100 disabled:opacity-60 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+            >
+              <RefreshCw size={15} className={calendarSyncing ? "animate-spin" : ""} />
+              {lang === "tr" ? "Şimdi senkronize et" : lang === "zh" ? "立即同步" : lang === "es" ? "Sincronizar ahora" : "Sync now"}
+            </button>
+          )}
+
           {/* Vision OCR Schedule Button */}
           <button
             onClick={() => setOcrModalOpen(true)}
@@ -1300,6 +1555,202 @@ export default function CalendarPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {existingDuplicateReview && (
+        <div className="fixed inset-0 z-[75] bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-5 border border-gray-100 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles size={20} className="text-amber-500" />
+                  <h3 className="text-base font-bold text-surface-dark">
+                    {lang === "tr" ? "Takvimde yinelenen kayıtlar var" : lang === "zh" ? "日历中有重复项目" : lang === "es" ? "Hay elementos duplicados" : "Duplicate calendar items found"}
+                  </h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {lang === "tr" ? "Aynı görünen kayıtları tek kayıtta birleştirmeden önce seçiminizi onaylayın." : lang === "zh" ? "合并相同项目之前，请确认您的选择。" : lang === "es" ? "Confirma antes de combinar los elementos iguales." : "Confirm before identical items are merged into one."}
+                </p>
+              </div>
+              <button type="button" onClick={() => setExistingDuplicateReview(null)} className="text-gray-400 hover:text-gray-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+              {existingDuplicateReview.map((duplicate) => {
+                const keepSeparate = existingDuplicateKeepSeparate.includes(duplicate.duplicateId);
+                return (
+                  <div key={duplicate.duplicateId} className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 space-y-3">
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs">
+                      <p className="font-bold text-surface-dark truncate">{duplicate.title}</p>
+                      <span className="text-gray-400">≈</span>
+                      <p className="font-bold text-surface-dark truncate">{duplicate.canonicalTitle}</p>
+                    </div>
+                    <p className="text-[11px] text-gray-500">{duplicate.reason}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExistingDuplicateKeepSeparate((current) =>
+                            current.filter((id) => id !== duplicate.duplicateId)
+                          )
+                        }
+                        className={`rounded-xl px-3 py-2 text-[11px] font-bold border ${
+                          !keepSeparate ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-600 border-gray-200"
+                        }`}
+                      >
+                        {lang === "tr" ? "Tek kayıtta birleştir" : lang === "zh" ? "合并" : lang === "es" ? "Combinar" : "Merge"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExistingDuplicateKeepSeparate((current) =>
+                            current.includes(duplicate.duplicateId)
+                              ? current
+                              : [...current, duplicate.duplicateId]
+                          )
+                        }
+                        className={`rounded-xl px-3 py-2 text-[11px] font-bold border ${
+                          keepSeparate ? "bg-brand text-white border-brand" : "bg-white text-gray-600 border-gray-200"
+                        }`}
+                      >
+                        {lang === "tr" ? "Ayrı kalsın" : lang === "zh" ? "保持分开" : lang === "es" ? "Mantener separado" : "Keep separate"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              disabled={mergingExistingDuplicates}
+              onClick={() => void handleMergeExistingDuplicates()}
+              className="w-full rounded-xl bg-brand text-white py-3 text-xs font-bold shadow-sm hover:bg-brand-hover disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {mergingExistingDuplicates ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              {lang === "tr" ? "Seçimleri uygula ve senkronize et" : lang === "zh" ? "应用并同步" : lang === "es" ? "Aplicar y sincronizar" : "Apply and sync"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {duplicateReview && (
+        <div className="fixed inset-0 z-[75] bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-5 border border-gray-100 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles size={20} className="text-amber-500" />
+                  <h3 className="text-base font-bold text-surface-dark">
+                    {lang === "tr"
+                      ? "Benzer kayıtlar bulundu"
+                      : lang === "es"
+                        ? "Se encontraron elementos similares"
+                        : lang === "zh"
+                          ? "发现相似项目"
+                          : "Similar items found"}
+                  </h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                  {lang === "tr"
+                    ? "AI, eklemek istediğiniz bazı öğelerin mevcut kayıtlarla aynı olabileceğini düşünüyor. Varsayılan olarak tek kayıt korunur."
+                    : lang === "es"
+                      ? "La IA cree que algunos elementos pueden estar duplicados. De forma predeterminada se conservará un solo elemento."
+                      : lang === "zh"
+                        ? "AI 认为部分项目可能重复。默认只保留一个项目。"
+                        : "AI thinks some incoming items may duplicate existing records. One item is kept by default."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicateReview(null)}
+                className="text-gray-400 hover:text-gray-700"
+                aria-label="Close duplicate review"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto space-y-3 pr-1">
+              {duplicateReview.conflicts.map((conflict) => {
+                const addSeparately = duplicateSeparateKeys.includes(conflict.incomingKey);
+                const [type, rawIndex] = conflict.incomingKey.split(":");
+                const index = Number(rawIndex);
+                const incoming = type === "task"
+                  ? duplicateReview.batch.tasks[index]
+                  : duplicateReview.batch.sessions[index];
+                return (
+                  <div key={conflict.incomingKey} className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 space-y-3">
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs">
+                      <p className="font-bold text-surface-dark truncate">
+                        {String(incoming?.title || "")}
+                      </p>
+                      <span className="text-gray-400">≈</span>
+                      <p className="font-bold text-surface-dark truncate">
+                        {conflict.existingTitle}
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-gray-500">{conflict.reason}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDuplicateSeparateKeys((current) =>
+                            current.filter((key) => key !== conflict.incomingKey)
+                          )
+                        }
+                        className={`rounded-xl px-3 py-2 text-[11px] font-bold border transition-all ${
+                          !addSeparately
+                            ? "bg-emerald-600 text-white border-emerald-600"
+                            : "bg-white text-gray-600 border-gray-200"
+                        }`}
+                      >
+                        {lang === "tr" ? "Tek kayıtta birleştir" : lang === "zh" ? "合并为一个" : lang === "es" ? "Combinar en uno" : "Keep as one"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDuplicateSeparateKeys((current) =>
+                            current.includes(conflict.incomingKey)
+                              ? current
+                              : [...current, conflict.incomingKey]
+                          )
+                        }
+                        className={`rounded-xl px-3 py-2 text-[11px] font-bold border transition-all ${
+                          addSeparately
+                            ? "bg-brand text-white border-brand"
+                            : "bg-white text-gray-600 border-gray-200"
+                        }`}
+                      >
+                        {lang === "tr" ? "Ayrı olarak ekle" : lang === "zh" ? "单独添加" : lang === "es" ? "Añadir por separado" : "Add separately"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              disabled={committingBatch}
+              onClick={() =>
+                void commitCalendarBatch(
+                  duplicateReview.batch,
+                  duplicateReview.conflicts,
+                  duplicateSeparateKeys
+                )
+              }
+              className="w-full rounded-xl bg-brand text-white py-3 text-xs font-bold shadow-sm hover:bg-brand-hover disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {committingBatch
+                ? <Loader2 size={16} className="animate-spin" />
+                : <Check size={16} />}
+              {lang === "tr" ? "Seçimleri uygula" : lang === "zh" ? "应用选择" : lang === "es" ? "Aplicar selección" : "Apply choices"}
+            </button>
           </div>
         </div>
       )}

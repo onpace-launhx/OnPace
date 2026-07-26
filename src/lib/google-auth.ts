@@ -1,5 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 export async function getValidAccessToken(
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string
 ): Promise<string | null> {
   const { data: tokenRow, error } = await supabase
@@ -35,7 +37,22 @@ export async function getValidAccessToken(
   });
 
   const refreshData = await refreshRes.json();
-  if (!refreshData.access_token) return null;
+  if (!refreshData.access_token) {
+    console.error(
+      "Google Calendar token refresh failed:",
+      refreshData.error || refreshRes.status
+    );
+    if (
+      refreshData.error === "invalid_grant" ||
+      refreshData.error === "invalid_client"
+    ) {
+      await supabase
+        .from("user_google_tokens")
+        .delete()
+        .eq("user_id", userId);
+    }
+    return null;
+  }
 
   const newExpiresAt = new Date(
     Date.now() + (refreshData.expires_in || 3600) * 1000

@@ -22,6 +22,7 @@ export default function DashboardLayout({
   const [hasMaintenanceAccess, setHasMaintenanceAccess] = useState(false);
   const [userLang, setUserLang] = useState("en");
   const [maintenanceChecked, setMaintenanceChecked] = useState(false);
+  const [maintenanceContent, setMaintenanceContent] = useState<Record<string, any> | null>(null);
 
   // Announcement state
   const [pinnedAnnouncements, setPinnedAnnouncements] = useState<any[]>([]);
@@ -46,9 +47,7 @@ export default function DashboardLayout({
 
           if (prof) {
             setUserLang(prof.language || "en");
-            if (["admin", "super_admin"].includes(prof.role)) {
-              setIsAdminUser(true);
-            }
+            setIsAdminUser(["admin", "super_admin"].includes(prof.role));
             setHasMaintenanceAccess(prof.maintenance_access === true);
           }
         }
@@ -60,9 +59,8 @@ export default function DashboardLayout({
           ? settingsRows[0]
           : settingsRows;
 
-        if (settings?.maintenance_mode) {
-          setIsMaintenanceMode(true);
-        }
+        setIsMaintenanceMode(settings?.maintenance_mode === true);
+        setMaintenanceContent(settings?.maintenance_content || null);
       } catch {
         // Silently ignore
       } finally {
@@ -101,9 +99,14 @@ export default function DashboardLayout({
     }
 
     checkMaintenanceAndUser();
+    const maintenanceInterval = window.setInterval(
+      checkMaintenanceAndUser,
+      30_000
+    );
     if (!isFullscreenPage) {
       loadAnnouncements();
     }
+    return () => window.clearInterval(maintenanceInterval);
   }, [isFullscreenPage, supabase]);
 
   const handleDismissPin = (id: string) => {
@@ -155,7 +158,12 @@ export default function DashboardLayout({
 
   // If System Maintenance is active AND user is not an Admin -> Render Maintenance Barrier Screen
   if (isMaintenanceMode && !isAdminUser && !hasMaintenanceAccess) {
-    return <MaintenanceScreen userLanguage={userLang} />;
+    return (
+      <MaintenanceScreen
+        userLanguage={userLang}
+        content={maintenanceContent}
+      />
+    );
   }
 
   const visiblePins = pinnedAnnouncements.filter(

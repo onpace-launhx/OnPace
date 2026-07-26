@@ -12,6 +12,7 @@ export const config = {
     "/ai-assistant/:path*",
     "/billing/:path*",
     "/calendar/:path*",
+    "/exam-planner/:path*",
     "/focus/:path*",
     "/notes/:path*",
     "/onboarding/:path*",
@@ -19,5 +20,6 @@ export const config = {
     "/study-groups/:path*",
     "/tasks/:path*",
     "/admin/:path*",
+    "/maintenance/:path*",
   ],
 };

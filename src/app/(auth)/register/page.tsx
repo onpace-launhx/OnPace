@@ -202,6 +202,24 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            <p className="text-[11px] leading-relaxed text-gray-500">
+              {language === "tr"
+                ? "Hesap oluşturarak "
+                : language === "es"
+                  ? "Al crear una cuenta, aceptas la "
+                  : language === "zh"
+                    ? "创建账户即表示您同意"
+                    : "By creating an account, you agree to the "}
+              <Link href={`/terms?lang=${language}`} target="_blank" className="font-bold text-brand hover:underline">
+                {language === "tr" ? "Kullanım Şartları’nı" : language === "es" ? "Términos de Servicio" : language === "zh" ? "服务条款" : "Terms of Service"}
+              </Link>
+              {language === "zh" ? "和" : language === "tr" ? " ve " : language === "es" ? " y la " : " and acknowledge the "}
+              <Link href={`/privacy?lang=${language}`} target="_blank" className="font-bold text-brand hover:underline">
+                {language === "tr" ? "Gizlilik Politikası’nı" : language === "es" ? "Política de Privacidad" : language === "zh" ? "隐私政策" : "Privacy Policy"}
+              </Link>
+              {language === "tr" ? " kabul etmiş olursunuz." : language === "es" ? "." : language === "zh" ? "。" : "."}
+            </p>
+
             <div>
               <label htmlFor="gradeLevel" className="block text-sm font-medium text-gray-700">
                 Grade / Goal level

@@ -106,6 +106,17 @@ Deno.serve(async (request) => {
     if (typeof body.maintenanceMode === "boolean") {
       updates.maintenance_mode = body.maintenanceMode
     }
+    if (
+      body.maintenanceContent &&
+      typeof body.maintenanceContent === "object" &&
+      !Array.isArray(body.maintenanceContent)
+    ) {
+      const encoded = JSON.stringify(body.maintenanceContent)
+      if (encoded.length > 50_000) {
+        return json({ error: "Maintenance content is too large." }, 400)
+      }
+      updates.maintenance_content = body.maintenanceContent
+    }
     if (body.planPrices && typeof body.planPrices === "object") {
       updates.plan_prices = body.planPrices
     }
