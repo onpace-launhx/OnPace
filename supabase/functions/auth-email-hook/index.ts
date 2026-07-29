@@ -155,7 +155,7 @@ Deno.serve(async (request) => {
               message: copy.message,
               buttonLabel: "button" in copy ? copy.button : undefined,
               buttonUrl: verifyUrl,
-              token: target.token,
+              token: action === "recovery" ? undefined : target.token,
               preheader: copy.message,
               codeLabel: "codeLabel" in copy ? copy.codeLabel : undefined,
               tagline: copy.tagline,

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { setRememberSessionIntent } from "@/lib/auth/remember-session";
+import { getBrowserSiteOrigin } from "@/lib/site-url";
 import { CheckCircle2, Lock, Mail, Loader2, AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
@@ -84,7 +85,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin + "/auth/callback?next=/dashboard",
+        redirectTo: `${getBrowserSiteOrigin()}/auth/callback?next=/dashboard`,
         queryParams: {
           prompt: "select_account",
         },

@@ -3,3 +3,15 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[[redirects]]
+  from = "https://onpace-launchx.netlify.app/*"
+  to = "https://onpace-ai.xyz/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://main--onpace-launchx.netlify.app/*"
+  to = "https://onpace-ai.xyz/:splat"
+  status = 301
+  force = true

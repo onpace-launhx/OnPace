@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { setRememberSessionIntent } from "@/lib/auth/remember-session";
+import { getBrowserSiteOrigin } from "@/lib/site-url";
 import { CheckCircle2, Lock, Mail, User, GraduationCap, Loader2, AlertCircle } from "lucide-react";
 
 export default function RegisterPage() {
@@ -59,7 +60,7 @@ export default function RegisterPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    const callback = new URL("/auth/callback", window.location.origin);
+    const callback = new URL("/auth/callback", getBrowserSiteOrigin());
     callback.searchParams.set(
       "next",
       `/verify-email?verified=1&mode=signup&lang=${language}`
@@ -106,7 +107,7 @@ export default function RegisterPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin + "/auth/callback?next=/dashboard&new_user=true",
+        redirectTo: `${getBrowserSiteOrigin()}/auth/callback?next=/dashboard&new_user=true`,
         queryParams: {
           prompt: "select_account",
         },

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { siteUrl } from "@/lib/site-url";
 
 // Step 1: Redirect user to Google OAuth consent screen
 export async function GET() {
@@ -11,7 +12,9 @@ export async function GET() {
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID!;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI!;
+  const redirectUri =
+    process.env.GOOGLE_REDIRECT_URI ||
+    siteUrl("/api/google/oauth/callback").toString();
   const state = crypto.randomUUID();
 
   const scope = encodeURIComponent(

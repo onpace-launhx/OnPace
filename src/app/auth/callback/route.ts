@@ -5,9 +5,12 @@ import {
   applySessionPersistence,
   hasRememberedSession,
 } from '@/lib/auth/session-persistence'
+import { getSiteOrigin } from '@/lib/site-url'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const requestUrl = new URL(request.url)
+  const { searchParams } = requestUrl
+  const origin = getSiteOrigin(requestUrl.origin)
   const code = searchParams.get('code')
   const requestedNext = searchParams.get('next') ?? '/dashboard'
   const newUser = searchParams.get('new_user') === 'true'

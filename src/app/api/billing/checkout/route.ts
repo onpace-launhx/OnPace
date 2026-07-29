@@ -4,6 +4,7 @@ import {
   getPaymentProviderAdapter,
   PaymentConfigurationError,
 } from "@/lib/payments/server";
+import { getSiteOrigin } from "@/lib/site-url";
 
 const PLAN_KEYS: Record<string, { plan: string; cycle: string }> = {
   pro_monthly: { plan: "pro", cycle: "monthly" },
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
     }
     const discount = Math.max(0, Math.min(100, Number(profile?.discount_percent) || 0));
     const amount = Number((basePrice * (1 - discount / 100)).toFixed(2));
-    const origin = new URL(request.url).origin;
+    const origin = getSiteOrigin(new URL(request.url).origin);
     const adapter = getPaymentProviderAdapter(settings.payment_provider);
     const session = await adapter.createCheckoutSession({
       userId: user.id,

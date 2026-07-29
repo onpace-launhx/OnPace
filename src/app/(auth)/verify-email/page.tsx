@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Loader2, MailCheck, RefreshCw, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getBrowserSiteOrigin } from "@/lib/site-url";
 
 type Language = "en" | "tr" | "es" | "zh";
 
@@ -114,7 +115,7 @@ function VerifyEmailContent() {
     const { error: resendError } = await supabase.auth.resend({
       type: "signup",
       email,
-      options: { emailRedirectTo: buildEmailRedirect(window.location.origin, language) },
+      options: { emailRedirectTo: buildEmailRedirect(getBrowserSiteOrigin(), language) },
     });
     if (resendError) setError(resendError.message);
     else setMessage(t.resent);

@@ -1,5 +1,14 @@
 project_id = "onpace"
 
+[auth]
+site_url = "https://onpace-ai.xyz"
+additional_redirect_urls = [
+  "https://onpace-ai.xyz/**",
+  "http://localhost:3000/**",
+  "https://onpace-launchx.netlify.app/**",
+  "https://main--onpace-launchx.netlify.app/**",
+]
+
 [functions.auth-email-hook]
 verify_jwt = false
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, Mail, Loader2, AlertCircle } from "lucide-react";
+import { getBrowserSiteOrigin } from "@/lib/site-url";
 
 export default function ForgotPasswordPage() {
   const supabase = createClient();
@@ -18,8 +19,14 @@ export default function ForgotPasswordPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    const callback = new URL("/auth/callback", getBrowserSiteOrigin());
+    callback.searchParams.set(
+      "next",
+      "/set-password?mode=recovery&next=/dashboard"
+    );
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/dashboard/reset-password`,
+      redirectTo: callback.toString(),
     });
 
     if (error) {

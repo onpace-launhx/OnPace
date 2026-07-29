@@ -1,23 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { siteUrl } from "@/lib/site-url";
 
 function appUrl(path: string, request: NextRequest) {
-  const configuredOrigin =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    (() => {
-      try {
-        return process.env.GOOGLE_REDIRECT_URI
-          ? new URL(process.env.GOOGLE_REDIRECT_URI).origin
-          : "";
-      } catch {
-        return "";
-      }
-    })();
-  const fallbackOrigin = request.nextUrl.origin.replace(
-    /^http:\/\/0\.0\.0\.0(?=[:/]|$)/,
-    "http://localhost"
-  );
-  return new URL(path, configuredOrigin || fallbackOrigin);
+  return siteUrl(path, request.nextUrl.origin);
 }
 
 // Step 2: Handle callback from Google with auth code
@@ -49,7 +35,9 @@ export async function GET(request: NextRequest) {
       code,
       client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      redirect_uri: process.env.GOOGLE_REDIRECT_URI!,
+      redirect_uri:
+        process.env.GOOGLE_REDIRECT_URI ||
+        siteUrl("/api/google/oauth/callback").toString(),
       grant_type: "authorization_code",
     }),
   });

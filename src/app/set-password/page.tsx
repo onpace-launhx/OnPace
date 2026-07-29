@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, Lock, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
@@ -9,13 +9,39 @@ export default function SetPasswordPage() {
   const supabase = createClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [mode, setMode] = useState<"setup" | "recovery">("setup");
+  const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedMode =
+      params.get("mode") === "recovery" ? "recovery" : "setup";
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      setMode(requestedMode);
+      if (error || !data.session?.user) {
+        setErrorMsg(
+          "This password link is invalid or has expired. Request a new password reset email."
+        );
+        return;
+      }
+      setSessionReady(true);
+    });
+  }, [supabase]);
+
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+
+    if (!sessionReady) {
+      setErrorMsg(
+        "This password link is invalid or has expired. Request a new password reset email."
+      );
+      return;
+    }
 
     if (password.length < 8) {
       setErrorMsg("Password must be at least 8 characters.");
@@ -39,7 +65,7 @@ export default function SetPasswordPage() {
         requestedNext?.startsWith("/") && !requestedNext.startsWith("//")
           ? requestedNext
           : "/dashboard";
-      setTimeout(() => window.location.assign(destination), 700);
+      setTimeout(() => window.location.replace(destination), 700);
     }
   };
 
@@ -58,10 +84,12 @@ export default function SetPasswordPage() {
             <ShieldCheck className="h-7 w-7 text-brand" />
           </div>
           <h2 className="text-center text-3xl font-extrabold tracking-tight text-surface-dark">
-            Welcome to OnPace!
+            {mode === "recovery" ? "Choose a new password" : "Welcome to OnPace!"}
           </h2>
           <p className="mt-1 text-center text-sm text-gray-500 max-w-xs leading-relaxed">
-            Set a password for your account so you can also log in with email in the future.
+            {mode === "recovery"
+              ? "Enter your new password. After it is saved, your account will open automatically."
+              : "Set a password for your account so you can also log in with email in the future."}
           </p>
         </div>
       </div>
@@ -131,7 +159,7 @@ export default function SetPasswordPage() {
             <div className="pt-1">
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !sessionReady}
                 className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-semibold text-white bg-brand hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand disabled:opacity-50 active:scale-95 transition-all cursor-pointer items-center gap-2"
               >
                 {loading ? (
@@ -139,20 +167,24 @@ export default function SetPasswordPage() {
                     <Loader2 className="h-4 w-4 animate-spin" /> Setting password…
                   </>
                 ) : (
-                  "Set password & continue"
+                  mode === "recovery"
+                    ? "Save new password & continue"
+                    : "Set password & continue"
                 )}
               </button>
             </div>
           </form>
 
-          <div className="mt-4 text-center">
-            <Link
-              href="/dashboard"
-              className="text-sm text-gray-400 hover:text-gray-600 transition-colors font-medium"
-            >
-              Skip for now →
-            </Link>
-          </div>
+          {mode !== "recovery" && (
+            <div className="mt-4 text-center">
+              <Link
+                href="/dashboard"
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors font-medium"
+              >
+                Skip for now →
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>
