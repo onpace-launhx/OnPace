@@ -189,6 +189,18 @@ export default function CalendarPage() {
       confirmPlan: "Use this plan for my day",
       today: "Today",
       minutes: "mins",
+      invalidImage: "Choose a PNG, JPG, or WEBP image smaller than 6 MB.",
+      noEvents: "No reliable items were found in this image.",
+      readError: "The image could not be read.",
+      reviewHint: "Review and edit every title, time, and duration before adding anything.",
+      titleLabel: "Title",
+      startLabel: "Start",
+      durationLabel: "Duration",
+      typeSession: "Calendar session",
+      typeTask: "Task",
+      remove: "Remove",
+      sessionsShort: "sessions",
+      deleteEvent: "Delete event",
     },
     tr: {
       ocrDescription: "Ders programınızın, yapılacaklar listenizin veya takviminizin ekran görüntüsünü yükleyin. AI öğeleri çıkarır; takvime eklemeden önce siz onaylarsınız.",
@@ -202,6 +214,18 @@ export default function CalendarPage() {
       confirmPlan: "Günümü bu plana göre oluştur",
       today: "Bugün",
       minutes: "dk",
+      invalidImage: "6 MB’tan küçük PNG, JPG veya WEBP görseli seç.",
+      noEvents: "Bu görselde güvenilir bir öğe bulunamadı.",
+      readError: "Görsel okunamadı.",
+      reviewHint: "Eklemeden önce her başlığı, saati ve süreyi kontrol edip düzenle.",
+      titleLabel: "Başlık",
+      startLabel: "Başlangıç",
+      durationLabel: "Süre",
+      typeSession: "Takvim oturumu",
+      typeTask: "Görev",
+      remove: "Kaldır",
+      sessionsShort: "oturum",
+      deleteEvent: "Etkinliği sil",
     },
     es: {
       ocrDescription: "Sube una captura de tu horario, lista de tareas o calendario. La IA extraerá los elementos para que los revises antes de añadirlos.",
@@ -215,6 +239,18 @@ export default function CalendarPage() {
       confirmPlan: "Usar este plan para mi día",
       today: "Hoy",
       minutes: "min",
+      invalidImage: "Elige una imagen PNG, JPG o WEBP de menos de 6 MB.",
+      noEvents: "No se encontraron elementos fiables en esta imagen.",
+      readError: "No se pudo leer la imagen.",
+      reviewHint: "Revisa y edita cada título, hora y duración antes de añadir elementos.",
+      titleLabel: "Título",
+      startLabel: "Inicio",
+      durationLabel: "Duración",
+      typeSession: "Sesión de calendario",
+      typeTask: "Tarea",
+      remove: "Eliminar",
+      sessionsShort: "sesiones",
+      deleteEvent: "Eliminar evento",
     },
     zh: {
       ocrDescription: "上传课程表、待办事项或日历截图。AI 会提取内容，并在添加到日历前供您确认。",
@@ -228,6 +264,18 @@ export default function CalendarPage() {
       confirmPlan: "按此方案规划今天",
       today: "今天",
       minutes: "分钟",
+      invalidImage: "请选择小于 6 MB 的 PNG、JPG 或 WEBP 图片。",
+      noEvents: "图片中未找到可靠项目。",
+      readError: "无法读取图片。",
+      reviewHint: "添加前请检查并编辑每个标题、时间和时长。",
+      titleLabel: "标题",
+      startLabel: "开始时间",
+      durationLabel: "时长",
+      typeSession: "日历学习安排",
+      typeTask: "任务",
+      remove: "移除",
+      sessionsShort: "项安排",
+      deleteEvent: "删除日历安排",
     },
   }[lang as "en" | "tr" | "es" | "zh"] || {
     ocrDescription: "Upload a screenshot of your schedule, to-do list, or calendar. AI will extract the items for your review before adding them.",
@@ -241,6 +289,18 @@ export default function CalendarPage() {
     confirmPlan: "Use this plan for my day",
     today: "Today",
     minutes: "mins",
+    invalidImage: "Choose a PNG, JPG, or WEBP image smaller than 6 MB.",
+    noEvents: "No reliable items were found in this image.",
+    readError: "The image could not be read.",
+    reviewHint: "Review and edit every title, time, and duration before adding anything.",
+    titleLabel: "Title",
+    startLabel: "Start",
+    durationLabel: "Duration",
+    typeSession: "Calendar session",
+    typeTask: "Task",
+    remove: "Remove",
+    sessionsShort: "sessions",
+    deleteEvent: "Delete event",
   };
 
   const year = currentDate.getFullYear();
@@ -943,8 +1003,11 @@ export default function CalendarPage() {
   const handleOcrImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > 6 * 1024 * 1024) {
-      setOcrError("Please choose an image smaller than 6 MB.");
+    if (
+      !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
+      file.size > 6 * 1024 * 1024
+    ) {
+      setOcrError(calendarCopy.invalidImage);
       e.target.value = "";
       return;
     }
@@ -956,30 +1019,57 @@ export default function CalendarPage() {
     try {
       const reader = new FileReader();
       reader.onload = async () => {
-        const base64Data = reader.result as string;
-        const res = await fetch("/api/calendar/ocr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            imageBase64: base64Data,
-            mimeType: file.type,
-          }),
-        });
+        try {
+          const base64Data = reader.result as string;
+          const res = await fetch("/api/calendar/ocr", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imageBase64: base64Data,
+              mimeType: file.type,
+            }),
+          });
 
-        const data = await res.json();
-        if (data.events && Array.isArray(data.events)) {
-          setOcrPreviewEvents(data.events);
-        } else {
-          setOcrError(data.error || "No events found in schedule image.");
+          const data = await res.json().catch(() => null);
+          if (!res.ok) {
+            setOcrError(data?.error || calendarCopy.readError);
+          } else if (Array.isArray(data?.events) && data.events.length > 0) {
+            setOcrPreviewEvents(data.events);
+            if (data.discardedCount > 0) {
+              setOcrError(data.warning || null);
+            }
+          } else {
+            setOcrError(data?.warning || calendarCopy.noEvents);
+          }
+        } catch {
+          setOcrError(calendarCopy.readError);
+        } finally {
+          setOcrLoading(false);
+          e.target.value = "";
         }
+      };
+      reader.onerror = () => {
+        setOcrError(calendarCopy.readError);
         setOcrLoading(false);
         e.target.value = "";
       };
       reader.readAsDataURL(file);
     } catch {
-      setOcrError("Failed to read image file.");
+      setOcrError(calendarCopy.readError);
       setOcrLoading(false);
     }
+  };
+
+  const updateOcrPreviewEvent = (
+    index: number,
+    field: string,
+    value: string | number
+  ) => {
+    setOcrPreviewEvents((current) =>
+      current.map((event, eventIndex) =>
+        eventIndex === index ? { ...event, [field]: value } : event
+      )
+    );
   };
 
   const handleConfirmOcrEvents = async () => {
@@ -1130,6 +1220,11 @@ export default function CalendarPage() {
       new Date(2024, index, 1)
     )
   );
+  const localizedWeekdays = Array.from({ length: 7 }, (_, index) =>
+    new Intl.DateTimeFormat(locale, { weekday: "short" }).format(
+      new Date(2024, 6, 7 + index)
+    )
+  );
 
   const cells: (Date | null)[] = [];
   for (let i = 0; i < firstDayIndex; i++) {
@@ -1278,13 +1373,9 @@ export default function CalendarPage() {
 
         {/* Days of Week Header */}
         <div className="grid grid-cols-7 border-b border-gray-100 bg-surface-secondary/50 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider py-2.5">
-          <div>{lang === "tr" ? "Paz" : "Sun"}</div>
-          <div>{lang === "tr" ? "Pzt" : "Mon"}</div>
-          <div>{lang === "tr" ? "Sal" : "Tue"}</div>
-          <div>{lang === "tr" ? "Çar" : "Wed"}</div>
-          <div>{lang === "tr" ? "Per" : "Thu"}</div>
-          <div>{lang === "tr" ? "Cum" : "Fri"}</div>
-          <div>{lang === "tr" ? "Cmt" : "Sat"}</div>
+          {localizedWeekdays.map((weekday, index) => (
+            <div key={`${weekday}-${index}`}>{weekday}</div>
+          ))}
         </div>
 
         {/* Month Grid Cells */}
@@ -1339,7 +1430,7 @@ export default function CalendarPage() {
                 </div>
 
                 <div className="text-[9px] text-gray-400 text-right">
-                  {daySessions.length > 0 && `${daySessions.length} sess`}
+                  {daySessions.length > 0 && `${daySessions.length} ${calendarCopy.sessionsShort}`}
                 </div>
               </div>
             );
@@ -1407,7 +1498,7 @@ export default function CalendarPage() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={handleDeleteSession} disabled={savingEdit || deletingSession} className="px-3 py-2.5 border border-red-100 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 disabled:opacity-50" title={lang === "tr" ? "Etkinliği sil" : "Delete event"}>
+                <button type="button" onClick={handleDeleteSession} disabled={savingEdit || deletingSession} className="px-3 py-2.5 border border-red-100 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 disabled:opacity-50" title={calendarCopy.deleteEvent}>
                   {deletingSession ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                 </button>
                 <button type="button" onClick={closeSessionDetails} disabled={savingEdit || deletingSession} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50">
@@ -1515,27 +1606,75 @@ export default function CalendarPage() {
 
             {ocrPreviewEvents.length > 0 && (
               <div className="space-y-3">
-                <p className="text-xs font-bold text-surface-dark">
-                  {calendarCopy.found} ({ocrPreviewEvents.length}):
-                </p>
-                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                <div>
+                  <p className="text-xs font-bold text-surface-dark">
+                    {calendarCopy.found} ({ocrPreviewEvents.length}):
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-gray-500">{calendarCopy.reviewHint}</p>
+                </div>
+                <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                   {ocrPreviewEvents.map((ev, i) => (
-                    <div key={i} className="p-2.5 bg-gray-50 rounded-xl border border-gray-150 flex items-center justify-between text-xs">
-                      <div>
-                        <p className="font-bold text-surface-dark">{ev.title}</p>
-                        <p className="text-[10px] text-gray-400">
-                          {ev.startTime} • {ev.durationMinutes} {calendarCopy.minutes} • {ev.type}
-                        </p>
+                    <div key={i} className="space-y-2 rounded-xl border border-gray-150 bg-gray-50 p-3 text-xs">
+                      <div className="flex items-start gap-2">
+                        <label className="min-w-0 flex-1 space-y-1">
+                          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{calendarCopy.titleLabel}</span>
+                          <input
+                            required
+                            maxLength={160}
+                            value={ev.title || ""}
+                            onChange={(event) => updateOcrPreviewEvent(i, "title", event.target.value)}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-bold text-surface-dark outline-none focus:border-purple-400"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setOcrPreviewEvents((current) => current.filter((_, index) => index !== i))}
+                          className="mt-5 rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                          aria-label={calendarCopy.remove}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                        {ev.type}
-                      </span>
+                      <div className="grid grid-cols-3 gap-2">
+                        <label className="space-y-1">
+                          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{calendarCopy.startLabel}</span>
+                          <input
+                            type="time"
+                            value={ev.startTime || "09:00"}
+                            onChange={(event) => updateOcrPreviewEvent(i, "startTime", event.target.value)}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-surface-dark"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{calendarCopy.durationLabel}</span>
+                          <input
+                            type="number"
+                            min={10}
+                            max={480}
+                            step={5}
+                            value={ev.durationMinutes || 60}
+                            onChange={(event) => updateOcrPreviewEvent(i, "durationMinutes", Number(event.target.value))}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-surface-dark"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">Type</span>
+                          <select
+                            value={ev.type === "task" ? "task" : "session"}
+                            onChange={(event) => updateOcrPreviewEvent(i, "type", event.target.value)}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-surface-dark"
+                          >
+                            <option value="session">{calendarCopy.typeSession}</option>
+                            <option value="task">{calendarCopy.typeTask}</option>
+                          </select>
+                        </label>
+                      </div>
                     </div>
                   ))}
                 </div>
                 <button
                   onClick={handleConfirmOcrEvents}
-                  disabled={ocrLoading}
+                  disabled={ocrLoading || ocrPreviewEvents.some((event) => !String(event.title || "").trim())}
                   className="w-full py-3 bg-purple-600 text-white rounded-xl text-xs font-bold hover:bg-purple-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <Check size={16} /> {calendarCopy.addItems}

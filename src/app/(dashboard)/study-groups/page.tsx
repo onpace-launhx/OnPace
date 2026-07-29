@@ -20,6 +20,8 @@ import {
   Award
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
+import StudyPartnerProfileForm from "@/components/dashboard/StudyPartnerProfileForm";
+import { localized } from "@/lib/i18n";
 
 export default function StudyGroupsPage() {
   const router = useRouter();
@@ -55,9 +57,210 @@ export default function StudyGroupsPage() {
   const [loadingAI, setLoadingAI] = useState(false);
   const [aiRecommendedGroup, setAiRecommendedGroup] = useState<any | null>(null);
   const [activeDirectChatPartner, setActiveDirectChatPartner] = useState<any | null>(null);
+  const [showMatchProfile, setShowMatchProfile] = useState(false);
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const matchCopy = localized(lang, {
+    en: {
+      title: "AI Study Partner Matchmaker",
+      description: "AI compares subjects, goals, learning styles, time zones, and weekly availability.",
+      run: "Run AI Matchmaker",
+      matching: "Matching…",
+      analyzing: "AI is analyzing your study-partner profile…",
+      analyzingHint: "Comparing compatible schedules, goals, subjects, and learning preferences.",
+      suggestion: "AI group suggestion",
+      error: "The matchmaker could not complete this request.",
+      editProfile: "Review matching profile",
+      notification: "Notification",
+      dismiss: "Dismiss",
+    },
+    tr: {
+      title: "AI Çalışma Partneri Eşleştiricisi",
+      description: "AI; dersleri, hedefleri, öğrenme stillerini, saat dilimini ve haftalık uygunluğu karşılaştırır.",
+      run: "AI Eşleştirmeyi Başlat",
+      matching: "Eşleştiriliyor…",
+      analyzing: "AI çalışma partneri profilini analiz ediyor…",
+      analyzingHint: "Uyumlu programlar, hedefler, dersler ve öğrenme tercihleri karşılaştırılıyor.",
+      suggestion: "AI grup önerisi",
+      error: "Eşleştirici bu isteği tamamlayamadı.",
+      editProfile: "Eşleştirme profilini gözden geçir",
+      notification: "Bildirim",
+      dismiss: "Kapat",
+    },
+    es: {
+      title: "Buscador de Compañeros con IA",
+      description: "La IA compara materias, objetivos, estilos, zonas horarias y disponibilidad semanal.",
+      run: "Ejecutar buscador con IA",
+      matching: "Buscando…",
+      analyzing: "La IA analiza tu perfil de compañero…",
+      analyzingHint: "Comparando horarios, objetivos, materias y preferencias de aprendizaje.",
+      suggestion: "Sugerencia de grupo de IA",
+      error: "El buscador no pudo completar esta solicitud.",
+      editProfile: "Revisar perfil de emparejamiento",
+      notification: "Aviso",
+      dismiss: "Cerrar",
+    },
+    zh: {
+      title: "AI 学习伙伴匹配器",
+      description: "AI 会比较科目、目标、学习方式、时区和每周可用时间。",
+      run: "运行 AI 匹配",
+      matching: "正在匹配…",
+      analyzing: "AI 正在分析你的学习伙伴资料…",
+      analyzingHint: "正在比较时间、目标、科目与学习偏好。",
+      suggestion: "AI 小组建议",
+      error: "匹配器无法完成此请求。",
+      editProfile: "检查匹配资料",
+      notification: "系统提示",
+      dismiss: "关闭",
+    },
+  });
+  const groupCopy = localized(lang, {
+    en: {
+      lockedTitle: "Unlock Study Groups & Matchmaking",
+      lockedDescription: "Study Groups is a Pro collaboration space for subject groups, compatible study partners, and shared calendar sessions.",
+      upgrade: "Upgrade to Pro",
+      dashboard: "Go to Dashboard",
+      title: "Study Groups & Partners",
+      subtitle: "Join academic groups, chat with peers, and schedule shared study sessions.",
+      createGroup: "Create Group",
+      groupsTab: "Study Groups & Chat",
+      matchmakerTab: "AI Study Matchmaker",
+      explore: "Explore Groups",
+      members: "Members",
+      leave: "Leave",
+      join: "Join",
+      chat: "💬 Chat",
+      matchmaker: "🎯 Matchmaker",
+      memberTab: "👥 Members",
+      goals: "📋 Goals",
+      messagePlaceholder: "Type your message to the group…",
+      scheduled: "Study session scheduled with {name} for tomorrow at 3:00 PM.",
+      schedule: "Schedule Session",
+      directChat: "Direct Chat",
+      approve: "Approve Match Connection",
+      noGroup: "No Study Group Active",
+      noGroupDescription: "Join or select a study group to use its shared chat and partner-matching tools.",
+      createTitle: "Create New Study Group",
+      createSubtitle: "Start a collaborative room for exam preparation.",
+      groupName: "Group Name",
+      groupNamePlaceholder: "e.g. AP Calculus study circle",
+      description: "Description",
+      descriptionPlaceholder: "What will this group focus on?",
+      subject: "Associated Subject",
+      joinError: "Could not update the study-group membership. Please try again.",
+      createError: "The group could not be created. Its name may already be in use.",
+      scheduleError: "The shared study session could not be scheduled.",
+    },
+    tr: {
+      lockedTitle: "Çalışma Grupları ve Eşleştirmeyi Aç",
+      lockedDescription: "Çalışma Grupları; ders odaklı topluluklar, uyumlu çalışma partnerleri ve ortak takvim oturumları sunan bir Pro alanıdır.",
+      upgrade: "Pro'ya yükselt",
+      dashboard: "Çalışma paneline dön",
+      title: "Çalışma Grupları ve Partnerler",
+      subtitle: "Ders gruplarına katıl, arkadaşlarınla konuş ve ortak çalışma oturumları planla.",
+      createGroup: "Grup oluştur",
+      groupsTab: "Çalışma Grupları ve Sohbet",
+      matchmakerTab: "AI Çalışma Eşleştiricisi",
+      explore: "Grupları keşfet",
+      members: "üye",
+      leave: "Ayrıl",
+      join: "Katıl",
+      chat: "💬 Sohbet",
+      matchmaker: "🎯 Eşleştirici",
+      memberTab: "👥 Üyeler",
+      goals: "📋 Hedefler",
+      messagePlaceholder: "Gruba bir mesaj yaz…",
+      scheduled: "{name} ile yarın saat 15.00 için çalışma oturumu planlandı.",
+      schedule: "Çalışma planla",
+      directChat: "Mesaj gönder",
+      approve: "Eşleşmeyi onayla ve bağlan",
+      noGroup: "Etkin çalışma grubu yok",
+      noGroupDescription: "Ortak sohbeti ve partner eşleştirmeyi kullanmak için bir gruba katıl veya grup seç.",
+      createTitle: "Yeni çalışma grubu oluştur",
+      createSubtitle: "Sınav hazırlığı için ortak bir çalışma alanı başlat.",
+      groupName: "Grup adı",
+      groupNamePlaceholder: "Örn. AP Calculus çalışma grubu",
+      description: "Açıklama",
+      descriptionPlaceholder: "Bu grup hangi konuya odaklanacak?",
+      subject: "İlişkili ders",
+      joinError: "Grup üyeliği güncellenemedi. Lütfen tekrar dene.",
+      createError: "Grup oluşturulamadı. Bu ad daha önce kullanılmış olabilir.",
+      scheduleError: "Ortak çalışma oturumu planlanamadı.",
+    },
+    es: {
+      lockedTitle: "Desbloquear grupos y emparejamiento",
+      lockedDescription: "Grupos de Estudio es un espacio Pro para grupos por materia, compañeros compatibles y sesiones compartidas en el calendario.",
+      upgrade: "Actualizar a Pro",
+      dashboard: "Volver al panel",
+      title: "Grupos y Compañeros de Estudio",
+      subtitle: "Únete a grupos, conversa con compañeros y programa sesiones compartidas.",
+      createGroup: "Crear grupo",
+      groupsTab: "Grupos y Chat",
+      matchmakerTab: "Buscador de Compañeros con IA",
+      explore: "Explorar grupos",
+      members: "miembros",
+      leave: "Salir",
+      join: "Unirse",
+      chat: "💬 Chat",
+      matchmaker: "🎯 Compañeros",
+      memberTab: "👥 Miembros",
+      goals: "📋 Metas",
+      messagePlaceholder: "Escribe un mensaje al grupo…",
+      scheduled: "Sesión programada con {name} para mañana a las 15:00.",
+      schedule: "Programar sesión",
+      directChat: "Chat directo",
+      approve: "Aprobar y conectar",
+      noGroup: "No hay un grupo activo",
+      noGroupDescription: "Únete o selecciona un grupo para usar el chat y el buscador de compañeros.",
+      createTitle: "Crear nuevo grupo",
+      createSubtitle: "Inicia una sala colaborativa para preparar exámenes.",
+      groupName: "Nombre del grupo",
+      groupNamePlaceholder: "p. ej. Grupo de estudio de AP Cálculo",
+      description: "Descripción",
+      descriptionPlaceholder: "¿En qué se centrará este grupo?",
+      subject: "Materia asociada",
+      joinError: "No se pudo actualizar la membresía del grupo. Inténtalo de nuevo.",
+      createError: "No se pudo crear el grupo. Es posible que el nombre ya esté en uso.",
+      scheduleError: "No se pudo programar la sesión compartida.",
+    },
+    zh: {
+      lockedTitle: "解锁学习小组与伙伴匹配",
+      lockedDescription: "学习小组是 Pro 协作空间，可按科目加入小组、寻找合适的学习伙伴并安排共享日程。",
+      upgrade: "升级至 Pro",
+      dashboard: "返回控制面板",
+      title: "学习小组与伙伴",
+      subtitle: "加入学科小组、与同学交流并安排共同学习。",
+      createGroup: "创建小组",
+      groupsTab: "学习小组与聊天",
+      matchmakerTab: "AI 学习伙伴匹配",
+      explore: "探索小组",
+      members: "名成员",
+      leave: "退出",
+      join: "加入",
+      chat: "💬 小组聊天",
+      matchmaker: "🎯 伙伴匹配",
+      memberTab: "👥 成员",
+      goals: "📋 目标",
+      messagePlaceholder: "在小组中发言…",
+      scheduled: "已与 {name} 安排明天下午 3 点的共同学习。",
+      schedule: "安排学习",
+      directChat: "直接聊天",
+      approve: "批准并建立连接",
+      noGroup: "未选择学习小组",
+      noGroupDescription: "加入或选择一个小组后，即可使用共享聊天和伙伴匹配工具。",
+      createTitle: "创建新学习小组",
+      createSubtitle: "为备考创建一个协作空间。",
+      groupName: "小组名称",
+      groupNamePlaceholder: "例如：AP 微积分学习小组",
+      description: "小组描述",
+      descriptionPlaceholder: "这个小组将专注于什么？",
+      subject: "关联科目",
+      joinError: "无法更新小组成员状态，请重试。",
+      createError: "无法创建小组，该名称可能已被使用。",
+      scheduleError: "无法安排共同学习。",
+    },
+  });
 
   useEffect(() => {
     async function loadData() {
@@ -278,28 +481,40 @@ export default function StudyGroupsPage() {
         setActiveGroup(group);
         setActiveTab("chat");
       } else {
-        setCustomAlert("Failed to join the study group. Please try again.");
+        setCustomAlert(groupCopy.joinError);
       }
     }
   };
 
   const handleAIMatchmaking = async () => {
+    if (!profile?.match_profile_completed) {
+      setShowMatchProfile(true);
+      return;
+    }
     setLoadingAI(true);
     setScheduledSuccess(null);
+    setCustomAlert(null);
     try {
       const res = await fetch("/api/study-groups/match", {
         method: "POST",
         headers: { "Content-Type": "application/json" }
       });
-      const data = await res.json();
-      if (data.matches) {
-        setMatchedPartners(data.matches);
-        if (data.recommended_group) {
-          setAiRecommendedGroup(data.recommended_group);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (data?.code === "MATCH_PROFILE_REQUIRED") {
+          setShowMatchProfile(true);
+        } else {
+          setCustomAlert(data?.error || matchCopy.error);
         }
+        return;
+      }
+      setMatchedPartners(Array.isArray(data?.matches) ? data.matches : []);
+      if (data?.recommended_group) {
+        setAiRecommendedGroup(data.recommended_group);
       }
     } catch (err) {
       console.error("AI Matchmaking request failed:", err);
+      setCustomAlert(matchCopy.error);
     } finally {
       setLoadingAI(false);
     }
@@ -365,7 +580,7 @@ export default function StudyGroupsPage() {
       setNewGroupCourse("");
       setCreateOpen(false);
     } else {
-      setCustomAlert("Failed to create study group. Group name might already be taken.");
+      setCustomAlert(groupCopy.createError);
     }
     setCreating(false);
   };
@@ -421,7 +636,7 @@ export default function StudyGroupsPage() {
         setScheduledSuccess(null);
       }, 3000);
     } else {
-      setCustomAlert("Failed to schedule joint study session.");
+      setCustomAlert(groupCopy.scheduleError);
     }
   };
 
@@ -445,10 +660,10 @@ export default function StudyGroupsPage() {
         </div>
         <div className="space-y-2">
           <h1 className="text-3xl font-extrabold text-surface-dark tracking-tight">
-            {lang === "zh" ? "解锁学习小组与伙伴匹配" : lang === "es" ? "Desbloquear Grupos de Estudio" : "Unlock Study Groups & Matchmaking"}
+            {groupCopy.lockedTitle}
           </h1>
           <p className="text-sm text-gray-500 leading-relaxed">
-            {lang === "zh" ? "Study Groups 是 Pro 专属的高级社交协作工具。加入特定学科的讨论小组，与志同道合的同学配对，并直接在日历上安排共同学习时段。" : lang === "es" ? "Study Groups es una función Pro premium para colaboración académica. Únete a grupos de materias específicas, chatea con compañeros y programa sesiones conjuntas en tu calendario." : "Study Groups is a Pro premium feature designed for collaborative learning. Join subject-specific groups, chat with students prepping for similar exams, and instantly schedule joint study blocks."}
+            {groupCopy.lockedDescription}
           </p>
         </div>
 
@@ -457,13 +672,13 @@ export default function StudyGroupsPage() {
             onClick={() => router.push("/billing")}
             className="w-full py-3 bg-brand hover:bg-brand-hover text-white text-sm font-bold rounded-2xl active:scale-95 transition-all cursor-pointer shadow-md"
           >
-            🚀 {lang === "zh" ? "升级至 Pro" : lang === "es" ? "Actualizar a Pro" : "Upgrade to Pro Tier"}
+            🚀 {groupCopy.upgrade}
           </button>
           <button
             onClick={() => router.push("/dashboard")}
             className="w-full py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-sm font-semibold rounded-2xl transition-all cursor-pointer"
           >
-            {lang === "zh" ? "返回控制面板" : lang === "es" ? "Volver al Tablero" : "Go to Dashboard"}
+            {groupCopy.dashboard}
           </button>
         </div>
       </main>
@@ -512,10 +727,10 @@ export default function StudyGroupsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0 pb-3">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-surface-dark flex items-center gap-2">
-            <Users className="text-brand" /> {lang === "zh" ? "学习小组 & 伙伴" : lang === "es" ? "Grupos de Estudio" : "Study Groups & Partners"}
+            <Users className="text-brand" /> {groupCopy.title}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {lang === "zh" ? "加入学科小组，匹配在线的学习同伴共同督促。" : lang === "es" ? "Únete a grupos de estudio, chatea con compañeros y programa sesiones." : "Join academic groups, chat with online study partners, and schedule joint slots."}
+            {groupCopy.subtitle}
           </p>
         </div>
 
@@ -523,7 +738,7 @@ export default function StudyGroupsPage() {
           onClick={() => setCreateOpen(true)}
           className="px-4 py-2.5 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover shadow-sm active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
         >
-          <Plus size={14} /> {lang === "zh" ? "创建小组" : lang === "es" ? "Crear Grupo" : "Create Group"}
+          <Plus size={14} /> {groupCopy.createGroup}
         </button>
       </div>
 
@@ -538,7 +753,7 @@ export default function StudyGroupsPage() {
           }`}
         >
           <Users size={14} />
-          {lang === "tr" ? "Çalışma Grupları & Chat" : lang === "es" ? "Grupos & Chat" : "Study Groups & Chat"}
+          {groupCopy.groupsTab}
         </button>
         <button
           onClick={() => {
@@ -554,7 +769,7 @@ export default function StudyGroupsPage() {
           }`}
         >
           <Sparkles size={14} className="text-brand animate-pulse" />
-          {lang === "tr" ? "AI Eşleştirici (Matchmaker)" : lang === "es" ? "Echador AI" : "AI Study Matchmaker"}
+          {groupCopy.matchmakerTab}
         </button>
       </div>
 
@@ -565,7 +780,7 @@ export default function StudyGroupsPage() {
         {/* Left Column: Group directory list */}
         <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm flex flex-col overflow-hidden max-h-full">
           <h2 className="text-base font-extrabold text-surface-dark mb-4 border-b border-gray-50 pb-2">
-            {lang === "zh" ? "探索小组" : lang === "es" ? "Explorar Grupos" : "Explore Groups"} ({allGroups.length})
+            {groupCopy.explore} ({allGroups.length})
           </h2>
 
           <div className="flex-1 overflow-y-auto space-y-3 pr-1">
@@ -601,7 +816,7 @@ export default function StudyGroupsPage() {
                   </div>
 
                   <div className="flex items-center justify-between border-t border-gray-50 pt-2.5 text-[9px] text-gray-400 font-bold uppercase">
-                    <span>👥 {group.member_count} {lang === "zh" ? "名成员" : lang === "es" ? "Miembros" : "Members"}</span>
+                    <span>👥 {group.member_count} {groupCopy.members}</span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -613,9 +828,7 @@ export default function StudyGroupsPage() {
                           : "bg-brand text-white hover:bg-brand-hover"
                       }`}
                     >
-                      {isJoined 
-                        ? (lang === "zh" ? "退出" : lang === "es" ? "Salir" : "Leave")
-                        : (lang === "zh" ? "加入" : lang === "es" ? "Unirse" : "Join")}
+                      {isJoined ? groupCopy.leave : groupCopy.join}
                     </button>
                   </div>
                 </div>
@@ -638,10 +851,10 @@ export default function StudyGroupsPage() {
                 {/* Tabs */}
                 <div className="flex bg-gray-50 p-1 border border-gray-150 rounded-xl self-start sm:self-auto">
                   {[
-                    { id: "chat", label: lang === "zh" ? "💬 小组群聊" : lang === "es" ? "💬 Chat" : "💬 Chat" },
-                    { id: "matchmaker", label: lang === "zh" ? "🎯 伙伴匹配" : lang === "es" ? "🎯 Socios" : "🎯 Matchmaker" },
-                    { id: "members", label: lang === "zh" ? "👥 成员" : lang === "es" ? "👥 Miembros" : "👥 Members" },
-                    { id: "goals", label: lang === "zh" ? "📋 目标" : lang === "es" ? "📋 Metas" : "📋 Goals" }
+                    { id: "chat", label: groupCopy.chat },
+                    { id: "matchmaker", label: groupCopy.matchmaker },
+                    { id: "members", label: groupCopy.memberTab },
+                    { id: "goals", label: groupCopy.goals }
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -690,7 +903,7 @@ export default function StudyGroupsPage() {
                       type="text"
                       value={inputMsg}
                       onChange={(e) => setInputMsg(e.target.value)}
-                      placeholder={lang === "zh" ? "在小组中发言..." : lang === "es" ? "Escribe un mensaje al grupo..." : "Type your message to the group..."}
+                      placeholder={groupCopy.messagePlaceholder}
                       className="flex-1 px-3 py-2 bg-transparent text-xs outline-none text-surface-dark placeholder-gray-400"
                     />
                     <button
@@ -711,17 +924,9 @@ export default function StudyGroupsPage() {
                     <div className="space-y-1">
                       <h4 className="text-sm font-bold text-surface-dark flex items-center gap-1.5">
                         <Sparkles size={16} className="text-brand animate-pulse" />
-                        {lang === "tr" ? "AI Destekli Eşleştirme Analizi" : lang === "zh" ? "AI 智能匹配分析" : lang === "es" ? "Análisis de Parejas de IA" : "AI study-partner Matchmaker Analysis"}
+                        {matchCopy.title}
                       </h4>
-                      <p className="text-xs text-gray-500 leading-relaxed max-w-lg">
-                        {lang === "tr"
-                          ? "Yapay zeka, öğrenme stilinizi ve çalışma hedeflerinizi analiz ederek size en uygun çalışma arkadaşlarını bulur."
-                          : lang === "zh"
-                          ? "AI 会自动分析您的学习偏好和目标，为您匹配最契合的自习伙伴。"
-                          : lang === "es"
-                          ? "La IA analiza tus estilos de aprendizaje y metas académicas para encontrar los compañeros ideales."
-                          : "AI analyzes your learner types, goals, and enrolled subjects to find the most compatible study peers."}
-                      </p>
+                      <p className="text-xs text-gray-500 leading-relaxed max-w-lg">{matchCopy.description}</p>
                     </div>
                     <button
                       onClick={handleAIMatchmaking}
@@ -731,12 +936,12 @@ export default function StudyGroupsPage() {
                       {loadingAI ? (
                         <>
                           <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                          {lang === "tr" ? "Eşleştiriliyor..." : "Matching..."}
+                          {matchCopy.matching}
                         </>
                       ) : (
                         <>
                           <Sparkles size={13} />
-                          {lang === "tr" ? "AI Eşleştirmeyi Başlat" : "Run AI Matchmaker"}
+                          {matchCopy.run}
                         </>
                       )}
                     </button>
@@ -750,13 +955,9 @@ export default function StudyGroupsPage() {
                       </div>
                       <div>
                         <h5 className="text-xs font-extrabold text-surface-dark">
-                          {lang === "tr" ? "AI Çalışma Profilinizi Analiz Ediyor..." : "AI is Analyzing Your Academic Profile..."}
+                          {matchCopy.analyzing}
                         </h5>
-                        <p className="text-[10px] text-gray-400 mt-1 max-w-sm mx-auto">
-                          {lang === "tr"
-                            ? "Eşleşen dersler, günlük hedefler ve öğrenme stilleri hizalanıyor."
-                            : "Comparing compatible study schedules, daily goals, and visual/auditory preferences."}
-                        </p>
+                        <p className="text-[10px] text-gray-400 mt-1 max-w-sm mx-auto">{matchCopy.analyzingHint}</p>
                       </div>
                     </div>
                   )}
@@ -765,7 +966,7 @@ export default function StudyGroupsPage() {
                   {aiRecommendedGroup && !loadingAI && (
                     <div className="bg-emerald-50/50 border border-emerald-100 p-4.5 rounded-2xl text-left space-y-2">
                       <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-extrabold uppercase tracking-wider">
-                        💡 AI Group Suggestion
+                        💡 {matchCopy.suggestion}
                       </span>
                       <h4 className="text-xs font-bold text-surface-dark">{aiRecommendedGroup.name}</h4>
                       <p className="text-[10px] text-gray-500 italic">"{aiRecommendedGroup.reason}"</p>
@@ -775,7 +976,7 @@ export default function StudyGroupsPage() {
                   {scheduledSuccess && (
                     <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl flex items-center gap-2 animate-bounce">
                       <UserCheck size={16} />
-                      {lang === "zh" ? `已成功与 ${scheduledSuccess} 预约明天下午 3 点的共同学习！` : lang === "es" ? `¡Sesión agendada con ${scheduledSuccess} para mañana 3:00 PM!` : `Study Session scheduled with ${scheduledSuccess} for tomorrow at 3:00 PM!`}
+                      {groupCopy.scheduled.replace("{name}", scheduledSuccess)}
                     </div>
                   )}
 
@@ -819,7 +1020,7 @@ export default function StudyGroupsPage() {
                             onClick={() => handleScheduleWithPartner(partner)}
                             className="w-full py-2 bg-brand text-white text-[10px] font-bold rounded-xl hover:bg-brand-hover transition-all active:scale-95 cursor-pointer flex justify-center items-center gap-1 shadow-xs"
                           >
-                            <Calendar size={12} /> {lang === "zh" ? "预约同伴自习" : lang === "es" ? "Agendar Sesión" : "Schedule Session"}
+                            <Calendar size={12} /> {groupCopy.schedule}
                           </button>
                         </div>
                       ))}
@@ -891,10 +1092,10 @@ export default function StudyGroupsPage() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-surface-dark">
-                  {lang === "zh" ? "未选择小组工作区" : lang === "es" ? "Ningún Grupo Seleccionado" : "No Study Group Active"}
+                  {groupCopy.noGroup}
                 </h3>
                 <p className="text-xs text-gray-400 mt-1 max-w-sm">
-                  {lang === "zh" ? "请在左侧列表加入或选择一个你的学习小组，以启动共享群聊及伙伴匹配。" : lang === "es" ? "Elige un grupo de la lista para ingresar al chat grupal y buscar compañeros." : "Join or select one of your study groups from the left panel to access group chat logs and study partner pairing tools."}
+                  {groupCopy.noGroupDescription}
                 </p>
               </div>
             </div>
@@ -910,17 +1111,9 @@ export default function StudyGroupsPage() {
               <div className="space-y-1">
                 <h4 className="text-sm font-bold text-surface-dark flex items-center gap-1.5">
                   <Sparkles size={16} className="text-brand animate-pulse" />
-                  {lang === "tr" ? "AI Destekli Eşleştirme Analizi" : lang === "zh" ? "AI 智能匹配分析" : lang === "es" ? "Análisis de Parejas de IA" : "AI study-partner Matchmaker Analysis"}
+                  {matchCopy.title}
                 </h4>
-                <p className="text-xs text-gray-500 leading-relaxed max-w-lg">
-                  {lang === "tr"
-                    ? "Yapay zeka, öğrenme stilinizi ve çalışma hedeflerinizi analiz ederek size en uygun çalışma arkadaşlarını bulur."
-                    : lang === "zh"
-                    ? "AI 会自动分析您的学习偏好和目标，为您匹配最契合的自习伙伴。"
-                    : lang === "es"
-                    ? "La IA analiza tus estilos de aprendizaje y metas académicas para encontrar los compañeros ideales."
-                    : "AI analyzes your learner types, goals, and enrolled subjects to find the most compatible study peers."}
-                </p>
+                <p className="text-xs text-gray-500 leading-relaxed max-w-lg">{matchCopy.description}</p>
               </div>
               <button
                 onClick={handleAIMatchmaking}
@@ -930,12 +1123,12 @@ export default function StudyGroupsPage() {
                 {loadingAI ? (
                   <>
                     <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    {lang === "tr" ? "Eşleştiriliyor..." : "Matching..."}
+                    {matchCopy.matching}
                   </>
                 ) : (
                   <>
                     <Sparkles size={13} />
-                    {lang === "tr" ? "AI Eşleştirmeyi Başlat" : "Run AI Matchmaker"}
+                    {matchCopy.run}
                   </>
                 )}
               </button>
@@ -949,13 +1142,9 @@ export default function StudyGroupsPage() {
                 </div>
                 <div>
                   <h5 className="text-xs font-extrabold text-surface-dark">
-                    {lang === "tr" ? "AI Çalışma Profilinizi Analiz Ediyor..." : "AI is Analyzing Your Academic Profile..."}
+                    {matchCopy.analyzing}
                   </h5>
-                  <p className="text-[10px] text-gray-400 mt-1 max-w-sm mx-auto">
-                    {lang === "tr"
-                      ? "Eşleşen dersler, günlük hedefler ve öğrenme stilleri hizalanıyor."
-                      : "Comparing compatible study schedules, daily goals, and visual/auditory preferences."}
-                  </p>
+                  <p className="text-[10px] text-gray-400 mt-1 max-w-sm mx-auto">{matchCopy.analyzingHint}</p>
                 </div>
               </div>
             )}
@@ -964,7 +1153,7 @@ export default function StudyGroupsPage() {
             {aiRecommendedGroup && !loadingAI && (
               <div className="bg-emerald-50/50 border border-emerald-100 p-4.5 rounded-2xl text-left space-y-2">
                 <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-extrabold uppercase tracking-wider">
-                  💡 AI Group Suggestion
+                  💡 {matchCopy.suggestion}
                 </span>
                 <h4 className="text-xs font-bold text-surface-dark">{aiRecommendedGroup.name}</h4>
                 <p className="text-[10px] text-gray-500 italic">"{aiRecommendedGroup.reason}"</p>
@@ -974,7 +1163,7 @@ export default function StudyGroupsPage() {
             {scheduledSuccess && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl flex items-center gap-2 animate-bounce">
                 <UserCheck size={16} />
-                {lang === "zh" ? `已成功与 ${scheduledSuccess} 预约明天下午 3 点的共同学习！` : lang === "es" ? `¡Sesión agendada con ${scheduledSuccess} para mañana 3:00 PM!` : `Study Session scheduled with ${scheduledSuccess} for tomorrow at 3:00 PM!`}
+                {groupCopy.scheduled.replace("{name}", scheduledSuccess)}
               </div>
             )}
 
@@ -1024,13 +1213,13 @@ export default function StudyGroupsPage() {
                             onClick={() => handleScheduleWithPartner(partner)}
                             className="flex-1 py-2 bg-brand text-white text-[10px] font-bold rounded-xl hover:bg-brand-hover transition-all active:scale-95 cursor-pointer flex justify-center items-center gap-1 shadow-xs"
                           >
-                            <Calendar size={12} /> {lang === "tr" ? "Çalışma Planla" : "Schedule Session"}
+                            <Calendar size={12} /> {groupCopy.schedule}
                           </button>
                           <button
                             onClick={() => setActiveDirectChatPartner(partner)}
                             className="flex-1 py-2 bg-white border border-brand text-brand text-[10px] font-bold rounded-xl hover:bg-brand/5 transition-all active:scale-95 cursor-pointer flex justify-center items-center gap-1 shadow-xs"
                           >
-                            <MessageSquare size={12} /> {lang === "tr" ? "Mesaj Gönder" : "Direct Chat"}
+                            <MessageSquare size={12} /> {groupCopy.directChat}
                           </button>
                         </div>
                       </div>
@@ -1044,7 +1233,7 @@ export default function StudyGroupsPage() {
                         className="w-full py-2.5 bg-brand hover:bg-brand-hover text-white text-[10px] font-bold rounded-xl transition-all active:scale-95 cursor-pointer flex justify-center items-center gap-1.5 shadow-xs"
                       >
                         <Sparkles size={12} />
-                        {lang === "tr" ? "Eşleşmeyi Onayla ve Bağlan" : "Approve Match Connection"}
+                        {groupCopy.approve}
                       </button>
                     )}
                   </div>
@@ -1129,6 +1318,22 @@ export default function StudyGroupsPage() {
         </div>
       )}
 
+      {showMatchProfile && profile && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center overflow-y-auto bg-black/55 p-4 backdrop-blur-sm">
+          <div className="my-6 w-full max-w-3xl">
+            <StudyPartnerProfileForm
+              profile={profile}
+              courses={courses}
+              onCancel={() => setShowMatchProfile(false)}
+              onSaved={(updatedProfile) => {
+                setProfile(updatedProfile);
+                setShowMatchProfile(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Modal: Create Group Form */}
       {createOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1136,9 +1341,9 @@ export default function StudyGroupsPage() {
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="text-lg font-bold text-surface-dark flex items-center gap-2">
-                  <Users className="text-brand" /> {lang === "zh" ? "创建新学习小组" : lang === "es" ? "Crear Nuevo Grupo" : "Create New Study Group"}
+                  <Users className="text-brand" /> {groupCopy.createTitle}
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">Start a collaborative room for exam preparation.</p>
+                <p className="text-xs text-gray-400 mt-1">{groupCopy.createSubtitle}</p>
               </div>
               <button onClick={() => setCreateOpen(false)} className="text-gray-400 hover:text-gray-600 text-lg font-bold cursor-pointer">
                 &times;
@@ -1147,31 +1352,31 @@ export default function StudyGroupsPage() {
 
             <form onSubmit={handleCreateGroup} className="space-y-4">
               <div>
-                <label htmlFor="gName" className="block text-xs font-bold text-gray-500 uppercase">{lang === "zh" ? "小组名称" : lang === "es" ? "Nombre de Grupo" : "Group Name"}</label>
+                <label htmlFor="gName" className="block text-xs font-bold text-gray-500 uppercase">{groupCopy.groupName}</label>
                 <input
                   id="gName"
                   type="text"
                   required
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
-                  placeholder="e.g. AP Calculus Study circle"
+                  placeholder={groupCopy.groupNamePlaceholder}
                   className="block w-full mt-1 px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark placeholder-gray-400 outline-none focus:ring-2 focus:ring-brand focus:border-brand transition-all"
                 />
               </div>
 
               <div>
-                <label htmlFor="gDesc" className="block text-xs font-bold text-gray-500 uppercase">{lang === "zh" ? "小组描述" : lang === "es" ? "Descripción" : "Description"}</label>
+                <label htmlFor="gDesc" className="block text-xs font-bold text-gray-500 uppercase">{groupCopy.description}</label>
                 <textarea
                   id="gDesc"
                   value={newGroupDesc}
                   onChange={(e) => setNewGroupDesc(e.target.value)}
-                  placeholder="What is this group focusing on?"
+                  placeholder={groupCopy.descriptionPlaceholder}
                   className="block w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white text-surface-dark placeholder-gray-400 outline-none focus:ring-2 focus:ring-brand focus:border-brand transition-all h-20 resize-none"
                 />
               </div>
 
               <div>
-                <label htmlFor="gCourse" className="block text-xs font-bold text-gray-500 uppercase">{lang === "zh" ? "绑定科目" : lang === "es" ? "Categoría de Materia" : "Associated Subject"}</label>
+                <label htmlFor="gCourse" className="block text-xs font-bold text-gray-500 uppercase">{groupCopy.subject}</label>
                 <select
                   id="gCourse"
                   required
@@ -1202,7 +1407,7 @@ export default function StudyGroupsPage() {
                   className="flex-1 py-2.5 bg-brand text-xs font-semibold rounded-xl text-white hover:bg-brand-hover cursor-pointer flex justify-center items-center gap-1.5 shadow-sm"
                 >
                   {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {lang === "zh" ? "创建小组" : lang === "es" ? "Crear Grupo" : "Create Group"}
+                  {groupCopy.createGroup}
                 </button>
               </div>
             </form>
@@ -1218,14 +1423,14 @@ export default function StudyGroupsPage() {
               <HelpCircle size={24} />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-surface-dark">{lang === "zh" ? "系统提示" : lang === "es" ? "Aviso" : "Notification"}</h4>
+              <h4 className="text-sm font-bold text-surface-dark">{matchCopy.notification}</h4>
               <p className="text-xs text-gray-500 mt-2 leading-relaxed">{customAlert}</p>
             </div>
             <button
               onClick={() => setCustomAlert(null)}
               className="w-full py-2.5 bg-brand text-white text-xs font-semibold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer"
             >
-              {lang === "zh" ? "好的" : lang === "es" ? "Entendido" : "Dismiss"}
+              {matchCopy.dismiss}
             </button>
           </div>
         </div>

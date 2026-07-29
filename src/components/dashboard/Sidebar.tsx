@@ -65,7 +65,9 @@ const translations: Record<string, Record<string, string>> = {
     proBadge: "Pro Member",
     foundingBadge: "Founding Member",
     freeBadge: "Free Member",
-    studyGroups: "Study Groups"
+    studyGroups: "Study Groups",
+    billing: "Subscription & Billing",
+    profileSocial: "Profile & Social"
   },
   es: {
     dashboard: "Tablero",
@@ -99,7 +101,9 @@ const translations: Record<string, Record<string, string>> = {
     proBadge: "Miembro Pro",
     foundingBadge: "Miembro Fundador",
     freeBadge: "Miembro Gratis",
-    studyGroups: "Grupos de Estudio"
+    studyGroups: "Grupos de Estudio",
+    billing: "Suscripción y Facturación",
+    profileSocial: "Perfil y Espacio Social"
   },
   zh: {
     dashboard: "学习大厅",
@@ -133,7 +137,9 @@ const translations: Record<string, Record<string, string>> = {
     proBadge: "Pro 专业版会员",
     foundingBadge: "创始会员",
     freeBadge: "免费版用户",
-    studyGroups: "学习小组"
+    studyGroups: "学习小组",
+    billing: "订阅与账单",
+    profileSocial: "个人资料与社交"
   },
   tr: {
     dashboard: "Çalışma Paneli",
@@ -167,7 +173,9 @@ const translations: Record<string, Record<string, string>> = {
     proBadge: "Pro Üye",
     foundingBadge: "Kurucu Üye",
     freeBadge: "Ücretsiz Üye",
-    studyGroups: "Çalışma Grupları"
+    studyGroups: "Çalışma Grupları",
+    billing: "Abonelik ve Faturalandırma",
+    profileSocial: "Profil ve Sosyal Alan"
   }
 };
 
@@ -662,7 +670,8 @@ export function Sidebar() {
     { href: "/focus", label: t.focus, icon: Timer, requiresPro: true },
     { href: "/ai-assistant", label: t.ai, icon: Sparkles, requiresPro: true },
     { href: "/study-groups", label: t.studyGroups, icon: Users, requiresPro: true },
-    { href: "/profile", label: lang === "tr" ? "Profil & Sosyal" : "Profile & Social", icon: User, requiresPro: false },
+    { href: "/profile", label: t.profileSocial, icon: User, requiresPro: false },
+    { href: "/billing", label: t.billing, icon: ShieldCheck, requiresPro: false },
     { href: "/achievements", label: t.achievements, icon: Trophy, requiresPro: true },
   ];
 

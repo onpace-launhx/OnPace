@@ -26,6 +26,7 @@ import {
   Trash2
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
+import { localeForLanguage, localized } from "@/lib/i18n";
 
 const learningStyleNames: Record<string, Record<string, string>> = {
   visual: { tr: "Görsel", en: "Visual", es: "Visual", zh: "视觉" },
@@ -43,6 +44,168 @@ export default function DashboardPage() {
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const dashboardCopy = localized(lang, {
+    en: {
+      customize: "Customize workspace",
+      learningStyle: "Learning style:",
+      todayCenter: "Today at a glance",
+      nextUp: "Next up",
+      setPace: "Set the pace for your day.",
+      planHint: "Use your open tasks, goal, and available time to create a plan you can review before it is added.",
+      planDay: "Plan my day with AI",
+      startFocus: "Start focus",
+      openTasks: "open tasks",
+      scheduled: "min scheduled",
+      addExam: "Add an exam",
+      today: "today",
+      daysLeft: "days left",
+      examCountdown: "exam countdown",
+      lastSevenDays: "Last 7 days",
+      sessions: "sessions",
+      overdueTasks: "overdue tasks",
+      todaysPlan: "Today’s plan",
+      generating: "Generating…",
+      draftTitle: "AI study plan draft",
+      draftHint: "Review and edit every suggestion before saving it.",
+      saveDraft: "Save to AI study plan",
+      planTask: "Plan task",
+      removeSuggestion: "Remove suggestion",
+      goalTitle: "Your daily focus goal",
+      goalDescription: "This personalizes your study plan and progress card; it does not affect billing.",
+      minutesPerDay: "Minutes per day",
+      cancel: "Cancel",
+      saving: "Saving…",
+      saveGoal: "Save goal",
+      savePlanError: "The plan could not be saved to your AI study plan.",
+      saveGoalError: "Your daily goal could not be saved. Please try again.",
+      noOpenTasks: "You have no open tasks today.",
+      courseLimit: "The Free plan supports up to 2 courses. Upgrade for unlimited courses.",
+      duplicateCourse: "This course is already in your list.",
+      courseSaveError: "The course could not be saved.",
+      deleteCourseConfirm: "Remove this course? Existing tasks will remain without a related course.",
+      courseDeleteError: "The course could not be removed.",
+    },
+    tr: {
+      customize: "Çalışma alanını özelleştir",
+      learningStyle: "Öğrenme stilin:",
+      todayCenter: "Bugünün çalışma merkezi",
+      nextUp: "Sıradaki blok",
+      setPace: "Bugünün temposunu sen belirle.",
+      planHint: "Açık görevlerini, hedefini ve uygun saatlerini kullanarak onaylayabileceğin bir çalışma planı oluştur.",
+      planDay: "AI ile günümü planla",
+      startFocus: "Odaklanmaya başla",
+      openTasks: "açık görev",
+      scheduled: "dk takvimde",
+      addExam: "Sınav ekle",
+      today: "bugün",
+      daysLeft: "gün kaldı",
+      examCountdown: "sınav geri sayımı",
+      lastSevenDays: "Son 7 gün",
+      sessions: "oturum",
+      overdueTasks: "gecikmiş görev",
+      todaysPlan: "Bugünün planı",
+      generating: "Oluşturuluyor…",
+      draftTitle: "AI çalışma planı taslağı",
+      draftHint: "Kaydetmeden önce her öneriyi kontrol edip düzenleyebilirsin.",
+      saveDraft: "AI çalışma planıma kaydet",
+      planTask: "Plan görevi",
+      removeSuggestion: "Öneriyi sil",
+      goalTitle: "Günlük odak hedefin",
+      goalDescription: "Bu hedef yalnızca çalışma planını ve ilerleme kartını kişiselleştirir; üyelik veya ödemeyi etkilemez.",
+      minutesPerDay: "Dakika / gün",
+      cancel: "Vazgeç",
+      saving: "Kaydediliyor…",
+      saveGoal: "Hedefi kaydet",
+      savePlanError: "Plan, AI çalışma planına kaydedilemedi.",
+      saveGoalError: "Günlük hedef kaydedilemedi. Lütfen tekrar dene.",
+      noOpenTasks: "Bugün için açık görevin yok.",
+      courseLimit: "Ücretsiz planda en fazla 2 ders bulunabilir. Sınırsız ders için planını yükselt.",
+      duplicateCourse: "Bu ders zaten listende bulunuyor.",
+      courseSaveError: "Ders kaydedilemedi.",
+      deleteCourseConfirm: "Bu ders kaldırılsın mı? Mevcut görevler ilişkili ders olmadan korunur.",
+      courseDeleteError: "Ders kaldırılamadı.",
+    },
+    es: {
+      customize: "Personalizar espacio",
+      learningStyle: "Estilo de aprendizaje:",
+      todayCenter: "Resumen de hoy",
+      nextUp: "Siguiente bloque",
+      setPace: "Marca el ritmo de tu día.",
+      planHint: "Usa tus tareas, meta y horas disponibles para crear un plan que puedas revisar antes de guardarlo.",
+      planDay: "Planificar mi día con IA",
+      startFocus: "Iniciar enfoque",
+      openTasks: "tareas abiertas",
+      scheduled: "min programados",
+      addExam: "Añadir examen",
+      today: "hoy",
+      daysLeft: "días restantes",
+      examCountdown: "cuenta atrás del examen",
+      lastSevenDays: "Últimos 7 días",
+      sessions: "sesiones",
+      overdueTasks: "tareas atrasadas",
+      todaysPlan: "Plan de hoy",
+      generating: "Generando…",
+      draftTitle: "Borrador del plan de IA",
+      draftHint: "Revisa y edita cada sugerencia antes de guardarla.",
+      saveDraft: "Guardar en el plan de IA",
+      planTask: "Tarea del plan",
+      removeSuggestion: "Eliminar sugerencia",
+      goalTitle: "Tu meta diaria de enfoque",
+      goalDescription: "Personaliza tu plan y progreso; no afecta a la suscripción ni a los pagos.",
+      minutesPerDay: "Minutos al día",
+      cancel: "Cancelar",
+      saving: "Guardando…",
+      saveGoal: "Guardar meta",
+      savePlanError: "No se pudo guardar el plan de estudio con IA.",
+      saveGoalError: "No se pudo guardar tu meta diaria. Inténtalo de nuevo.",
+      noOpenTasks: "No tienes tareas abiertas para hoy.",
+      courseLimit: "El plan Gratis admite hasta 2 cursos. Actualiza para tener cursos ilimitados.",
+      duplicateCourse: "Este curso ya está en tu lista.",
+      courseSaveError: "No se pudo guardar el curso.",
+      deleteCourseConfirm: "¿Eliminar este curso? Las tareas existentes se conservarán sin curso relacionado.",
+      courseDeleteError: "No se pudo eliminar el curso.",
+    },
+    zh: {
+      customize: "自定义工作区",
+      learningStyle: "学习方式：",
+      todayCenter: "今日概览",
+      nextUp: "下一安排",
+      setPace: "按自己的节奏安排今天。",
+      planHint: "根据待办任务、目标和可用时间生成计划，确认后再保存。",
+      planDay: "使用 AI 规划今天",
+      startFocus: "开始专注",
+      openTasks: "项待办任务",
+      scheduled: "分钟已安排",
+      addExam: "添加考试",
+      today: "今天",
+      daysLeft: "天后考试",
+      examCountdown: "考试倒计时",
+      lastSevenDays: "最近 7 天",
+      sessions: "次专注",
+      overdueTasks: "项逾期任务",
+      todaysPlan: "今日计划",
+      generating: "正在生成…",
+      draftTitle: "AI 学习计划草稿",
+      draftHint: "保存前可检查并编辑每一条建议。",
+      saveDraft: "保存到 AI 学习计划",
+      planTask: "计划任务",
+      removeSuggestion: "删除建议",
+      goalTitle: "每日专注目标",
+      goalDescription: "此目标只会个性化学习计划和进度，不影响订阅或付款。",
+      minutesPerDay: "每天分钟数",
+      cancel: "取消",
+      saving: "正在保存…",
+      saveGoal: "保存目标",
+      savePlanError: "无法保存到 AI 学习计划。",
+      saveGoalError: "无法保存每日目标，请重试。",
+      noOpenTasks: "今天没有待办任务。",
+      courseLimit: "免费版最多支持 2 门课程，升级后可添加无限课程。",
+      duplicateCourse: "该课程已在列表中。",
+      courseSaveError: "无法保存课程。",
+      deleteCourseConfirm: "要移除此课程吗？现有任务会保留，但不再关联课程。",
+      courseDeleteError: "无法移除课程。",
+    },
+  });
 
   const [courses, setCourses] = useState<any[]>([]);
 
@@ -71,18 +234,34 @@ export default function DashboardPage() {
 
   const generateFallbackTasks = (courseList: string[], language: string) => {
     if (courseList.length === 0) {
-      if (language === "tr") {
-        return [
-          { id: Date.now() + 1, text: "Matematik deneme sınavı sorularını çöz", done: false, priority: "high" },
-          { id: Date.now() + 2, text: "Fizik formüllerini ve konu özetini tekrar et", done: false, priority: "medium" },
-          { id: Date.now() + 3, text: "Edebiyat dersi okuma kitabından 20 sayfa oku", done: false, priority: "low" }
-        ];
-      }
-      return [
-        { id: Date.now() + 1, text: "Solve practice math exam questions", done: false, priority: "high" },
-        { id: Date.now() + 2, text: "Review physics formulas and summary notes", done: false, priority: "medium" },
-        { id: Date.now() + 3, text: "Read 20 pages of assigned literature book", done: false, priority: "low" }
-      ];
+      const defaults = localized(language, {
+        en: [
+          "Solve practice math exam questions",
+          "Review physics formulas and summary notes",
+          "Read 20 pages of assigned literature",
+        ],
+        tr: [
+          "Matematik deneme sınavı sorularını çöz",
+          "Fizik formüllerini ve konu özetini tekrar et",
+          "Edebiyat kitabından 20 sayfa oku",
+        ],
+        es: [
+          "Resolver preguntas de práctica de matemáticas",
+          "Repasar fórmulas y apuntes de física",
+          "Leer 20 páginas de la lectura asignada",
+        ],
+        zh: [
+          "完成数学模拟题",
+          "复习物理公式与摘要笔记",
+          "阅读指定文学作品 20 页",
+        ],
+      });
+      return defaults.map((text, index) => ({
+        id: Date.now() + index + 1,
+        text,
+        done: false,
+        priority: index === 0 ? "high" : index === 1 ? "medium" : "low",
+      }));
     }
 
     return courseList.slice(0, 3).map((name, idx) => {
@@ -96,7 +275,17 @@ export default function DashboardPage() {
           `Review comprehensive ${name} lecture notes and draft summary`,
           `Solve 10 practice questions related to ${name} unit`,
           `Go through flashcards for the upcoming ${name} quiz`
-        ]
+        ],
+        es: [
+          `Repasar los apuntes de ${name} y preparar un resumen`,
+          `Resolver 10 preguntas de práctica sobre ${name}`,
+          `Repasar las tarjetas para la próxima prueba de ${name}`,
+        ],
+        zh: [
+          `复习 ${name} 课堂笔记并整理摘要`,
+          `完成 10 道 ${name} 练习题`,
+          `复习即将进行的 ${name} 测验卡片`,
+        ],
       };
       const list = texts[language] || texts.en;
       return {
@@ -159,7 +348,7 @@ export default function DashboardPage() {
     }));
     const { data: inserted, error } = await supabase.from("tasks").insert(rows).select("*");
     if (error) {
-      alert(lang === "tr" ? "Plan, AI çalışma planına kaydedilemedi." : "The plan could not be saved to your AI study plan.");
+      alert(dashboardCopy.savePlanError);
       return;
     }
     const newTasks = (inserted || rows).map((row: any, idx: number) => ({
@@ -230,11 +419,22 @@ export default function DashboardPage() {
 
   const handleAddCourse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCourseName.trim()) return;
+    const normalizedName = newCourseName.trim().replace(/\s+/g, " ");
+    if (!normalizedName) return;
+    if (
+      courses.some(
+        (course) =>
+          course.name.trim().toLocaleLowerCase() ===
+          normalizedName.toLocaleLowerCase()
+      )
+    ) {
+      alert(dashboardCopy.duplicateCourse);
+      return;
+    }
 
     // Limit check for Free plan: max 2 courses
     if (!isPro && courses.length >= 2) {
-      alert("Free Plan is limited to 2 courses. Upgrade to Pro for unlimited course workspaces!");
+      alert(dashboardCopy.courseLimit);
       return;
     }
 
@@ -247,7 +447,7 @@ export default function DashboardPage() {
       .insert([
         {
           user_id: profile.id,
-          name: newCourseName.trim(),
+          name: normalizedName,
           color: randomColor
         }
       ])
@@ -257,13 +457,20 @@ export default function DashboardPage() {
     if (!error && data) {
       setCourses([...courses, data]);
       setNewCourseName("");
+    } else {
+      alert(error?.message || dashboardCopy.courseSaveError);
     }
     setAddingCourse(false);
   };
 
   const handleDeleteCourse = async (courseId: string) => {
+    if (!window.confirm(dashboardCopy.deleteCourseConfirm)) return;
+    const { error } = await supabase.from("courses").delete().eq("id", courseId);
+    if (error) {
+      alert(error.message || dashboardCopy.courseDeleteError);
+      return;
+    }
     setCourses(courses.filter(c => c.id !== courseId));
-    await supabase.from("courses").delete().eq("id", courseId);
   };
 
   // Load User & Profile
@@ -457,7 +664,7 @@ export default function DashboardPage() {
                   }
                 });
             }
-            alert(`Timer complete! Enjoy your break.`);
+            alert(t.dashboard.timerComplete);
             resetTimer();
           } else {
             setTimerMinutes(timerMinutes - 1);
@@ -505,7 +712,7 @@ export default function DashboardPage() {
       setGoalDraft(String(goal));
       setShowGoalModal(false);
     } else {
-      alert(lang === "tr" ? "Günlük hedef kaydedilemedi. Lütfen tekrar deneyin." : "Your daily goal could not be saved. Please try again.");
+      alert(dashboardCopy.saveGoalError);
     }
     setSavingGoal(false);
   };
@@ -574,7 +781,7 @@ export default function DashboardPage() {
   const isAdmin = profile?.role === "admin";
   const dailyGoal = profile?.daily_study_goal_minutes || 60;
 
-  const dateLocale = lang === "zh" ? "zh-CN" : lang === "es" ? "es-ES" : "en-US";
+  const dateLocale = localeForLanguage(lang);
   const formattedDate = new Date().toLocaleDateString(dateLocale, { weekday: 'long', month: 'long', day: 'numeric' });
 
   const progressPercent = Math.min(Math.round((totalStudyMinutes / dailyGoal) * 100), 100);
@@ -606,13 +813,20 @@ export default function DashboardPage() {
       if (firstDue !== secondDue) return firstDue - secondDue;
       return (priorityRank[first.priority] ?? 1) - (priorityRank[second.priority] ?? 1);
     })[0];
-  const todayPlanRecommendation = lang === "tr"
-    ? (nextTask
-      ? `Sıradaki görev: “${nextTask.text}”. Kalan ${remainingMinutes} dakikayı bu işe göre parçalara ayıran bir taslak oluşturabilirim.`
-      : `Bugün için açık görevin yok. Derslerine ve ${dailyGoal} dakikalık hedefine göre başlangıç taslağı oluşturabilirim.`)
-    : (nextTask
+  const todayPlanRecommendation = localized(lang, {
+    en: nextTask
       ? `Next task: “${nextTask.text}”. I can create a draft that uses your remaining ${remainingMinutes} minutes.`
-      : `You have no open tasks today. I can create a starter draft around your courses and ${dailyGoal}-minute goal.`);
+      : `You have no open tasks today. I can create a starter draft around your courses and ${dailyGoal}-minute goal.`,
+    tr: nextTask
+      ? `Sıradaki görev: “${nextTask.text}”. Kalan ${remainingMinutes} dakikayı bu işe göre parçalara ayıran bir taslak oluşturabilirim.`
+      : `Bugün için açık görevin yok. Derslerine ve ${dailyGoal} dakikalık hedefine göre başlangıç taslağı oluşturabilirim.`,
+    es: nextTask
+      ? `Siguiente tarea: «${nextTask.text}». Puedo crear un borrador para tus ${remainingMinutes} minutos restantes.`
+      : `No tienes tareas abiertas. Puedo crear un borrador según tus cursos y tu meta de ${dailyGoal} minutos.`,
+    zh: nextTask
+      ? `下一项任务：“${nextTask.text}”。我可以根据剩余的 ${remainingMinutes} 分钟生成可编辑草稿。`
+      : `今天没有待办任务。我可以根据课程和 ${dailyGoal} 分钟目标生成起始计划。`,
+  });
 
   const orderedTasks = tasks
     .filter((task) => !task.done && task.taskOrigin !== "ai_schedule")
@@ -673,7 +887,7 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-500 mt-1">{t.dashboard.todayIs} {formattedDate}. {t.dashboard.stayFocused}</p>
               {profile?.learning_styles && profile.learning_styles.length > 0 && (
                 <div className="flex items-center gap-1.5 mt-2">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">🧠 {lang === "tr" ? "Öğrenme stilin:" : lang === "zh" ? "学习风格：" : lang === "es" ? "Estilo de aprendizaje:" : "Learning style:"}</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">🧠 {dashboardCopy.learningStyle}</span>
                   <div className="flex flex-wrap gap-1">
                     {profile.learning_styles.map((style: string) => (
                       <span key={style} className="bg-brand/10 text-brand text-[10px] font-bold px-2 py-0.5 rounded-md border border-brand/20 uppercase">
@@ -690,14 +904,17 @@ export default function DashboardPage() {
                 className="bg-white border border-gray-150 text-gray-600 hover:text-brand hover:border-brand/45 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
               >
                 <Palette size={13} className="text-brand" />
-                <span className="hidden sm:inline">Customize Workspace</span>
+                <span className="hidden sm:inline">{dashboardCopy.customize}</span>
               </Link>
               <span className="bg-white border border-gray-200 text-surface-dark px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2">
                 🔥 {profile?.streak_count || 0} {t.common.streak}
               </span>
-              <span className={`px-4 py-2 rounded-xl text-sm font-semibold ${isPro ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-500"}`}>
+              <Link
+                href="/billing"
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors hover:ring-2 hover:ring-brand/15 ${isPro ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-500"}`}
+              >
                 {isPro ? (profile?.plan === "founding" ? t.common.foundingBadge : t.common.proBadge) : t.common.freeBadge}
-              </span>
+              </Link>
             </div>
           </div>
 
@@ -716,17 +933,17 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-brand shadow-sm">
-                  <Sparkles size={13} /> {lang === "tr" ? "Bugünün çalışma merkezi" : "Today at a glance"}
+                  <Sparkles size={13} /> {dashboardCopy.todayCenter}
                 </div>
                 <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-surface-dark">
                   {nextScheduledSession
-                    ? (lang === "tr" ? `Sıradaki blok: ${nextScheduledSession.title}` : `Next up: ${nextScheduledSession.title}`)
-                    : (lang === "tr" ? "Bugünün temposunu sen belirle." : "Set the pace for your day.")}
+                    ? `${dashboardCopy.nextUp}: ${nextScheduledSession.title}`
+                    : dashboardCopy.setPace}
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm leading-relaxed text-gray-600">
                   {nextScheduledSession
-                    ? `${timeFormatter.format(new Date(nextScheduledSession.start_time))} · ${Number(nextScheduledSession.duration) || 60} ${lang === "tr" ? "dk" : "min"}${nextScheduledSession.courses?.name ? ` · ${nextScheduledSession.courses.name}` : ""}`
-                    : (lang === "tr" ? "Açık görevlerini, hedefini ve uygun saatlerini kullanarak onaylayabileceğin bir çalışma planı oluştur." : "Use your open tasks, goal, and available time to create a plan you can review before it is added.")}
+                    ? `${timeFormatter.format(new Date(nextScheduledSession.start_time))} · ${Number(nextScheduledSession.duration) || 60} ${t.common.minutes}${nextScheduledSession.courses?.name ? ` · ${nextScheduledSession.courses.name}` : ""}`
+                    : dashboardCopy.planHint}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -734,13 +951,13 @@ export default function DashboardPage() {
                   href="/calendar?plan=today"
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-brand-hover active:scale-95"
                 >
-                  <Sparkles size={15} /> {lang === "tr" ? "AI günümü planla" : "Plan my day with AI"}
+                  <Sparkles size={15} /> {dashboardCopy.planDay}
                 </Link>
                 <Link
                   href="/focus"
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand/20 bg-white px-4 py-3 text-xs font-bold text-brand transition-colors hover:bg-brand/5"
                 >
-                  <Timer size={15} /> {lang === "tr" ? "Odaklanmaya başla" : "Start focus"}
+                  <Timer size={15} /> {dashboardCopy.startFocus}
                 </Link>
               </div>
             </div>
@@ -749,17 +966,17 @@ export default function DashboardPage() {
               <Link href="/tasks" className="rounded-2xl border border-white bg-white/80 p-4 transition-colors hover:border-brand/25 hover:bg-white">
                 <div className="flex items-center justify-between"><CheckSquare size={17} className="text-brand" /><ChevronRight size={15} className="text-gray-300" /></div>
                 <p className="mt-3 text-2xl font-extrabold text-surface-dark">{orderedTasks.length}</p>
-                <p className="text-xs font-semibold text-gray-500">{lang === "tr" ? "açık görev" : "open tasks"}</p>
+                <p className="text-xs font-semibold text-gray-500">{dashboardCopy.openTasks}</p>
               </Link>
               <Link href="/calendar" className="rounded-2xl border border-white bg-white/80 p-4 transition-colors hover:border-brand/25 hover:bg-white">
                 <div className="flex items-center justify-between"><CalendarDays size={17} className="text-brand" /><ChevronRight size={15} className="text-gray-300" /></div>
                 <p className="mt-3 text-2xl font-extrabold text-surface-dark">{todaySessions.length}</p>
-                <p className="text-xs font-semibold text-gray-500">{lang === "tr" ? `${todaySessionMinutes} dk takvimde` : `${todaySessionMinutes} min scheduled`}</p>
+                <p className="text-xs font-semibold text-gray-500">{todaySessionMinutes} {dashboardCopy.scheduled}</p>
               </Link>
               <Link href="/exam-planner" className="rounded-2xl border border-white bg-white/80 p-4 transition-colors hover:border-brand/25 hover:bg-white">
                 <div className="flex items-center justify-between"><Award size={17} className="text-brand" /><ChevronRight size={15} className="text-gray-300" /></div>
-                <p className="mt-3 truncate text-base font-extrabold text-surface-dark">{upcomingExam?.title || (lang === "tr" ? "Sınav ekle" : "Add an exam")}</p>
-                <p className="text-xs font-semibold text-gray-500">{upcomingExam ? (examDaysRemaining === 0 ? (lang === "tr" ? "bugün" : "today") : `${examDaysRemaining} ${lang === "tr" ? "gün kaldı" : "days left"}`) : (lang === "tr" ? "sınav geri sayımı" : "exam countdown")}</p>
+                <p className="mt-3 truncate text-base font-extrabold text-surface-dark">{upcomingExam?.title || dashboardCopy.addExam}</p>
+                <p className="text-xs font-semibold text-gray-500">{upcomingExam ? (examDaysRemaining === 0 ? dashboardCopy.today : `${examDaysRemaining} ${dashboardCopy.daysLeft}`) : dashboardCopy.examCountdown}</p>
               </Link>
             </div>
           </section>
@@ -818,7 +1035,7 @@ export default function DashboardPage() {
                   </svg>
                   <div className="absolute text-center">
                     <span className="text-xl font-extrabold text-surface-dark">{progressPercent}%</span>
-                    <p className="text-[10px] text-gray-400 font-medium">{lang === "tr" ? "Bugün" : lang === "zh" ? "今天" : "Today"}</p>
+                    <p className="text-[10px] text-gray-400 font-medium">{dashboardCopy.today}</p>
                   </div>
                 </div>
                 <div>
@@ -844,12 +1061,12 @@ export default function DashboardPage() {
                       <span className="font-semibold text-surface-dark">{dailyGoal} {t.common.minutes}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600">{lang === "tr" ? "Son 7 gün" : lang === "zh" ? "最近 7 天" : "Last 7 days"}</span>
-                      <span className="font-semibold text-surface-dark">{weeklyStudyMinutes} {lang === "tr" ? "dk" : "min"} · {weeklySessionCount} {lang === "tr" ? "oturum" : "sessions"}</span>
+                      <span className="text-gray-600">{dashboardCopy.lastSevenDays}</span>
+                      <span className="font-semibold text-surface-dark">{weeklyStudyMinutes} {t.common.minutes} · {weeklySessionCount} {dashboardCopy.sessions}</span>
                     </div>
                     {overdueTaskCount > 0 && (
                       <Link href="/tasks" className="flex items-center justify-between rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100">
-                        <span>{lang === "tr" ? `${overdueTaskCount} gecikmiş görev` : `${overdueTaskCount} overdue task${overdueTaskCount === 1 ? "" : "s"}`}</span>
+                        <span>{overdueTaskCount} {dashboardCopy.overdueTasks}</span>
                         <ChevronRight size={14} />
                       </Link>
                     )}
@@ -1122,7 +1339,7 @@ export default function DashboardPage() {
                     <Sparkles size={12} /> {t.dashboard.aiTitle}
                   </span>
                   <h3 className="text-xl font-extrabold text-surface-dark">
-                    {lang === "tr" ? "Bugünün planı" : "Today’s plan"}
+                    {dashboardCopy.todaysPlan}
                   </h3>
                   <p className="text-sm text-gray-600 max-w-2xl">
                     {todayPlanRecommendation}
@@ -1136,7 +1353,7 @@ export default function DashboardPage() {
                   {generatingSchedule ? (
                     <>
                       <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      {lang === "tr" ? "Oluşturuluyor..." : lang === "es" ? "Generando..." : "Generating..."}
+                      {dashboardCopy.generating}
                     </>
                   ) : (
                     t.dashboard.generateSchedule
@@ -1147,11 +1364,11 @@ export default function DashboardPage() {
                 <div className="mt-5 rounded-2xl border border-brand/20 bg-white/80 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-bold text-surface-dark">{lang === "tr" ? "AI çalışma planı taslağı" : "AI study plan draft"}</p>
-                      <p className="text-[11px] text-gray-500">{lang === "tr" ? "Görev listene eklemeden önce kontrol edebilirsin." : "Review before adding anything to your task list."}</p>
+                      <p className="text-sm font-bold text-surface-dark">{dashboardCopy.draftTitle}</p>
+                      <p className="text-[11px] text-gray-500">{dashboardCopy.draftHint}</p>
                     </div>
                     <button type="button" onClick={handleAcceptSchedule} className="rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-hover">
-                      {lang === "tr" ? "AI çalışma planıma kaydet" : "Save to AI study plan"}
+                      {dashboardCopy.saveDraft}
                     </button>
                   </div>
                   <ul className="space-y-1.5">
@@ -1160,11 +1377,11 @@ export default function DashboardPage() {
                         <input
                           value={draft.title}
                           onChange={(event) => updateScheduleDraftTitle(index, event.target.value)}
-                          aria-label={lang === "tr" ? "Plan görevi" : "Plan task"}
+                          aria-label={dashboardCopy.planTask}
                           className="min-w-0 flex-1 bg-transparent outline-none focus:text-brand"
                         />
                         <span className="text-[10px] font-bold uppercase text-gray-400">{draft.priority}</span>
-                        <button type="button" onClick={() => removeScheduleDraftItem(index)} className="rounded-md p-1 text-gray-300 hover:bg-red-50 hover:text-red-500" aria-label={lang === "tr" ? "Öneriyi sil" : "Remove suggestion"}>
+                        <button type="button" onClick={() => removeScheduleDraftItem(index)} className="rounded-md p-1 text-gray-300 hover:bg-red-50 hover:text-red-500" aria-label={dashboardCopy.removeSuggestion}>
                           <Trash2 size={13} />
                         </button>
                       </li>
@@ -1182,23 +1399,23 @@ export default function DashboardPage() {
             <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-lg font-extrabold text-surface-dark">{lang === "tr" ? "Günlük odak hedefin" : lang === "zh" ? "每日专注目标" : lang === "es" ? "Tu meta diaria de enfoque" : "Your daily focus goal"}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-500">{lang === "tr" ? "Bu hedef yalnızca çalışma planını ve ilerleme kartını kişiselleştirir; üyelik veya ödeme ile ilgisi yoktur." : "This only personalizes your study plan and progress card; it does not affect billing."}</p>
+                  <p className="text-lg font-extrabold text-surface-dark">{dashboardCopy.goalTitle}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-gray-500">{dashboardCopy.goalDescription}</p>
                 </div>
                 <button type="button" onClick={() => setShowGoalModal(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100" aria-label="Close">×</button>
               </div>
               <div className="mt-6">
-                <label htmlFor="daily-goal" className="text-xs font-bold uppercase tracking-wide text-gray-500">{lang === "tr" ? "Dakika / gün" : "Minutes per day"}</label>
+                <label htmlFor="daily-goal" className="text-xs font-bold uppercase tracking-wide text-gray-500">{dashboardCopy.minutesPerDay}</label>
                 <input id="daily-goal" type="number" min={15} max={480} step={5} value={goalDraft} onChange={(event) => setGoalDraft(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-lg font-bold text-surface-dark outline-none focus:border-brand focus:ring-2 focus:ring-brand/15" />
                 <div className="mt-3 grid grid-cols-4 gap-2">
                   {[30, 60, 90, 120].map((minutes) => (
-                    <button key={minutes} type="button" onClick={() => setGoalDraft(String(minutes))} className={`rounded-xl border px-2 py-2 text-xs font-bold transition-colors ${Number(goalDraft) === minutes ? "border-brand bg-brand/10 text-brand" : "border-gray-200 text-gray-600 hover:border-brand/40"}`}>{minutes} dk</button>
+                    <button key={minutes} type="button" onClick={() => setGoalDraft(String(minutes))} className={`rounded-xl border px-2 py-2 text-xs font-bold transition-colors ${Number(goalDraft) === minutes ? "border-brand bg-brand/10 text-brand" : "border-gray-200 text-gray-600 hover:border-brand/40"}`}>{minutes} {t.common.minutes}</button>
                   ))}
                 </div>
               </div>
               <div className="mt-6 flex gap-3">
-                <button type="button" onClick={() => setShowGoalModal(false)} className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-xs font-bold text-gray-600 hover:bg-gray-50">{lang === "tr" ? "Vazgeç" : "Cancel"}</button>
-                <button type="button" disabled={savingGoal} onClick={handleSaveDailyGoal} className="flex-1 rounded-xl bg-brand px-4 py-3 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-60">{savingGoal ? (lang === "tr" ? "Kaydediliyor..." : "Saving...") : (lang === "tr" ? "Hedefi kaydet" : "Save goal")}</button>
+                <button type="button" onClick={() => setShowGoalModal(false)} className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-xs font-bold text-gray-600 hover:bg-gray-50">{dashboardCopy.cancel}</button>
+                <button type="button" disabled={savingGoal} onClick={handleSaveDailyGoal} className="flex-1 rounded-xl bg-brand px-4 py-3 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-60">{savingGoal ? dashboardCopy.saving : dashboardCopy.saveGoal}</button>
               </div>
             </div>
           </div>

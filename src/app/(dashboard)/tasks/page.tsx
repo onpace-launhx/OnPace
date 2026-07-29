@@ -17,10 +17,12 @@ import {
   CornerDownRight,
   GitCommit,
   Lock,
-  HelpCircle
+  HelpCircle,
+  Settings2
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
-import { getLocalizedCourseName } from "@/lib/course-labels";
+import { getLocalizedCourseName, suggestedCourseNames } from "@/lib/course-labels";
+import { localeForLanguage, localized } from "@/lib/i18n";
 
 function TasksPageContent() {
   const router = useRouter();
@@ -45,6 +47,9 @@ function TasksPageContent() {
   // Custom premium modal popup
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const [customAlert, setCustomAlert] = useState<string | null>(null);
+  const [showCourseManager, setShowCourseManager] = useState(false);
+  const [newCourseName, setNewCourseName] = useState("");
+  const [savingCourse, setSavingCourse] = useState(false);
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
@@ -91,6 +96,108 @@ function TasksPageContent() {
     },
   };
   const viewCopy = viewCopies[lang] || viewCopies.en;
+  const taskCopy = localized(lang, {
+    en: {
+      manageCourses: "Manage courses",
+      courseHint: "Add a suggested subject or enter your own course name.",
+      customCourse: "Custom course name",
+      addCourse: "Add course",
+      suggested: "Suggested subjects",
+      duplicateCourse: "This course is already in your list.",
+      freeLimit: "The Free plan supports up to 2 courses. Upgrade for unlimited courses.",
+      courseError: "The course could not be saved.",
+      deleteCourse: "Remove course",
+      deleteConfirm: "Remove this course? Existing tasks will remain without a related course.",
+      deleteError: "The course could not be removed.",
+      breakdownError: "AI could not break down this task. Please try again.",
+      high: "High 🔴",
+      medium: "Medium 🟡",
+      low: "Low 🟢",
+      dueLabel: "Due",
+      finishedLabel: "Finished",
+      clearCompleted: "Clear completed",
+      premiumTitle: "Unlock Premium Features",
+      premiumDescription: "Free accounts support up to 6 active tasks. Upgrade to Pro for AI task breakdown and unlimited study tools.",
+      upgrade: "Upgrade to Pro",
+      notification: "Notification",
+      dismiss: "Dismiss",
+    },
+    tr: {
+      manageCourses: "Dersleri yönet",
+      courseHint: "Önerilen bir ders seç veya kendi ders adını yaz.",
+      customCourse: "Özel ders adı",
+      addCourse: "Ders ekle",
+      suggested: "Önerilen dersler",
+      duplicateCourse: "Bu ders zaten listende bulunuyor.",
+      freeLimit: "Ücretsiz planda en fazla 2 ders bulunabilir. Sınırsız ders için planını yükselt.",
+      courseError: "Ders kaydedilemedi.",
+      deleteCourse: "Dersi kaldır",
+      deleteConfirm: "Bu ders kaldırılsın mı? Mevcut görevler ilişkili ders olmadan korunur.",
+      deleteError: "Ders kaldırılamadı.",
+      breakdownError: "AI bu görevi alt adımlara bölemedi. Lütfen tekrar dene.",
+      high: "Yüksek 🔴",
+      medium: "Orta 🟡",
+      low: "Düşük 🟢",
+      dueLabel: "Bitiş",
+      finishedLabel: "Tamamlandı",
+      clearCompleted: "Tamamlananları temizle",
+      premiumTitle: "Premium özellikleri aç",
+      premiumDescription: "Ücretsiz hesaplarda en fazla 6 aktif görev bulunabilir. AI görev ayrıştırma ve sınırsız araçlar için Pro’ya yükselt.",
+      upgrade: "Pro’ya yükselt",
+      notification: "Bildirim",
+      dismiss: "Kapat",
+    },
+    es: {
+      manageCourses: "Gestionar cursos",
+      courseHint: "Elige una materia sugerida o escribe el nombre de tu curso.",
+      customCourse: "Nombre de curso personalizado",
+      addCourse: "Añadir curso",
+      suggested: "Materias sugeridas",
+      duplicateCourse: "Este curso ya está en tu lista.",
+      freeLimit: "El plan Gratis admite hasta 2 cursos. Actualiza para tener cursos ilimitados.",
+      courseError: "No se pudo guardar el curso.",
+      deleteCourse: "Eliminar curso",
+      deleteConfirm: "¿Eliminar este curso? Las tareas existentes se conservarán sin curso relacionado.",
+      deleteError: "No se pudo eliminar el curso.",
+      breakdownError: "La IA no pudo dividir esta tarea. Inténtalo de nuevo.",
+      high: "Alta 🔴",
+      medium: "Media 🟡",
+      low: "Baja 🟢",
+      dueLabel: "Vence",
+      finishedLabel: "Completado",
+      clearCompleted: "Limpiar completadas",
+      premiumTitle: "Desbloquear funciones Premium",
+      premiumDescription: "Las cuentas Gratis admiten hasta 6 tareas activas. Actualiza a Pro para usar la división por IA y herramientas ilimitadas.",
+      upgrade: "Actualizar a Pro",
+      notification: "Aviso",
+      dismiss: "Cerrar",
+    },
+    zh: {
+      manageCourses: "管理课程",
+      courseHint: "选择推荐科目或输入自己的课程名称。",
+      customCourse: "自定义课程名称",
+      addCourse: "添加课程",
+      suggested: "推荐科目",
+      duplicateCourse: "该课程已在列表中。",
+      freeLimit: "免费版最多支持 2 门课程，升级后可添加无限课程。",
+      courseError: "无法保存课程。",
+      deleteCourse: "移除课程",
+      deleteConfirm: "要移除此课程吗？现有任务会保留，但不再关联课程。",
+      deleteError: "无法移除课程。",
+      breakdownError: "AI 无法拆分此任务，请重试。",
+      high: "高 🔴",
+      medium: "中 🟡",
+      low: "低 🟢",
+      dueLabel: "截止日期",
+      finishedLabel: "完成于",
+      clearCompleted: "清除已完成",
+      premiumTitle: "解锁高级学习工具",
+      premiumDescription: "免费账户最多支持 6 项活动任务。升级 Pro 后可使用 AI 任务拆分和无限学习工具。",
+      upgrade: "升级至 Pro",
+      notification: "系统提示",
+      dismiss: "关闭",
+    },
+  });
 
   useEffect(() => {
     async function loadData() {
@@ -233,6 +340,57 @@ function TasksPageContent() {
     setTasks((current) => current.filter((task) => !completedIdSet.has(task.id)));
   };
 
+  const handleAddCourse = async (courseName = newCourseName) => {
+    const normalizedName = courseName.trim().replace(/\s+/g, " ");
+    if (!normalizedName || !profile?.id) return;
+    if (
+      courses.some(
+        (course) =>
+          course.name.trim().toLocaleLowerCase() ===
+          normalizedName.toLocaleLowerCase()
+      )
+    ) {
+      setCustomAlert(taskCopy.duplicateCourse);
+      return;
+    }
+    if (!isPro && courses.length >= 2) {
+      setCustomAlert(taskCopy.freeLimit);
+      return;
+    }
+
+    setSavingCourse(true);
+    const colors = ["#4F46E5", "#06B6D4", "#10B981", "#EF4444", "#F59E0B", "#EC4899", "#8B5CF6"];
+    const { data, error } = await supabase
+      .from("courses")
+      .insert({
+        user_id: profile.id,
+        name: normalizedName,
+        color: colors[courses.length % colors.length],
+      })
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      setCustomAlert(error?.message || taskCopy.courseError);
+    } else {
+      setCourses((current) => [...current, data]);
+      setCourseId(data.id);
+      setNewCourseName("");
+    }
+    setSavingCourse(false);
+  };
+
+  const handleDeleteCourse = async (course: any) => {
+    if (!window.confirm(taskCopy.deleteConfirm)) return;
+    const { error } = await supabase.from("courses").delete().eq("id", course.id);
+    if (error) {
+      setCustomAlert(error.message || taskCopy.deleteError);
+      return;
+    }
+    setCourses((current) => current.filter((item) => item.id !== course.id));
+    if (courseId === course.id) setCourseId("");
+  };
+
   const handleBreakdownTask = async (task: any) => {
     if (!isPro) {
       setPremiumModalOpen(true);
@@ -247,8 +405,14 @@ function TasksPageContent() {
         body: JSON.stringify({ taskId: task.id }),
       });
 
-      if (!response.ok) throw new Error("Breakdown failed");
-      const payload = await response.json();
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          payload?.code === "BREAKDOWN_FAILED"
+            ? taskCopy.breakdownError
+            : payload?.error || taskCopy.breakdownError
+        );
+      }
       const subtasks = payload.subtasks;
 
       if (Array.isArray(subtasks)) {
@@ -256,7 +420,7 @@ function TasksPageContent() {
       }
     } catch (err) {
       console.error(err);
-      setCustomAlert("Yapay zeka alt görev planlaması başarısız oldu. Lütfen tekrar deneyin.");
+      setCustomAlert(err instanceof Error ? err.message : taskCopy.breakdownError);
     } finally {
       setBreakingDownId(null);
     }
@@ -330,7 +494,16 @@ function TasksPageContent() {
             </div>
 
             <div>
-              <label htmlFor="course" className="block text-xs font-bold text-gray-500 uppercase">{t.tasks.relatedCourse}</label>
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="course" className="block text-xs font-bold text-gray-500 uppercase">{t.tasks.relatedCourse}</label>
+                <button
+                  type="button"
+                  onClick={() => setShowCourseManager(true)}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-brand hover:underline"
+                >
+                  <Settings2 size={12} /> {taskCopy.manageCourses}
+                </button>
+              </div>
               <select
                 id="course"
                 value={courseId}
@@ -353,9 +526,9 @@ function TasksPageContent() {
                   onChange={(e) => setPriority(e.target.value)}
                   className="block w-full mt-1.5 px-3 py-3 border border-gray-150 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand focus:border-brand transition-all text-surface-dark bg-white cursor-pointer"
                 >
-                  <option value="high">{lang === "zh" ? "高 🔴" : lang === "es" ? "Alta 🔴" : "High 🔴"}</option>
-                  <option value="medium">{lang === "zh" ? "中 🟡" : lang === "es" ? "Media 🟡" : "Medium 🟡"}</option>
-                  <option value="low">{lang === "zh" ? "低 🟢" : lang === "es" ? "Baja 🟢" : "Low 🟢"}</option>
+                  <option value="high">{taskCopy.high}</option>
+                  <option value="medium">{taskCopy.medium}</option>
+                  <option value="low">{taskCopy.low}</option>
                 </select>
               </div>
               <div>
@@ -470,8 +643,8 @@ function TasksPageContent() {
                               )}
                               {task.due_date && (
                                 <span className="flex items-center gap-1">
-                                  <Calendar size={12} /> {lang === "zh" ? "截止日期: " : lang === "es" ? "Vence: " : "Due: "} 
-                                  {new Date(task.due_date).toLocaleDateString()}
+                                  <Calendar size={12} /> {taskCopy.dueLabel}:{" "}
+                                  {new Date(task.due_date).toLocaleDateString(localeForLanguage(lang))}
                                 </span>
                               )}
                               <span className="flex items-center gap-1"><Clock size={12} /> {task.estimated_minutes}{t.common.minutes}</span>
@@ -486,7 +659,11 @@ function TasksPageContent() {
 
                         <div className="flex items-center gap-2">
                           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${task.priority === "high" ? "bg-red-50 text-red-500 border border-red-100" : task.priority === "medium" ? "bg-orange-50 text-orange-500 border border-orange-100" : "bg-gray-100 text-gray-500"}`}>
-                            {task.priority}
+                            {task.priority === "high"
+                              ? taskCopy.high
+                              : task.priority === "medium"
+                                ? taskCopy.medium
+                                : taskCopy.low}
                           </span>
                           
                           {/* AI Breakdown Button (Locked if Free) */}
@@ -578,7 +755,7 @@ function TasksPageContent() {
                   className="inline-flex items-center gap-1.5 rounded-xl border border-red-100 px-3 py-2 text-[11px] font-bold text-red-500 hover:bg-red-50 transition-colors"
                 >
                   <Trash2 size={13} />
-                  {lang === "tr" ? "Tamamlananları temizle" : lang === "zh" ? "清除已完成" : lang === "es" ? "Limpiar completadas" : "Clear completed"}
+                  {taskCopy.clearCompleted}
                 </button>
               </div>
               
@@ -598,8 +775,8 @@ function TasksPageContent() {
                       <div>
                         <p className="text-sm font-medium text-gray-500 line-through">{task.title}</p>
                         <p className="text-[10px] text-gray-400 mt-0.5">
-                          {lang === "zh" ? "完成于: " : lang === "es" ? "Completado: " : "Finished: "} 
-                          {new Date(task.completed_at || "").toLocaleDateString()}
+                          {taskCopy.finishedLabel}:{" "}
+                          {new Date(task.completed_at || "").toLocaleDateString(localeForLanguage(lang))}
                         </p>
                       </div>
                     </div>
@@ -619,6 +796,95 @@ function TasksPageContent() {
 
       </div>
 
+      {showCourseManager && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg space-y-5 rounded-3xl border border-gray-100 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-extrabold text-surface-dark">{taskCopy.manageCourses}</h3>
+                <p className="mt-1 text-xs text-gray-500">{taskCopy.courseHint}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCourseManager(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"
+                aria-label={t.common.close}
+              >
+                ×
+              </button>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{taskCopy.suggested}</p>
+              <div className="flex flex-wrap gap-2">
+                {suggestedCourseNames.map((courseName) => {
+                  const alreadyAdded = courses.some(
+                    (course) => course.name.trim().toLocaleLowerCase() === courseName.toLocaleLowerCase()
+                  );
+                  return (
+                    <button
+                      key={courseName}
+                      type="button"
+                      disabled={savingCourse || alreadyAdded}
+                      onClick={() => void handleAddCourse(courseName)}
+                      className="rounded-full border border-brand/15 bg-brand/5 px-3 py-1.5 text-xs font-bold text-brand hover:border-brand/35 disabled:cursor-default disabled:opacity-40"
+                    >
+                      {alreadyAdded ? "✓ " : "+ "}
+                      {getLocalizedCourseName(courseName, lang)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleAddCourse();
+              }}
+              className="flex gap-2"
+            >
+              <input
+                required
+                maxLength={100}
+                value={newCourseName}
+                onChange={(event) => setNewCourseName(event.target.value)}
+                placeholder={taskCopy.customCourse}
+                className="min-w-0 flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-surface-dark outline-none focus:border-brand"
+              />
+              <button
+                type="submit"
+                disabled={savingCourse || !newCourseName.trim()}
+                className="rounded-xl bg-brand px-4 py-2.5 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-50"
+              >
+                {savingCourse ? <Loader2 size={15} className="animate-spin" /> : taskCopy.addCourse}
+              </button>
+            </form>
+
+            <div className="max-h-56 space-y-2 overflow-y-auto">
+              {courses.map((course) => (
+                <div
+                  key={course.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5"
+                >
+                  <span className="min-w-0 truncate text-sm font-bold text-surface-dark">
+                    {getLocalizedCourseName(course.name, lang)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteCourse(course)}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold text-red-500 hover:bg-red-50"
+                    aria-label={`${taskCopy.deleteCourse}: ${course.name}`}
+                  >
+                    <Trash2 size={12} /> {taskCopy.deleteCourse}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Premium Upgrade Modal Popup */}
       {premiumModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -628,10 +894,10 @@ function TasksPageContent() {
             </div>
             <div className="space-y-2">
               <h3 className="text-base font-extrabold text-surface-dark">
-                {lang === "zh" ? "解锁高级学习工具" : lang === "es" ? "Desbloquear Plan Premium" : "Unlock Premium Features"}
+                {taskCopy.premiumTitle}
               </h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                {lang === "zh" ? "免费版最多支持安排 6 个任务及常规进度跟进。升级至 Pro 即可解锁 AI 智能任务拆分及无限 AI 辅导。" : lang === "es" ? "El plan gratuito admite hasta 6 tareas activas. Actualiza a Pro para habilitar la subdivisión inteligente de tareas por IA y herramientas ilimitadas." : "Free tier accounts support up to 6 active tasks. Upgrade to Pro to enable automated AI task breakdown checklists and unlimited personalized study resources."}
+                {taskCopy.premiumDescription}
               </p>
             </div>
 
@@ -643,7 +909,7 @@ function TasksPageContent() {
                 }}
                 className="w-full py-2.5 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer shadow-sm"
               >
-                🚀 {lang === "zh" ? "升级至 Pro" : lang === "es" ? "Obtener Pro" : "Upgrade to Pro"}
+                🚀 {taskCopy.upgrade}
               </button>
               <button
                 onClick={() => setPremiumModalOpen(false)}
@@ -664,14 +930,14 @@ function TasksPageContent() {
               <HelpCircle size={24} />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-surface-dark">{lang === "zh" ? "系统提示" : lang === "es" ? "Aviso" : "Notification"}</h4>
+              <h4 className="text-sm font-bold text-surface-dark">{taskCopy.notification}</h4>
               <p className="text-xs text-gray-500 mt-2 leading-relaxed">{customAlert}</p>
             </div>
             <button
               onClick={() => setCustomAlert(null)}
               className="w-full py-2.5 bg-brand text-white text-xs font-semibold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer"
             >
-              {lang === "zh" ? "我知道了" : lang === "es" ? "Entendido" : "Dismiss"}
+              {taskCopy.dismiss}
             </button>
           </div>
         </div>

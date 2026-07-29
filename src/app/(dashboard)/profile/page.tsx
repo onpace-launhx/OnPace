@@ -5,40 +5,21 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   User,
-  Shield,
-  Sparkles,
   Send,
   Loader2,
-  Calendar,
   AlertCircle,
   BookOpen,
-  Eye,
-  Trash2,
-  Heart,
-  MessageSquare
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
-
-const learnerStyleLabels: Record<string, Record<string, string>> = {
-  visual: { en: "Visual learner", tr: "Görsel öğrenen", es: "Aprendiz visual", zh: "视觉学习者" },
-  auditory: { en: "Auditory learner", tr: "İşitsel öğrenen", es: "Aprendiz auditivo", zh: "听觉学习者" },
-  reading: { en: "Reading & writing", tr: "Okuma ve yazma", es: "Lectura y escritura", zh: "读写学习者" },
-  kinesthetic: { en: "Hands-on learner", tr: "Uygulamalı öğrenen", es: "Aprendiz práctico", zh: "动手实践学习者" },
-};
+import StudyPartnerProfileForm from "@/components/dashboard/StudyPartnerProfileForm";
+import { localeForLanguage, localized } from "@/lib/i18n";
 
 export default function ProfilePage() {
   const router = useRouter();
   const supabase = createClient();
   const [profile, setProfile] = useState<any>(null);
+  const [courses, setCourses] = useState<Array<{ name: string }>>([]);
   const [loading, setLoading] = useState(true);
-
-  // Profile forms
-  const [fullName, setFullName] = useState("");
-  const [gender, setGender] = useState("");
-  const [prefGender, setPrefGender] = useState("");
-  const [learningStyles, setLearningStyles] = useState<string[]>([]);
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [profileMsg, setProfileMsg] = useState<string | null>(null);
 
   // Social Sharing Hub states
   const [posts, setPosts] = useState<any[]>([]);
@@ -48,6 +29,64 @@ export default function ProfilePage() {
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const copy = localized(lang, {
+    en: {
+      title: "Profile & Social Hub",
+      subtitle: "Manage one matching profile and share study progress with the academy.",
+      socialTitle: "OnPace Social Academy",
+      socialSubtitle: "Share study goals and strategies. Posts are screened by AI moderation.",
+      postPlaceholder: "Share what you are studying, a useful tip, or an exam goal…",
+      checking: "Checking…",
+      share: "Share",
+      maxCharacters: "Maximum 400 characters",
+      emptyPosts: "No academy posts yet. Be the first to share a study goal.",
+      anonymous: "Anonymous peer",
+      postRejected: "The post could not be shared.",
+      connectionError: "Connection error. Please try again.",
+    },
+    tr: {
+      title: "Profil ve Sosyal Alan",
+      subtitle: "Tek bir eşleştirme profilini yönet ve çalışma ilerlemeni akademiyle paylaş.",
+      socialTitle: "OnPace Sosyal Akademisi",
+      socialSubtitle: "Çalışma hedeflerini ve yöntemlerini paylaş. Gönderiler AI moderasyonuyla kontrol edilir.",
+      postPlaceholder: "Çalıştığın konuyu, faydalı bir ipucunu veya sınav hedefini paylaş…",
+      checking: "Kontrol ediliyor…",
+      share: "Paylaş",
+      maxCharacters: "En fazla 400 karakter",
+      emptyPosts: "Henüz akademi gönderisi yok. İlk çalışma hedefini sen paylaş.",
+      anonymous: "Anonim öğrenci",
+      postRejected: "Gönderi paylaşılamadı.",
+      connectionError: "Bağlantı hatası. Lütfen tekrar dene.",
+    },
+    es: {
+      title: "Perfil y Espacio Social",
+      subtitle: "Gestiona un único perfil de emparejamiento y comparte tu progreso con la academia.",
+      socialTitle: "Academia Social OnPace",
+      socialSubtitle: "Comparte objetivos y estrategias. Las publicaciones pasan por moderación de IA.",
+      postPlaceholder: "Comparte lo que estudias, un consejo útil o una meta de examen…",
+      checking: "Comprobando…",
+      share: "Compartir",
+      maxCharacters: "Máximo 400 caracteres",
+      emptyPosts: "Todavía no hay publicaciones. Comparte el primer objetivo de estudio.",
+      anonymous: "Compañero anónimo",
+      postRejected: "No se pudo compartir la publicación.",
+      connectionError: "Error de conexión. Inténtalo de nuevo.",
+    },
+    zh: {
+      title: "个人资料与社交空间",
+      subtitle: "在一个资料中管理匹配偏好，并与学习社区分享进度。",
+      socialTitle: "OnPace 学习社区",
+      socialSubtitle: "分享学习目标与方法，帖子会经过 AI 审核。",
+      postPlaceholder: "分享你正在学习的内容、实用技巧或考试目标…",
+      checking: "正在检查…",
+      share: "发布",
+      maxCharacters: "最多 400 个字符",
+      emptyPosts: "社区中还没有帖子，分享第一个学习目标吧。",
+      anonymous: "匿名同学",
+      postRejected: "无法发布帖子。",
+      connectionError: "连接失败，请重试。",
+    },
+  });
 
   useEffect(() => {
     async function loadProfileAndPosts() {
@@ -57,20 +96,15 @@ export default function ProfilePage() {
         return;
       }
 
-      // 1. Fetch user profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
+      const [{ data: profileData }, { data: courseRows }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", user.id).single(),
+        supabase.from("courses").select("name").eq("user_id", user.id).order("name"),
+      ]);
 
       if (profileData) {
         setProfile(profileData);
-        setFullName(profileData.full_name || "");
-        setGender(profileData.gender || "other");
-        setPrefGender(profileData.preferred_gender || "any");
-        setLearningStyles(Array.isArray(profileData.learning_styles) ? profileData.learning_styles : []);
       }
+      setCourses(courseRows || []);
 
       // 2. Fetch social feed
       try {
@@ -87,36 +121,6 @@ export default function ProfilePage() {
     }
     loadProfileAndPosts();
   }, [router, supabase]);
-
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingProfile(true);
-    setProfileMsg(null);
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: fullName.trim(),
-        gender: gender,
-        preferred_gender: prefGender,
-        learning_styles: learningStyles,
-      })
-      .eq("id", profile.id);
-
-    if (!error) {
-      setProfileMsg(lang === "tr" ? "Hesap özelleştirmeleriniz başarıyla güncellendi!" : "Account customizations successfully updated!");
-      setProfile((prev: any) => ({
-        ...prev,
-        full_name: fullName.trim(),
-        gender: gender,
-        preferred_gender: prefGender,
-        learning_styles: learningStyles,
-      }));
-    } else {
-      setProfileMsg(error.message);
-    }
-    setSavingProfile(false);
-  };
 
   const handleSharePost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,10 +140,10 @@ export default function ProfilePage() {
         setPosts(prev => [data.post, ...prev]);
         setNewPostText("");
       } else {
-        setPostError(data.error || "Post sharing rejected.");
+        setPostError(data.error || copy.postRejected);
       }
     } catch {
-      setPostError("Connection error. Try again.");
+      setPostError(copy.connectionError);
     } finally {
       setSharingPost(false);
     }
@@ -161,138 +165,29 @@ export default function ProfilePage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight text-surface-dark flex items-center gap-2">
-          <User className="text-brand" /> {lang === "tr" ? "Gelişmiş Profil & Sosyal Alan" : "Advanced Profile & Social Hub"}
+          <User className="text-brand" /> {copy.title}
         </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {lang === "tr" 
-            ? "Hesabınızı kişiselleştirin, eşleşme kurallarınızı belirleyin ve sosyal akışta çalışma notlarınızı paylaşın." 
-            : "Customize your study rules, match criteria, and share findings with peers in the secure academy stream."}
-        </p>
-      </div>
-
-      <div className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles size={16} className="text-brand" />
-          <h2 className="text-sm font-extrabold text-surface-dark">
-            {lang === "tr" ? "Öğrenme stilin" : lang === "zh" ? "学习风格" : lang === "es" ? "Tu estilo de aprendizaje" : "Your learning style"}
-          </h2>
-        </div>
-        {learningStyles.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {learningStyles.map((style: string) => (
-              <span key={style} className="rounded-full border border-brand/15 bg-brand/5 px-3 py-1.5 text-xs font-bold text-brand">
-                {learnerStyleLabels[style]?.[lang] || learnerStyleLabels[style]?.en || style}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500">
-            {lang === "tr" ? "Henüz bir öğrenme stili seçilmedi." : lang === "zh" ? "尚未选择学习风格。" : lang === "es" ? "Aún no has elegido un estilo." : "No learning style selected yet."}
-          </p>
-        )}
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {Object.entries(learnerStyleLabels).map(([style, labels]) => {
-            const selected = learningStyles.includes(style);
-            return (
-              <button
-                key={style}
-                type="button"
-                onClick={() => setLearningStyles((current) => selected ? current.filter((item) => item !== style) : [...current, style])}
-                className={`rounded-xl border px-3 py-2.5 text-xs font-bold transition-all ${selected ? "border-brand bg-brand text-white shadow-sm" : "border-gray-200 bg-white text-gray-600 hover:border-brand/40 hover:bg-brand/5"}`}
-              >
-                {labels[lang] || labels.en}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-2 text-[11px] text-gray-400">
-          {lang === "tr" ? "Bir veya birden fazla stil seçebilirsin; ardından aşağıdaki “Değişiklikleri Kaydet” düğmesine bas." : lang === "zh" ? "可选择一种或多种学习风格，然后点击下方保存。" : lang === "es" ? "Puedes elegir uno o varios estilos; luego guarda los cambios abajo." : "Choose one or more styles, then save your changes below."}
-        </p>
+        <p className="text-sm text-gray-500 mt-1">{copy.subtitle}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left Column: Account Setup & Promocodes */}
-        <div className="lg:col-span-1 space-y-6">
-          
-          {/* Customization Details Form */}
-          <div className="bg-white border border-gray-100 p-6 rounded-3xl shadow-sm space-y-4">
-            <h3 className="text-sm font-extrabold text-surface-dark border-b border-gray-50 pb-2 flex items-center gap-1.5">
-              <Shield className="text-brand" size={16} />
-              {lang === "tr" ? "Hesap & Eşleşme Ayarları" : "Match Customizations"}
-            </h3>
-
-            <form onSubmit={handleUpdateProfile} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase">My Gender</label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark cursor-pointer outline-none"
-                >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other / Prefer not to say</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase">Match Matching Gender</label>
-                <select
-                  value={prefGender}
-                  onChange={(e) => setPrefGender(e.target.value)}
-                  className="block w-full mt-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark cursor-pointer outline-none"
-                >
-                  <option value="any">No Preference (Match with all peers)</option>
-                  <option value="male">Match only with Males</option>
-                  <option value="female">Match only with Females</option>
-                </select>
-              </div>
-
-              {profileMsg && (
-                <p className="text-[10px] font-bold text-brand bg-brand/5 p-2 rounded border border-brand/10">
-                  {profileMsg}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={savingProfile}
-                className="w-full py-2.5 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-xl active:scale-95 transition-all cursor-pointer flex justify-center items-center gap-1 shadow-xs"
-              >
-                {savingProfile && <Loader2 className="h-3 w-3 animate-spin" />}
-                {lang === "tr" ? "Değişiklikleri Kaydet" : "Save Changes"}
-              </button>
-            </form>
-          </div>
-
+        <div className="lg:col-span-1">
+          <StudyPartnerProfileForm
+            profile={profile}
+            courses={courses}
+            compact
+            onSaved={setProfile}
+          />
         </div>
 
-        {/* Right Column: Social Sharing Feed */}
         <div className="lg:col-span-2 space-y-6">
-          
           <div className="bg-white border border-gray-100 p-6 sm:p-8 rounded-3xl shadow-sm space-y-6">
             <div>
               <h3 className="text-lg font-extrabold text-surface-dark flex items-center gap-1.5">
                 <BookOpen className="text-brand" size={18} />
-                {lang === "tr" ? "OnPace Sosyal Akademi Panosu" : "Social Academy Stream"}
+                {copy.socialTitle}
               </h3>
-              <p className="text-xs text-gray-500 mt-1">
-                {lang === "tr" 
-                  ? "Çalışma hedeflerinizi paylaşın. Paylaşımlar AI moderasyonu tarafından taranır."
-                  : "Post your daily achievements or syllabus strategies. Auto-moderated to ensure educational focus."}
-              </p>
+              <p className="text-xs text-gray-500 mt-1">{copy.socialSubtitle}</p>
             </div>
 
             {/* Post Creation Form */}
@@ -303,11 +198,11 @@ export default function ProfilePage() {
                 maxLength={400}
                 value={newPostText}
                 onChange={(e) => setNewPostText(e.target.value)}
-                placeholder={lang === "tr" ? "Çalışma ipuçlarını, motivasyonunu veya hazırlık sorularını paylaş..." : "Share what you're working on today, exam targets, or subject reviews..."}
+                placeholder={copy.postPlaceholder}
                 className="w-full px-4 py-3 border border-gray-150 bg-gray-50/50 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-brand text-surface-dark resize-none placeholder-gray-400"
               />
               <div className="flex justify-between items-center">
-                <span className="text-[10px] text-gray-400 font-semibold">Max 400 characters</span>
+                <span className="text-[10px] text-gray-400 font-semibold">{copy.maxCharacters}</span>
                 <button
                   type="submit"
                   disabled={sharingPost}
@@ -316,12 +211,12 @@ export default function ProfilePage() {
                   {sharingPost ? (
                     <>
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      {lang === "tr" ? "Taranıyor..." : "Checking..."}
+                      {copy.checking}
                     </>
                   ) : (
                     <>
                       <Send size={12} />
-                      {lang === "tr" ? "Paylaş" : "Share Forum"}
+                      {copy.share}
                     </>
                   )}
                 </button>
@@ -337,7 +232,7 @@ export default function ProfilePage() {
             <div className="space-y-4 pt-4 border-t border-gray-50">
               {posts.length === 0 ? (
                 <div className="text-center py-8 text-gray-400 text-xs">
-                  No shares on the forum yet. Be the first to share your goals!
+                  {copy.emptyPosts}
                 </div>
               ) : (
                 posts.map(post => (
@@ -348,9 +243,9 @@ export default function ProfilePage() {
                           {post.profiles?.full_name?.charAt(0) || "S"}
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-surface-dark">{post.profiles?.full_name || "Anonymous Peer"}</p>
+                          <p className="text-xs font-bold text-surface-dark">{post.profiles?.full_name || copy.anonymous}</p>
                           <span className="text-[9px] text-gray-400 font-semibold">
-                            {new Date(post.created_at).toLocaleDateString(lang === "tr" ? "tr-TR" : "en-US", { hour: "2-digit", minute: "2-digit" })}
+                            {new Date(post.created_at).toLocaleDateString(localeForLanguage(lang), { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         </div>
                       </div>

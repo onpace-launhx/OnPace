@@ -5,6 +5,70 @@ import {
   generateAIText,
   parseAIJson,
 } from "@/lib/ai/server";
+import { languageName, localized, normalizeLanguage } from "@/lib/i18n";
+
+type OcrEvent = {
+  title: string;
+  dayOfWeek: number | null;
+  dateStr: string | null;
+  startTime: string;
+  durationMinutes: number;
+  type: "session" | "task";
+  confidence: number;
+  sourceText?: string;
+};
+
+const genericTitlePattern =
+  /^(session|class|lesson|task|event|study|meeting|oturum|ders|görev|etkinlik|sesión|clase|tarea|evento|课程|课时|任务|活动)\s*\d*$/iu;
+
+function normalizeOcrEvent(value: unknown): OcrEvent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const title = typeof item.title === "string" ? item.title.trim() : "";
+  const startTime =
+    typeof item.startTime === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(item.startTime)
+      ? item.startTime
+      : "09:00";
+  const dateStr =
+    typeof item.dateStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.dateStr)
+      ? item.dateStr
+      : null;
+  const dayOfWeek =
+    Number.isInteger(item.dayOfWeek) &&
+    Number(item.dayOfWeek) >= 0 &&
+    Number(item.dayOfWeek) <= 6
+      ? Number(item.dayOfWeek)
+      : null;
+  const durationMinutes = Math.min(
+    480,
+    Math.max(10, Number(item.durationMinutes) || 60)
+  );
+  const confidence = Math.min(1, Math.max(0, Number(item.confidence) || 0));
+  const type = item.type === "task" ? "task" : "session";
+
+  if (
+    title.length < 2 ||
+    title.length > 160 ||
+    genericTitlePattern.test(title) ||
+    confidence < 0.45
+  ) {
+    return null;
+  }
+
+  return {
+    title,
+    dayOfWeek,
+    dateStr,
+    startTime,
+    durationMinutes,
+    type,
+    confidence,
+    sourceText:
+      typeof item.sourceText === "string"
+        ? item.sourceText.trim().slice(0, 300)
+        : undefined,
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,9 +99,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const prompt = `You are an expert AI schedule & syllabus OCR parser for students.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("language")
+      .eq("id", user.id)
+      .maybeSingle();
+    const userLanguage = normalizeLanguage(profile?.language);
+    const copy = localized(userLanguage, {
+      en: {
+        noReliable: "No reliable schedule items were found. Try a clearer image or edit the source before uploading again.",
+      },
+      tr: {
+        noReliable: "Görselde güvenilir bir program öğesi bulunamadı. Daha net bir görsel kullan veya kaynağı düzenleyip tekrar yükle.",
+      },
+      es: {
+        noReliable: "No se encontraron elementos fiables. Prueba con una imagen más clara o edita la fuente antes de subirla de nuevo.",
+      },
+      zh: {
+        noReliable: "未识别到可靠的日程项目，请使用更清晰的图片或整理原图后重试。",
+      },
+    });
+
+    const prompt = `You are an expert AI schedule and syllabus OCR parser for students.
 Analyze this image of a study schedule, routine, class timetable, or to-do list screenshot.
 Extract all study sessions, classes, exams, or task items.
+The user's interface language is ${languageName(userLanguage)}, but OCR accuracy is more important than translation.
+PRESERVE the original title text and original writing system exactly as it appears in the image. Never replace an unreadable title with generic labels such as "Session 1", "Class 1", "Task 1", or translations of those labels.
+If a title is uncertain, include the best literal source text and lower the confidence. Do not invent a course name.
 
 Return ONLY a valid JSON array of objects with the following schema:
 [
@@ -47,7 +135,9 @@ Return ONLY a valid JSON array of objects with the following schema:
     "dateStr": "YYYY-MM-DD", // String YYYY-MM-DD if explicit date is in image, else null
     "startTime": "09:00", // HH:mm format 24-hour
     "durationMinutes": 60, // Number in minutes
-    "type": "session" // "session" for calendar event/class, "task" for to-do item
+    "type": "session", // "session" for calendar event/class, "task" for to-do item
+    "confidence": 0.93, // number from 0 to 1
+    "sourceText": "Exact visible text used for the title"
   }
 ]
 
@@ -64,17 +154,33 @@ Do NOT wrap in markdown backticks or explanation text, ONLY return the raw JSON 
       },
     });
 
-    let events: any[] = [];
+    let parsedEvents: unknown[] = [];
     try {
-      events = parseAIJson<any[]>(rawText);
-      if (!Array.isArray(events)) {
+      parsedEvents = parseAIJson<unknown[]>(rawText);
+      if (!Array.isArray(parsedEvents)) {
         throw new Error("Invalid calendar event schema");
       }
     } catch {
-      events = [];
+      parsedEvents = [];
     }
 
-    return NextResponse.json({ events });
+    const events = parsedEvents
+      .map(normalizeOcrEvent)
+      .filter((event): event is OcrEvent => event !== null)
+      .slice(0, 50);
+
+    if (events.length === 0) {
+      return NextResponse.json({
+        events: [],
+        warning: copy.noReliable,
+        code: "NO_RELIABLE_EVENTS",
+      });
+    }
+
+    return NextResponse.json({
+      events,
+      discardedCount: Math.max(0, parsedEvents.length - events.length),
+    });
   } catch (error: any) {
     console.error("OCR Route error:", error);
     return NextResponse.json(

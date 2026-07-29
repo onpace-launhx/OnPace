@@ -189,6 +189,38 @@ export default function BillingPage() {
 
   const localized = <T,>(values: { en: T; tr: T; es: T; zh: T }): T =>
     values[(["en", "tr", "es", "zh"].includes(lang) ? lang : "en") as keyof typeof values];
+  const dateLocale = localized({
+    en: "en-US",
+    tr: "tr-TR",
+    es: "es-ES",
+    zh: "zh-CN",
+  });
+  const paymentCopy = localized({
+    en: {
+      title: "Secure credit and debit card payments",
+      description: "Checkout is completed on the configured payment provider’s PCI-compliant page. Available card networks and debit-card support are confirmed there before payment.",
+      networks: "Credit cards · Debit cards · Supported networks shown at checkout",
+      expires: "Expires",
+    },
+    tr: {
+      title: "Güvenli kredi ve banka kartı ödemeleri",
+      description: "Ödeme, yapılandırılmış ödeme sağlayıcısının PCI uyumlu sayfasında tamamlanır. Desteklenen kart ağları ve banka kartları ödeme öncesinde orada gösterilir.",
+      networks: "Kredi kartları · Banka kartları · Desteklenen ağlar ödeme ekranında",
+      expires: "Bitiş",
+    },
+    es: {
+      title: "Pagos seguros con tarjeta de crédito y débito",
+      description: "El pago se completa en la página PCI del proveedor configurado. Allí se muestran las redes y tarjetas de débito compatibles antes de pagar.",
+      networks: "Crédito · Débito · Redes compatibles visibles al pagar",
+      expires: "Caduca",
+    },
+    zh: {
+      title: "安全的信用卡与借记卡支付",
+      description: "付款将在已配置服务商的 PCI 合规页面完成，支持的卡组织和借记卡会在付款前显示。",
+      networks: "信用卡 · 借记卡 · 支持的卡组织将在结账页显示",
+      expires: "到期",
+    },
+  });
 
   const plans = [
     {
@@ -297,6 +329,17 @@ export default function BillingPage() {
         <p className="text-sm text-gray-500 mt-1">{t.billing.subtitle}</p>
       </div>
 
+      <div className="flex flex-col gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 sm:flex-row sm:items-center">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
+          <ShieldCheck size={21} />
+        </div>
+        <div>
+          <h2 className="text-sm font-extrabold text-emerald-900">{paymentCopy.title}</h2>
+          <p className="mt-1 text-xs leading-relaxed text-emerald-800">{paymentCopy.description}</p>
+          <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">{paymentCopy.networks}</p>
+        </div>
+      </div>
+
       {/* Trial and Subscription Banner */}
       {isTrialActive && (
         <div className="bg-gradient-to-r from-brand to-brand-dark p-6 rounded-3xl text-white shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -307,7 +350,7 @@ export default function BillingPage() {
             </p>
           </div>
           <span className="px-4 py-2 bg-white/20 backdrop-blur-md rounded-xl text-xs font-bold shrink-0">
-            Expires: {trialEnds?.toLocaleDateString()}
+            {paymentCopy.expires}: {trialEnds?.toLocaleDateString(dateLocale)}
           </span>
         </div>
       )}
@@ -503,7 +546,7 @@ export default function BillingPage() {
               <tbody className="divide-y divide-gray-100">
                 {invoices.map((inv) => (
                   <tr key={inv.id} className="text-gray-700 hover:bg-gray-50 transition-all">
-                    <td className="py-3.5 px-4 font-medium">{new Date(inv.created_at).toLocaleDateString()}</td>
+                    <td className="py-3.5 px-4 font-medium">{new Date(inv.created_at).toLocaleDateString(dateLocale)}</td>
                     <td className="py-3.5 px-4 font-mono text-[10px] text-gray-400">
                       {inv.provider_reference || inv.stripe_payment_intent_id || "—"}
                     </td>
