@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import {
+  applySessionPersistence,
+  hasRememberedSession,
+} from '@/lib/auth/session-persistence'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -15,6 +20,12 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
+      const cookieStore = await cookies()
+      applySessionPersistence(
+        cookieStore,
+        hasRememberedSession(cookieStore)
+      )
+
       if (newUser) {
         const setPasswordUrl = new URL('/set-password', origin)
         setPasswordUrl.searchParams.set('next', next)

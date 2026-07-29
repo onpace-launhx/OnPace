@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { setRememberSessionIntent } from "@/lib/auth/remember-session";
 import { CheckCircle2, Lock, Mail, Loader2, AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
   const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -27,44 +29,58 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMsg(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          remember: rememberMe,
+        }),
+      });
+      const result = await response.json().catch(() => ({
+        error: "Could not read the sign-in response.",
+        code: "invalid_response",
+      }));
 
-    if (error || !data.session) {
-      if (
-        error?.code === "email_not_confirmed" ||
-        error?.message?.toLowerCase().includes("email not confirmed")
-      ) {
-        const query = new URLSearchParams({
-          email: email.trim().toLowerCase(),
-          mode: "signup",
-          reason: "required",
-          lang: localStorage.getItem("language") || "en",
-        });
-        window.location.assign(`/verify-email?${query.toString()}`);
+      if (!response.ok) {
+        if (
+          result.code === "email_not_confirmed" ||
+          result.error?.toLowerCase().includes("email not confirmed")
+        ) {
+          const query = new URLSearchParams({
+            email: email.trim().toLowerCase(),
+            mode: "signup",
+            reason: "required",
+            lang: localStorage.getItem("language") || "en",
+          });
+          window.location.assign(`/verify-email?${query.toString()}`);
+          return;
+        }
+        setErrorMsg(result.error || "Could not sign in. Please try again.");
+        setLoading(false);
         return;
       }
-      setErrorMsg(error?.message || "Oturum oluşturulamadı. Lütfen tekrar deneyin.");
-      setLoading(false);
-    } else {
+
       const nextPath = new URLSearchParams(window.location.search).get("next");
       const destination =
         nextPath?.startsWith("/") && !nextPath.startsWith("//")
           ? nextPath
           : "/dashboard";
 
-      // A full navigation gives cookie-based server guards a fresh request.
-      // This is particularly important inside Android/iOS WebViews, where a
-      // client-side route transition can race the newly written auth cookie.
-      window.setTimeout(() => window.location.assign(destination), 120);
+      window.location.replace(destination);
+    } catch {
+      setErrorMsg("Network error while signing in. Please try again.");
+      setLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     setErrorMsg(null);
+    setRememberSessionIntent(rememberMe);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -203,6 +219,8 @@ export default function LoginPage() {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
                   className="h-4 w-4 text-brand focus:ring-brand border-gray-300 rounded-lg cursor-pointer"
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-600 cursor-pointer">

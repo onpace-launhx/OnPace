@@ -1,5 +1,19 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { REMEMBER_SESSION_COOKIE } from '@/lib/auth/remember-session'
+
+function redirectWithSessionCookies(
+  url: URL,
+  supabaseResponse: NextResponse
+) {
+  const response = NextResponse.redirect(url)
+
+  for (const cookie of supabaseResponse.cookies.getAll()) {
+    response.cookies.set(cookie)
+  }
+
+  return response
+}
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -53,6 +67,23 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname === prefix ||
       request.nextUrl.pathname.startsWith(`${prefix}/`)
   )
+  const isHome = request.nextUrl.pathname === '/'
+  const isLogin = request.nextUrl.pathname === '/login'
+  const hasRememberedSession =
+    request.cookies.get(REMEMBER_SESSION_COOKIE)?.value === '1'
+
+  if (user && (isLogin || (isHome && hasRememberedSession))) {
+    const url = request.nextUrl.clone()
+    const requestedNext = request.nextUrl.searchParams.get('next')
+    url.pathname =
+      isLogin &&
+      requestedNext?.startsWith('/') &&
+      !requestedNext.startsWith('//')
+        ? requestedNext
+        : '/dashboard'
+    url.search = ''
+    return redirectWithSessionCookies(url, supabaseResponse)
+  }
 
   if (!user && isProtected) {
     const url = request.nextUrl.clone()
@@ -61,7 +92,7 @@ export async function updateSession(request: NextRequest) {
       'next',
       `${request.nextUrl.pathname}${request.nextUrl.search}`
     )
-    return NextResponse.redirect(url)
+    return redirectWithSessionCookies(url, supabaseResponse)
   }
 
   if (user && isProtected) {
@@ -94,14 +125,14 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.pathname = '/maintenance'
       url.search = ''
-      return NextResponse.redirect(url)
+      return redirectWithSessionCookies(url, supabaseResponse)
     }
 
     if ((!maintenanceEnabled || (hasBypass && !isMaintenancePreview)) && isMaintenancePage) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
       url.search = ''
-      return NextResponse.redirect(url)
+      return redirectWithSessionCookies(url, supabaseResponse)
     }
   }
 

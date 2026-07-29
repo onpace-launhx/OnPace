@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import { clearRememberSessionIntent } from "@/lib/auth/remember-session";
 import {
   LogOut,
   LayoutDashboard,
@@ -458,7 +459,8 @@ export function Sidebar() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    router.push("/login");
+    clearRememberSessionIntent();
+    window.location.replace("/login");
   };
 
   const handleToggleCollapse = () => {

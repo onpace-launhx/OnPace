@@ -6,6 +6,7 @@ import React from "react";
 import { Wrench, Shield, Clock, ArrowRight, RefreshCw } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import { createClient } from "@/lib/supabase/client";
+import { clearRememberSessionIntent } from "@/lib/auth/remember-session";
 
 type MaintenanceLocaleContent = {
   badge?: string;
@@ -82,6 +83,7 @@ export function MaintenanceScreen({
 
   const handleAdminSignIn = async () => {
     await supabase.auth.signOut();
+    clearRememberSessionIntent();
     window.location.href = "/login?next=/admin";
   };
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { clearRememberSessionIntent } from "@/lib/auth/remember-session";
 import {
   LogOut,
   CheckSquare,
@@ -544,7 +545,8 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    router.push("/login");
+    clearRememberSessionIntent();
+    window.location.replace("/login");
   };
 
   if (loading) {

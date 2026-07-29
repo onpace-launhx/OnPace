@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { setRememberSessionIntent } from "@/lib/auth/remember-session";
 import { CheckCircle2, Lock, Mail, User, GraduationCap, Loader2, AlertCircle } from "lucide-react";
 
 export default function RegisterPage() {
@@ -64,6 +65,7 @@ export default function RegisterPage() {
       `/verify-email?verified=1&mode=signup&lang=${language}`
     );
     localStorage.setItem("language", language);
+    setRememberSessionIntent(true);
 
     const { error, data } = await supabase.auth.signUp({
       email,
@@ -100,6 +102,7 @@ export default function RegisterPage() {
   const handleGoogleSignUp = async () => {
     setGoogleLoading(true);
     setErrorMsg(null);
+    setRememberSessionIntent(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
