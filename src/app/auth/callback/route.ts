@@ -5,6 +5,7 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const requestedNext = searchParams.get('next') ?? '/dashboard'
+  const newUser = searchParams.get('new_user') === 'true'
   const next =
     requestedNext.startsWith('/') && !requestedNext.startsWith('//')
       ? requestedNext
@@ -14,10 +15,21 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`)
+      if (newUser) {
+        const setPasswordUrl = new URL('/set-password', origin)
+        setPasswordUrl.searchParams.set('next', next)
+        return NextResponse.redirect(setPasswordUrl)
+      }
+
+      return NextResponse.redirect(new URL(next, origin))
     }
   }
 
-  // Return the user to an error page with instructions
-  return NextResponse.redirect(`${origin}/login?error=Could not authenticate user`)
+  const oauthError =
+    searchParams.get('error_description') ||
+    searchParams.get('error') ||
+    'Could not authenticate user'
+  const loginUrl = new URL('/login', origin)
+  loginUrl.searchParams.set('error', oauthError)
+  return NextResponse.redirect(loginUrl)
 }

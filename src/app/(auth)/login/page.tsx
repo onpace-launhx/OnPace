@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, Lock, Mail, Loader2, AlertCircle } from "lucide-react";
@@ -12,6 +12,31 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get("error");
+    const nextPath = params.get("next");
+    const destination =
+      nextPath?.startsWith("/") && !nextPath.startsWith("//")
+        ? nextPath
+        : "/dashboard";
+
+    if (oauthError) {
+      setErrorMsg(oauthError);
+    }
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled && data.session && !oauthError) {
+        window.location.replace(destination);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

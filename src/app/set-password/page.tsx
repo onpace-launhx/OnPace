@@ -2,12 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle2, Lock, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 
 export default function SetPasswordPage() {
-  const router = useRouter();
   const supabase = createClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -36,7 +34,12 @@ export default function SetPasswordPage() {
       setLoading(false);
     } else {
       setSuccessMsg("Password set successfully! Taking you to your dashboard…");
-      setTimeout(() => router.push("/dashboard"), 1500);
+      const requestedNext = new URLSearchParams(window.location.search).get("next");
+      const destination =
+        requestedNext?.startsWith("/") && !requestedNext.startsWith("//")
+          ? requestedNext
+          : "/dashboard";
+      setTimeout(() => window.location.assign(destination), 700);
     }
   };
 
