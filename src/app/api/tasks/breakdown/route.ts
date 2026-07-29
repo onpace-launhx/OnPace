@@ -18,8 +18,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { task_id, title, course_id, due_date } = await request.json();
+    const body = await request.json();
+    const taskId = body.task_id || body.taskId;
 
+    if (!taskId) {
+      return NextResponse.json({ error: "Task id is required." }, { status: 400 });
+    }
+
+    const { data: parentTask, error: parentTaskError } = await supabase
+      .from("tasks")
+      .select("id, title, course_id, due_date")
+      .eq("id", taskId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (parentTaskError || !parentTask) {
+      return NextResponse.json({ error: "Task was not found." }, { status: 404 });
+    }
+
+    const title = parentTask.title;
     if (!title || title.trim().length < 3) {
       return NextResponse.json({ error: "Task title is too short to break down." }, { status: 400 });
     }
@@ -71,12 +88,13 @@ Do not output markdown code fences, do not output any surrounding text. Return r
     // Insert generated subtasks into tasks table
     const dbSubtasks = subtasksText.map((subTitle) => ({
       user_id: user.id,
-      course_id: course_id || null,
+      course_id: parentTask.course_id || null,
       title: subTitle,
-      due_date: due_date || null,
+      due_date: parentTask.due_date || null,
       priority: "low",
       status: "todo",
-      parent_id: task_id,
+      parent_id: parentTask.id,
+      task_origin: "ai_breakdown",
       estimated_minutes: 15
     }));
 

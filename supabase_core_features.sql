@@ -7,10 +7,14 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   due_date timestamp with time zone,
   priority text DEFAULT 'medium'::text NOT NULL, -- 'high', 'medium', 'low'
   status text DEFAULT 'todo'::text NOT NULL, -- 'todo', 'in_progress', 'completed'
+  task_origin text DEFAULT 'manual'::text NOT NULL, -- 'manual', 'ai_schedule', 'ai_breakdown'
   estimated_minutes integer DEFAULT 30 NOT NULL,
   completed_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+ALTER TABLE public.tasks
+  ADD COLUMN IF NOT EXISTS task_origin text DEFAULT 'manual'::text NOT NULL;
 
 -- Enable RLS on tasks
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;

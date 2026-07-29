@@ -154,10 +154,11 @@ export default function DashboardPage() {
       title: draft.title,
       priority: draft.priority,
       status: "todo",
+      task_origin: "ai_schedule",
     }));
     const { data: inserted, error } = await supabase.from("tasks").insert(rows).select("*");
     if (error) {
-      alert(lang === "tr" ? "Plan görev listesine eklenemedi." : "The plan could not be added to your tasks.");
+      alert(lang === "tr" ? "Plan, AI çalışma planına kaydedilemedi." : "The plan could not be saved to your AI study plan.");
       return;
     }
     const newTasks = (inserted || rows).map((row: any, idx: number) => ({
@@ -165,10 +166,12 @@ export default function DashboardPage() {
       text: row.title,
       done: false,
       priority: row.priority,
+      taskOrigin: row.task_origin || "ai_schedule",
     }));
     setTasks((previous) => [...previous, ...newTasks]);
     setScheduleDraft([]);
     window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
+    router.push("/tasks?view=study-plan");
   };
 
   const updateScheduleDraftTitle = (index: number, title: string) => {
@@ -329,7 +332,8 @@ export default function DashboardPage() {
           text: t.title,
           done: t.status === "completed",
           priority: t.priority,
-          dueDate: t.due_date
+          dueDate: t.due_date,
+          taskOrigin: t.task_origin || "manual",
         })));
       }
 
@@ -417,6 +421,7 @@ export default function DashboardPage() {
           done: task.status === "completed",
           priority: task.priority,
           dueDate: task.due_date,
+          taskOrigin: task.task_origin || "manual",
         })));
       }
       if (sessionsResult.data) setTodaySessions(sessionsResult.data);
@@ -527,11 +532,11 @@ export default function DashboardPage() {
     // Insert into Supabase
     const { data: inserted } = await supabase
       .from("tasks")
-      .insert({ user_id: user.id, title, priority: "medium", status: "todo" })
+      .insert({ user_id: user.id, title, priority: "medium", status: "todo", task_origin: "manual" })
       .select("*")
       .single();
     setTasks(prev => [
-      { id: inserted?.id || Date.now(), text: title, done: false, priority: "medium", dueDate: inserted?.due_date || null },
+      { id: inserted?.id || Date.now(), text: title, done: false, priority: "medium", dueDate: inserted?.due_date || null, taskOrigin: "manual" },
       ...prev
     ]);
     window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
@@ -572,7 +577,9 @@ export default function DashboardPage() {
 
   const progressPercent = Math.min(Math.round((totalStudyMinutes / dailyGoal) * 100), 100);
   const remainingMinutes = Math.max(0, dailyGoal - totalStudyMinutes);
-  const completedTaskCount = tasks.filter((task) => task.done).length;
+  const completedTaskCount = tasks.filter(
+    (task) => task.done && task.taskOrigin !== "ai_schedule"
+  ).length;
   const goalSummary = lang === "tr"
     ? (remainingMinutes > 0
       ? `Bugün ${totalStudyMinutes} dk odak çalışması kaydettin. Hedefe ulaşmak için ${remainingMinutes} dk kaldı.`
@@ -588,12 +595,14 @@ export default function DashboardPage() {
         : (remainingMinutes > 0
           ? `You have logged ${totalStudyMinutes} minutes of focused study today. ${remainingMinutes} minutes remain.`
           : `You completed today's ${dailyGoal}-minute focus goal. Great work!`);
+  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
   const nextTask = [...tasks]
-    .filter((task) => !task.done)
+    .filter((task) => !task.done && task.taskOrigin !== "ai_schedule")
     .sort((first, second) => {
       const firstDue = first.dueDate ? new Date(first.dueDate).getTime() : Number.POSITIVE_INFINITY;
       const secondDue = second.dueDate ? new Date(second.dueDate).getTime() : Number.POSITIVE_INFINITY;
-      return firstDue - secondDue;
+      if (firstDue !== secondDue) return firstDue - secondDue;
+      return (priorityRank[first.priority] ?? 1) - (priorityRank[second.priority] ?? 1);
     })[0];
   const todayPlanRecommendation = lang === "tr"
     ? (nextTask
@@ -603,13 +612,14 @@ export default function DashboardPage() {
       ? `Next task: “${nextTask.text}”. I can create a draft that uses your remaining ${remainingMinutes} minutes.`
       : `You have no open tasks today. I can create a starter draft around your courses and ${dailyGoal}-minute goal.`);
 
-  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
-  const orderedTasks = tasks.filter((task) => !task.done).sort((a, b) => {
-    const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
-    const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
-    if (dueA !== dueB) return dueA - dueB;
-    return (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
-  });
+  const orderedTasks = tasks
+    .filter((task) => !task.done && task.taskOrigin !== "ai_schedule")
+    .sort((a, b) => {
+      const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+      const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+      if (dueA !== dueB) return dueA - dueB;
+      return (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
+    });
   const startOfTodayForTasks = new Date();
   startOfTodayForTasks.setHours(0, 0, 0, 0);
   const overdueTaskCount = orderedTasks.filter((task) => task.dueDate && new Date(task.dueDate) < startOfTodayForTasks).length;
@@ -1139,7 +1149,7 @@ export default function DashboardPage() {
                       <p className="text-[11px] text-gray-500">{lang === "tr" ? "Görev listene eklemeden önce kontrol edebilirsin." : "Review before adding anything to your task list."}</p>
                     </div>
                     <button type="button" onClick={handleAcceptSchedule} className="rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-hover">
-                      {lang === "tr" ? "Görevlerime ekle" : "Add to my tasks"}
+                      {lang === "tr" ? "AI çalışma planıma kaydet" : "Save to AI study plan"}
                     </button>
                   </div>
                   <ul className="space-y-1.5">

@@ -9,18 +9,11 @@ export async function GET(request: Request) {
     requestedNext.startsWith('/') && !requestedNext.startsWith('//')
       ? requestedNext
       : '/dashboard'
-  const newUser = searchParams.get('new_user') === 'true'
-
   if (code) {
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      // For new Google sign-ups, redirect to set-password page
-      if (newUser) {
-        return NextResponse.redirect(`${origin}/set-password`)
-      }
-
       return NextResponse.redirect(`${origin}${next}`)
     }
   }

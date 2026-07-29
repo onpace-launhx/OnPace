@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   CheckSquare,
@@ -22,8 +22,9 @@ import {
 import { getTranslations } from "@/lib/translations";
 import { getLocalizedCourseName } from "@/lib/course-labels";
 
-export default function TasksPage() {
+function TasksPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
@@ -47,6 +48,49 @@ export default function TasksPage() {
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const activeView = searchParams.get("view") === "study-plan" ? "study-plan" : "tasks";
+  const viewCopies: Record<string, {
+    tasks: string;
+    studyPlan: string;
+    studyPlanTitle: string;
+    studyPlanHint: string;
+    studyPlanEmpty: string;
+    aiGenerated: string;
+  }> = {
+    en: {
+      tasks: "My Tasks",
+      studyPlan: "AI Study Plan",
+      studyPlanTitle: "AI Study Plan",
+      studyPlanHint: "AI-generated suggestions are kept separate from the tasks you created.",
+      studyPlanEmpty: "Your AI study plan is empty. Generate a plan from the dashboard.",
+      aiGenerated: "AI generated",
+    },
+    tr: {
+      tasks: "Görevlerim",
+      studyPlan: "AI Çalışma Planı",
+      studyPlanTitle: "AI Çalışma Planı",
+      studyPlanHint: "AI tarafından oluşturulan öneriler, kendi eklediğiniz görevlerden ayrı tutulur.",
+      studyPlanEmpty: "AI çalışma planınız boş. Panelden yeni bir plan oluşturabilirsiniz.",
+      aiGenerated: "AI tarafından oluşturuldu",
+    },
+    es: {
+      tasks: "Mis tareas",
+      studyPlan: "Plan de estudio con IA",
+      studyPlanTitle: "Plan de estudio con IA",
+      studyPlanHint: "Las sugerencias de IA se mantienen separadas de las tareas que creaste.",
+      studyPlanEmpty: "Tu plan de estudio con IA está vacío. Genera uno desde el panel.",
+      aiGenerated: "Generado por IA",
+    },
+    zh: {
+      tasks: "我的任务",
+      studyPlan: "AI 学习计划",
+      studyPlanTitle: "AI 学习计划",
+      studyPlanHint: "AI 生成的建议与您自己创建的任务分开显示。",
+      studyPlanEmpty: "AI 学习计划为空。请从工作台生成计划。",
+      aiGenerated: "AI 生成",
+    },
+  };
+  const viewCopy = viewCopies[lang] || viewCopies.en;
 
   useEffect(() => {
     async function loadData() {
@@ -94,7 +138,12 @@ export default function TasksPage() {
     if (!title.trim()) return;
 
     // Check task limitations for Free plan
-    const nonCompletedCount = tasks.filter(task => task.status !== "completed" && !task.parent_id).length;
+    const nonCompletedCount = tasks.filter(
+      task =>
+        task.status !== "completed" &&
+        !task.parent_id &&
+        task.task_origin !== "ai_schedule"
+    ).length;
     if (!isPro && nonCompletedCount >= 6) {
       setPremiumModalOpen(true);
       return;
@@ -109,6 +158,7 @@ export default function TasksPage() {
       due_date: dueDate ? new Date(dueDate).toISOString() : null,
       priority,
       status: "todo",
+      task_origin: "manual",
       estimated_minutes: parseInt(estMinutes),
     };
 
@@ -169,16 +219,18 @@ export default function TasksPage() {
     );
     if (!confirmed) return;
 
+    const completedIds = completedTasks.map((task) => task.id);
     const { error } = await supabase
       .from("tasks")
       .delete()
       .eq("user_id", profile.id)
-      .eq("status", "completed");
+      .in("id", completedIds);
     if (error) {
       setCustomAlert(error.message);
       return;
     }
-    setTasks((current) => current.filter((task) => task.status !== "completed"));
+    const completedIdSet = new Set(completedIds);
+    setTasks((current) => current.filter((task) => !completedIdSet.has(task.id)));
   };
 
   const handleBreakdownTask = async (task: any) => {
@@ -192,11 +244,12 @@ export default function TasksPage() {
       const response = await fetch("/api/tasks/breakdown", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: task.id, title: task.title }),
+        body: JSON.stringify({ taskId: task.id }),
       });
 
       if (!response.ok) throw new Error("Breakdown failed");
-      const subtasks = await response.json();
+      const payload = await response.json();
+      const subtasks = payload.subtasks;
 
       if (Array.isArray(subtasks)) {
         setTasks(prev => [...subtasks, ...prev]);
@@ -222,15 +275,20 @@ export default function TasksPage() {
 
   // Filter main level tasks (excluding subtasks)
   const mainTasks = tasks.filter(t => !t.parent_id);
+  const studentTasks = mainTasks.filter(t => t.task_origin !== "ai_schedule");
+  const studyPlanTasks = mainTasks.filter(t => t.task_origin === "ai_schedule");
   const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
   const sortTasks = (items: any[]) => [...items].sort((a, b) => {
     const dueA = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
     const dueB = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
     if (dueA !== dueB) return dueA - dueB;
-    return (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
+    const priorityDifference = (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
+    if (priorityDifference !== 0) return priorityDifference;
+    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
   });
-  const mainTodoTasks = sortTasks(mainTasks.filter(t => t.status !== "completed"));
-  const completedTasks = sortTasks(mainTasks.filter(t => t.status === "completed"));
+  const visibleMainTasks = activeView === "study-plan" ? studyPlanTasks : studentTasks;
+  const mainTodoTasks = sortTasks(visibleMainTasks.filter(t => t.status !== "completed"));
+  const completedTasks = sortTasks(visibleMainTasks.filter(t => t.status === "completed"));
 
   const getSubtasksFor = (parentId: string) => {
     return tasks.filter(t => t.parent_id === parentId);
@@ -343,14 +401,48 @@ export default function TasksPage() {
 
         {/* Right Column: Tasks Play Desk */}
         <div className="lg:col-span-2 space-y-6">
+          <div className="grid grid-cols-2 gap-1 rounded-2xl border border-gray-100 bg-gray-50 p-1">
+            <button
+              type="button"
+              onClick={() => router.replace("/tasks")}
+              className={`rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+                activeView === "tasks"
+                  ? "bg-white text-brand shadow-sm"
+                  : "text-gray-500 hover:text-surface-dark"
+              }`}
+            >
+              {viewCopy.tasks} ({studentTasks.filter(task => task.status !== "completed").length})
+            </button>
+            <button
+              type="button"
+              onClick={() => router.replace("/tasks?view=study-plan")}
+              className={`flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+                activeView === "study-plan"
+                  ? "bg-white text-brand shadow-sm"
+                  : "text-gray-500 hover:text-surface-dark"
+              }`}
+            >
+              <Sparkles size={13} />
+              {viewCopy.studyPlan} ({studyPlanTasks.filter(task => task.status !== "completed").length})
+            </button>
+          </div>
           
           {/* Active Tasks list */}
           <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-4 sm:p-6 space-y-4">
-            <h2 className="text-lg font-bold text-surface-dark">{t.tasks.tasksTodo} ({mainTodoTasks.length})</h2>
+            <div>
+              <h2 className="text-lg font-bold text-surface-dark">
+                {activeView === "study-plan" ? viewCopy.studyPlanTitle : t.tasks.tasksTodo} ({mainTodoTasks.length})
+              </h2>
+              {activeView === "study-plan" && (
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">{viewCopy.studyPlanHint}</p>
+              )}
+            </div>
             
             <div className="space-y-4">
               {mainTodoTasks.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">{t.tasks.allCompleted}</p>
+                <p className="text-sm text-gray-400 text-center py-6">
+                  {activeView === "study-plan" ? viewCopy.studyPlanEmpty : t.tasks.allCompleted}
+                </p>
               ) : (
                 mainTodoTasks.map(task => {
                   const subtasks = getSubtasksFor(task.id);
@@ -383,6 +475,11 @@ export default function TasksPage() {
                                 </span>
                               )}
                               <span className="flex items-center gap-1"><Clock size={12} /> {task.estimated_minutes}{t.common.minutes}</span>
+                              {task.task_origin === "ai_schedule" && (
+                                <span className="flex items-center gap-1 font-semibold text-brand">
+                                  <Sparkles size={12} /> {viewCopy.aiGenerated}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -581,5 +678,19 @@ export default function TasksPage() {
       )}
 
     </main>
+  );
+}
+
+export default function TasksPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen w-full items-center justify-center bg-surface-secondary">
+          <Loader2 className="h-8 w-8 animate-spin text-brand" />
+        </div>
+      }
+    >
+      <TasksPageContent />
+    </Suspense>
   );
 }

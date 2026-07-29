@@ -51,6 +51,7 @@ export default function FocusPage() {
   // Browser-native ambient audio. No external MP3 host is required.
   const audioContextRef = useRef<AudioContext | null>(null);
   const noiseSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const allowFullscreenExitRef = useRef(false);
 
   // Premium modal popup & Custom alert dialog
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
@@ -58,6 +59,21 @@ export default function FocusPage() {
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const isStudyLockActive = isActive && mode === "study";
+
+  const releaseFullscreenLock = async () => {
+    if (!document.fullscreenElement) return;
+    allowFullscreenExitRef.current = true;
+    try {
+      await document.exitFullscreen();
+    } catch {
+      // Browsers may reject the request if fullscreen has already ended.
+    } finally {
+      window.setTimeout(() => {
+        allowFullscreenExitRef.current = false;
+      }, 0);
+    }
+  };
 
   useEffect(() => {
     async function loadProfile() {
@@ -140,7 +156,7 @@ export default function FocusPage() {
   // Tab Switch / Visibility Distraction Detector
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden && isActive) {
+      if (document.hidden && isStudyLockActive) {
         setTabDistractionCount(prev => prev + 1);
         setCustomAlert(
           lang === "tr"
@@ -151,12 +167,12 @@ export default function FocusPage() {
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [isActive, lang]);
+  }, [isStudyLockActive, lang]);
 
   // 1. Alert user if they attempt to close the tab during active focus mode
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isActive) {
+      if (isStudyLockActive) {
         e.preventDefault();
         e.returnValue = "Focus session in progress! Are you sure you want to exit?";
         return e.returnValue;
@@ -164,19 +180,23 @@ export default function FocusPage() {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isActive]);
+  }, [isStudyLockActive]);
 
   // 2. Immersive Fullscreen Detection & Exit Prevention
   useEffect(() => {
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && isActive) {
+      if (
+        !allowFullscreenExitRef.current &&
+        !document.fullscreenElement &&
+        isStudyLockActive
+      ) {
         setShowExitModal(true);
       }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [isActive]);
+  }, [isStudyLockActive]);
 
   // Save focus session analytic record to database
   const saveFocusSession = async (completed: boolean) => {
@@ -213,9 +233,7 @@ export default function FocusPage() {
         if (seconds === 0) {
           if (minutes === 0) {
             setIsActive(false);
-            if (document.fullscreenElement) {
-              document.exitFullscreen().catch(() => {});
-            }
+            void releaseFullscreenLock();
             saveFocusSession(true);
             
             setCustomAlert(
@@ -295,6 +313,11 @@ export default function FocusPage() {
 
   const handleStartSession = async () => {
     setIsActive(true);
+    if (mode !== "study") {
+      await releaseFullscreenLock();
+      return;
+    }
+
     // Request Fullscreen
     if (!document.fullscreenElement) {
       try {
@@ -307,6 +330,9 @@ export default function FocusPage() {
 
   const handlePauseSession = () => {
     setIsActive(false);
+    if (mode === "study") {
+      void releaseFullscreenLock();
+    }
   };
 
   const handleReset = () => {
@@ -314,16 +340,22 @@ export default function FocusPage() {
     setMinutes(mode === "study" ? studyLength : breakLength);
     setSeconds(0);
     setElapsedSeconds(0);
+    void releaseFullscreenLock();
   };
 
   const handleModeChange = (targetMode: "study" | "break") => {
     setMode(targetMode);
     setIsActive(false);
+    setTabDistractionCount(0);
     const targetLength = targetMode === "study" ? studyLength : breakLength;
     setMinutes(targetLength);
     setSeconds(0);
     setTotalSessionSeconds(targetLength * 60);
     setElapsedSeconds(0);
+    if (targetMode === "break") {
+      setShowExitModal(false);
+      void releaseFullscreenLock();
+    }
   };
 
   const toggleSound = (soundType: string) => {
@@ -348,18 +380,14 @@ export default function FocusPage() {
     // Save progress as incomplete
     await saveFocusSession(false);
     
-    if (document.fullscreenElement) {
-      try {
-        await document.exitFullscreen();
-      } catch (err) {}
-    }
+    await releaseFullscreenLock();
     router.push("/dashboard");
   };
 
   const handleResumeFocus = async () => {
     setShowExitModal(false);
     setIsActive(true);
-    if (!document.fullscreenElement) {
+    if (mode === "study" && !document.fullscreenElement) {
       try {
         await document.documentElement.requestFullscreen();
       } catch (err) {}
@@ -394,7 +422,7 @@ export default function FocusPage() {
       <div className="w-full max-w-4xl flex items-center justify-between z-10">
         <button
           onClick={() => {
-            if (isActive) {
+            if (isStudyLockActive) {
               setShowExitModal(true);
             } else {
               router.push("/dashboard");
@@ -498,7 +526,7 @@ export default function FocusPage() {
         )}
 
         {/* Tab Switch Distraction Warning Indicator */}
-        {tabDistractionCount > 0 && (
+        {mode === "study" && tabDistractionCount > 0 && (
           <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-[11px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-pulse">
             <AlertTriangle size={12} /> Tab Switched {tabDistractionCount} time{tabDistractionCount > 1 ? "s" : ""} during session
           </div>
