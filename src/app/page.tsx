@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
-import { Header } from "@/components/marketing/Header";
-import { Hero } from "@/components/marketing/Hero";
-import { Features } from "@/components/marketing/Features";
-import { Footer } from "@/components/marketing/Footer";
-import { OAuthTransparency } from "@/components/marketing/OAuthTransparency";
+import { MarketingLandingPage } from "@/components/marketing/MarketingLandingPage";
 
 export const metadata: Metadata = {
-  title: "OnPace | AI Study Planner for Students",
+  title: "OnPace | Plan Smarter. Study With Focus.",
   description:
-    "OnPace is an AI-powered study planning application for students. Organize tasks and exams, analyze notes, create quizzes and flashcards, run focus sessions, and optionally synchronize study events with Google Calendar.",
+    "Turn assignments, exams, notes, and open time into a realistic study plan with OnPace—your AI planning, focus, and learning workspace.",
   applicationName: "OnPace",
   robots: {
     index: true,
@@ -17,9 +13,9 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "OnPace",
-    title: "OnPace | AI Study Planner for Students",
+    title: "OnPace | Plan Smarter. Study With Focus.",
     description:
-      "OnPace helps students organize tasks, plan exams, study with AI tools, stay focused, and optionally synchronize study events with Google Calendar.",
+      "Turn assignments, exams, notes, and open time into a realistic study plan with OnPace.",
   },
 };
 
@@ -46,13 +42,7 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <Header />
-      <main className="flex-1">
-        <Hero />
-        <OAuthTransparency />
-        <Features />
-      </main>
-      <Footer />
+      <MarketingLandingPage />
     </>
   );
 }

@@ -38,6 +38,59 @@ body {
   color: var(--foreground);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+.marketing-shell {
+  color-scheme: light;
+}
+
+.marketing-grid {
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.07) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, black 15%, transparent 90%);
+}
+
+.marketing-grid-dark {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: linear-gradient(to right, black, transparent 90%);
+}
+
+@keyframes marketing-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.marketing-float {
+  animation: marketing-float 5s ease-in-out infinite;
+}
+
+.marketing-float-slow {
+  animation: marketing-float 7s ease-in-out infinite reverse;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .marketing-float,
+  .marketing-float-slow {
+    animation: none;
+  }
+}
+
 @layer utilities {
   .text-h1 {
     @apply text-4xl md:text-5xl font-bold tracking-tight;

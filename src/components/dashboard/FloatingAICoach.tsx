@@ -442,7 +442,7 @@ export function FloatingAICoach() {
     }
   };
 
-  if (!sessionChecked || (!isAuthenticated && pathname !== "/")) {
+  if (pathname === "/" || !sessionChecked || !isAuthenticated) {
     return null;
   }
 
