@@ -23,6 +23,7 @@ export type StudyPartnerProfile = {
   match_timezone?: string | null;
   match_availability?: unknown;
   match_profile_completed?: boolean | null;
+  customization_settings?: unknown;
   [key: string]: unknown;
 };
 
@@ -75,6 +76,31 @@ function readAvailability(value: unknown): Availability {
     startTime: typeof availability.startTime === "string" ? availability.startTime : "18:00",
     endTime: typeof availability.endTime === "string" ? availability.endTime : "20:00",
   };
+}
+
+function readMatchingFallback(profile: StudyPartnerProfile) {
+  const settings =
+    profile.customization_settings &&
+    typeof profile.customization_settings === "object" &&
+    !Array.isArray(profile.customization_settings)
+      ? (profile.customization_settings as Record<string, unknown>)
+      : {};
+  const matchingProfile =
+    settings.study_partner_profile &&
+    typeof settings.study_partner_profile === "object" &&
+    !Array.isArray(settings.study_partner_profile)
+      ? (settings.study_partner_profile as Record<string, unknown>)
+      : {};
+  return { settings, matchingProfile };
+}
+
+function isMissingMatchingColumn(error: { code?: string; message?: string }) {
+  return (
+    error.code === "PGRST204" ||
+    /schema cache|could not find.+column|column.+does not exist/i.test(
+      error.message || ""
+    )
+  );
 }
 
 export default function StudyPartnerProfileForm({
@@ -196,26 +222,57 @@ export default function StudyPartnerProfileForm({
       cancel: "稍后再说",
     },
   });
+  const { settings, matchingProfile } = readMatchingFallback(profile);
 
   const [fullName, setFullName] = useState(profile.full_name || "");
-  const [gender, setGender] = useState(profile.gender || "prefer_not_to_say");
+  const [gender, setGender] = useState(
+    profile.gender ||
+      (typeof matchingProfile.gender === "string" ? matchingProfile.gender : "") ||
+      "prefer_not_to_say"
+  );
   const [preferredGender, setPreferredGender] = useState(
-    profile.preferred_gender || "any"
+    profile.preferred_gender ||
+      (typeof matchingProfile.preferred_gender === "string"
+        ? matchingProfile.preferred_gender
+        : "") ||
+      "any"
   );
   const [learningStyles, setLearningStyles] = useState<string[]>(
-    Array.isArray(profile.learning_styles) ? profile.learning_styles : []
+    Array.isArray(profile.learning_styles)
+      ? profile.learning_styles
+      : Array.isArray(matchingProfile.learning_styles)
+        ? matchingProfile.learning_styles.filter(
+            (value): value is string => typeof value === "string"
+          )
+        : []
   );
   const [subjects, setSubjects] = useState<string[]>(
-    Array.isArray(profile.match_subjects) ? profile.match_subjects : []
+    Array.isArray(profile.match_subjects)
+      ? profile.match_subjects
+      : Array.isArray(matchingProfile.match_subjects)
+        ? matchingProfile.match_subjects.filter(
+            (value): value is string => typeof value === "string"
+          )
+        : []
   );
-  const [goals, setGoals] = useState(profile.match_goals || "");
+  const [goals, setGoals] = useState(
+    profile.match_goals ||
+      (typeof matchingProfile.match_goals === "string"
+        ? matchingProfile.match_goals
+        : "")
+  );
   const [timeZone, setTimeZone] = useState(
     profile.match_timezone ||
+      (typeof matchingProfile.match_timezone === "string"
+        ? matchingProfile.match_timezone
+        : "") ||
       Intl.DateTimeFormat().resolvedOptions().timeZone ||
       "UTC"
   );
   const [availability, setAvailability] = useState<Availability>(() =>
-    readAvailability(profile?.match_availability)
+    readAvailability(
+      profile.match_availability ?? matchingProfile.match_availability
+    )
   );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -271,15 +328,39 @@ export default function StudyPartnerProfileForm({
       match_availability: availability,
       match_profile_completed: true,
     };
-    const { error } = await supabase
+    let { error } = await supabase
       .from("profiles")
       .update(updates)
       .eq("id", profile.id);
 
+    let savedSettings = profile.customization_settings;
+    if (error && isMissingMatchingColumn(error)) {
+      savedSettings = {
+        ...settings,
+        study_partner_profile: {
+          ...matchingProfile,
+          ...updates,
+        },
+      };
+      const fallbackResult = await supabase
+        .from("profiles")
+        .update({
+          full_name: updates.full_name,
+          learning_styles: updates.learning_styles,
+          customization_settings: savedSettings,
+        })
+        .eq("id", profile.id);
+      error = fallbackResult.error;
+    }
+
     if (error) {
       setMessage({ type: "error", text: `${copy.error} ${error.message}` });
     } else {
-      const nextProfile = { ...profile, ...updates };
+      const nextProfile = {
+        ...profile,
+        ...updates,
+        customization_settings: savedSettings,
+      };
       setMessage({ type: "success", text: copy.saved });
       onSaved?.(nextProfile);
     }

@@ -15,10 +15,89 @@ type MatchCandidate = {
   preferred_gender: string | null;
   daily_study_goal_minutes: number | null;
   match_timezone: string | null;
-  match_availability: Record<string, unknown> | null;
+  match_availability: unknown;
   match_goals: string | null;
   match_subjects: string[] | null;
+  match_profile_completed?: boolean;
 };
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function readMatchingProfile(profile: Record<string, unknown>) {
+  const settings = asRecord(profile.customization_settings);
+  const fallback = asRecord(settings.study_partner_profile);
+  const value = (key: string) => profile[key] ?? fallback[key];
+
+  return {
+    settings,
+    fallback,
+    gender:
+      typeof value("gender") === "string"
+        ? String(value("gender"))
+        : "prefer_not_to_say",
+    preferredGender:
+      typeof value("preferred_gender") === "string"
+        ? String(value("preferred_gender"))
+        : "any",
+    learningStyles: asStringArray(value("learning_styles")),
+    subjects: asStringArray(value("match_subjects")),
+    goals:
+      typeof value("match_goals") === "string"
+        ? String(value("match_goals"))
+        : "",
+    timezone:
+      typeof value("match_timezone") === "string"
+        ? String(value("match_timezone"))
+        : "UTC",
+    availability: value("match_availability") ?? {},
+    completed: value("match_profile_completed") === true,
+    matchesUsed: Math.max(
+      0,
+      Number(value("matches_used_this_month")) || 0
+    ),
+  };
+}
+
+function normalizeCandidate(profile: Record<string, unknown>): MatchCandidate {
+  const matching = readMatchingProfile(profile);
+  return {
+    id: String(profile.id || ""),
+    full_name:
+      typeof profile.full_name === "string" ? profile.full_name : null,
+    learning_styles: matching.learningStyles,
+    gender: matching.gender,
+    preferred_gender: matching.preferredGender,
+    daily_study_goal_minutes:
+      typeof profile.daily_study_goal_minutes === "number"
+        ? profile.daily_study_goal_minutes
+        : null,
+    match_timezone: matching.timezone,
+    match_availability: matching.availability,
+    match_goals: matching.goals,
+    match_subjects: matching.subjects,
+    match_profile_completed: matching.completed,
+  };
+}
+
+function isUnavailableMatchingSchema(error: { code?: string; message?: string }) {
+  return (
+    error.code === "PGRST202" ||
+    error.code === "PGRST204" ||
+    /schema cache|could not find.+function|could not find.+column|does not exist/i.test(
+      error.message || ""
+    )
+  );
+}
 
 function matcherCopy(language: string) {
   return localized(language, {
@@ -93,8 +172,8 @@ export async function GET(request: Request) {
       .from("peer_matches")
       .select(`
         *,
-        user_one:profiles!peer_matches_user_one_id_fkey(id, full_name, learning_styles, gender),
-        user_two:profiles!peer_matches_user_two_id_fkey(id, full_name, learning_styles, gender)
+        user_one:profiles!peer_matches_user_one_id_fkey(id, full_name, learning_styles, customization_settings),
+        user_two:profiles!peer_matches_user_two_id_fkey(id, full_name, learning_styles, customization_settings)
       `)
       .or(`user_one_id.eq.${user.id},user_two_id.eq.${user.id}`);
 
@@ -102,7 +181,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json(matches || []);
+    const normalizedMatches = (matches || []).map((match) => {
+      const userOne = asRecord(match.user_one);
+      const userTwo = asRecord(match.user_two);
+      return {
+        ...match,
+        user_one: {
+          ...userOne,
+          gender: readMatchingProfile(userOne).gender,
+        },
+        user_two: {
+          ...userTwo,
+          gender: readMatchingProfile(userTwo).gender,
+        },
+      };
+    });
+
+    return NextResponse.json(normalizedMatches);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -132,8 +227,9 @@ export async function POST(request: Request) {
 
     const lang = normalizeLanguage(profile.language);
     const copy = matcherCopy(lang);
+    const matchingProfile = readMatchingProfile(profile);
 
-    if (!profile.match_profile_completed) {
+    if (!matchingProfile.completed) {
       return NextResponse.json(
         { error: copy.completeProfile, code: "MATCH_PROFILE_REQUIRED" },
         { status: 422 }
@@ -142,7 +238,7 @@ export async function POST(request: Request) {
 
     // 3. Plan limit enforcement
     const plan = profile.plan || "free";
-    const matchesUsed = profile.matches_used_this_month || 0;
+    const matchesUsed = matchingProfile.matchesUsed;
     let maxMatches = 0; // free plan: 0
     if (plan === "plus") maxMatches = 1;
     if (plan === "pro") maxMatches = 3;
@@ -161,8 +257,20 @@ export async function POST(request: Request) {
     }
 
     // 4. Fetch only the safe fields exposed by the matching RPC.
-    const { data: allPeers, error: peersError } = await supabase
+    let { data: allPeers, error: peersError } = await supabase
       .rpc("get_match_candidates");
+
+    if (peersError && isUnavailableMatchingSchema(peersError)) {
+      const fallbackResult = await supabase
+        .from("profiles")
+        .select("*")
+        .neq("id", user.id)
+        .eq("has_onboarded", true);
+      peersError = fallbackResult.error;
+      allPeers = (fallbackResult.data || [])
+        .map((peer) => normalizeCandidate(peer))
+        .filter((peer) => peer.id && peer.match_profile_completed);
+    }
 
     if (peersError) {
       return NextResponse.json(
@@ -184,12 +292,10 @@ export async function POST(request: Request) {
     // Match compatibility logic:
     // - User A preferred gender matches User B gender
     // - User B preferred gender matches User A gender
-    const userGender = profile.gender || "other";
-    const userPref = profile.preferred_gender || "any";
+    const userGender = matchingProfile.gender || "other";
+    const userPref = matchingProfile.preferredGender || "any";
 
-    const currentSubjects = Array.isArray(profile.match_subjects)
-      ? profile.match_subjects
-      : [];
+    const currentSubjects = matchingProfile.subjects;
     const filteredPeers = (allPeers as MatchCandidate[]).filter(peer => {
       const peerGender = peer.gender || "other";
       const peerPref = peer.preferred_gender || "any";
@@ -226,7 +332,10 @@ export async function POST(request: Request) {
       .eq("user_id", user.id);
 
     const coursesList = userCourses?.map(c => c.name) || ["General Study"];
-    const learningStyles = profile.learning_styles || ["visual"];
+    const learningStyles =
+      matchingProfile.learningStyles.length > 0
+        ? matchingProfile.learningStyles
+        : ["visual"];
     const responseLanguage = languageName(lang);
 
     // 6. Call AI Model to find best matches among filtered candidates
@@ -236,10 +345,10 @@ Current Student Profile:
 - ID: ${profile.id}
 - Learning Styles: ${JSON.stringify(learningStyles)}
 - Courses Studying: ${JSON.stringify(coursesList)}
-- Preferred Match Subjects: ${JSON.stringify(profile.match_subjects || [])}
-- Study Goals: ${profile.match_goals || "Not supplied"}
-- Time Zone: ${profile.match_timezone || "UTC"}
-- Weekly Availability: ${JSON.stringify(profile.match_availability || {})}
+- Preferred Match Subjects: ${JSON.stringify(matchingProfile.subjects)}
+- Study Goals: ${matchingProfile.goals || "Not supplied"}
+- Time Zone: ${matchingProfile.timezone}
+- Weekly Availability: ${JSON.stringify(matchingProfile.availability)}
 - Daily Target Goal: ${profile.daily_study_goal_minutes || 60} mins/day
 
 Candidate Peers (Filtered by gender criteria):
@@ -340,10 +449,27 @@ Do not output markdown code fences, do not output any surrounding text. Return r
       });
 
       // Increment matches used counter
-      await supabase
+      const counterResult = await supabase
         .from("profiles")
         .update({ matches_used_this_month: matchesUsed + 1 })
         .eq("id", user.id);
+      if (
+        counterResult.error &&
+        isUnavailableMatchingSchema(counterResult.error)
+      ) {
+        await supabase
+          .from("profiles")
+          .update({
+            customization_settings: {
+              ...matchingProfile.settings,
+              study_partner_profile: {
+                ...matchingProfile.fallback,
+                matches_used_this_month: matchesUsed + 1,
+              },
+            },
+          })
+          .eq("id", user.id);
+      }
 
       return NextResponse.json({
         matches: maskedMatches,
