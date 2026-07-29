@@ -5,6 +5,7 @@ import {
   generateAIText,
   parseAIJson,
 } from "@/lib/ai/server";
+import { languageName, normalizeLanguage } from "@/lib/i18n";
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +18,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { note_id, title, content, count } = await request.json();
+    const { note_id, title, content, count, language } = await request.json();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("language")
+      .eq("id", user.id)
+      .maybeSingle();
+    const outputLanguage = languageName(
+      normalizeLanguage(language || profile?.language)
+    );
 
     if (!content || content.trim().length < 20) {
       return NextResponse.json(
@@ -31,6 +40,9 @@ export async function POST(request: Request) {
     const prompt = `Based on these study notes, generate exactly ${requestedCount} multiple-choice questions (4 options each) for a quiz.
 Title: ${title}
 Content: ${content}
+
+Write every question, option, and explanation in ${outputLanguage}, regardless of the source-note language.
+Only proper nouns, quotations, technical symbols, and acronyms may remain unchanged. Do not mix languages.
 
 Return ONLY a raw valid JSON array. Each object in the array must have exactly:
 - "question": (string) The query question.
@@ -51,6 +63,7 @@ Do not output markdown code fences, do not output any surrounding text. Return r
 
     const aiOutput = await generateAIText(supabase, {
       prompt,
+      systemInstruction: `The current OnPace interface language is ${outputLanguage}. Generate all user-facing quiz text exclusively in ${outputLanguage}.`,
       temperature: 0.3,
       json: true,
     });

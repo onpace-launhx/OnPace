@@ -6,7 +6,36 @@ import {
   parseAIJson,
 } from "@/lib/ai/server";
 import { getStudentLearningContext } from "@/lib/ai/student-context";
-import { languageName, localized, normalizeLanguage } from "@/lib/i18n";
+import {
+  languageName,
+  localized,
+  normalizeLanguage,
+  supportedLanguages,
+  type SupportedLanguage,
+} from "@/lib/i18n";
+
+type BreakdownResponse = {
+  language?: unknown;
+  subtasks?: unknown;
+};
+
+function matchesRequestedLanguage(
+  subtasks: string[],
+  language: SupportedLanguage
+) {
+  const combined = subtasks.join(" ");
+  const hasHanCharacters = /[\u3400-\u9fff]/u.test(combined);
+
+  if (language === "zh") {
+    return subtasks.every((subtask) => /[\u3400-\u9fff]/u.test(subtask));
+  }
+
+  if (hasHanCharacters) return false;
+  if (language === "en" && /[çğıöşüñáéíóú¿¡]/iu.test(combined)) return false;
+  if (language === "es" && /[çğıöş]/iu.test(combined)) return false;
+
+  return true;
+}
 
 export async function POST(request: Request) {
   try {
@@ -21,6 +50,12 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const taskId = body.task_id || body.taskId;
+    const requestedLanguage =
+      typeof body.language === "string" &&
+      supportedLanguages.includes(body.language as SupportedLanguage)
+        ? (body.language as SupportedLanguage)
+        : null;
+    const regenerate = body.regenerate === true;
 
     if (!taskId) {
       return NextResponse.json({ error: "Task id is required." }, { status: 400 });
@@ -43,7 +78,8 @@ export async function POST(request: Request) {
     }
 
     const context = await getStudentLearningContext(supabase, user.id);
-    const userLang = normalizeLanguage(context.profile?.language);
+    const userLang = requestedLanguage || normalizeLanguage(context.profile?.language);
+    const outputLanguage = languageName(userLang);
     const copy = localized(userLang, {
       en: {
         invalid: "AI returned an invalid task breakdown. Please try again.",
@@ -73,17 +109,30 @@ export async function POST(request: Request) {
       .eq("user_id", user.id)
       .eq("parent_id", parentTask.id)
       .order("created_at", { ascending: true });
-    if (existingSubtasks && existingSubtasks.length > 0) {
+    if (existingSubtasks && existingSubtasks.length > 0 && !regenerate) {
       return NextResponse.json({ subtasks: existingSubtasks, reused: true });
     }
 
-    // AI prompt for JSON array of subtasks
+    const existingSubtaskTitles = new Set(
+      (existingSubtasks || []).map((subtask) => subtask.title)
+    );
+    const otherOpenTasks = context.openTasks
+      .filter(
+        (task) =>
+          task.title !== title && !existingSubtaskTitles.has(task.title)
+      )
+      .slice(0, 8);
+
+    // The interface language is the source of truth even when task or course
+    // context contains text written in another language.
     const prompt = `Break down the student study task: "${title}" into exactly 3 smaller, highly actionable study sub-tasks (maximum 8 words each).
-Write every subtask naturally in ${languageName(userLang)}. Preserve course names and the student's original writing system. Do not switch languages.
-Student courses: ${JSON.stringify(context.courses)}. Upcoming exams: ${JSON.stringify(context.upcomingExams)}. Other open tasks: ${JSON.stringify(context.openTasks.filter((task) => task.title !== title).slice(0, 8))}.
+The required output language is ${outputLanguage}.
+Write every generated subtask in ${outputLanguage}, regardless of the language used by the task title or surrounding context.
+Only proper nouns, official course names, and acronyms may remain unchanged. Do not mix languages.
+Student courses: ${JSON.stringify(context.courses)}. Upcoming exams: ${JSON.stringify(context.upcomingExams)}. Other open tasks: ${JSON.stringify(otherOpenTasks)}.
 Avoid duplicating tasks and suggest the smallest next actions that fit the student's actual workload.
-Return ONLY a raw valid JSON array of strings. Example output format:
-["First subtask details", "Second subtask details", "Third subtask details"]
+Return ONLY a raw valid JSON object in this exact shape:
+{"language":"${userLang}","subtasks":["...", "...", "..."]}
 
 Do not output markdown code fences, do not output any surrounding text. Return raw JSON text only.`;
 
@@ -92,23 +141,28 @@ Do not output markdown code fences, do not output any surrounding text. Return r
     for (let attempt = 0; attempt < 2; attempt += 1) {
       lastAiOutput = await generateAIText(supabase, {
         prompt,
+        systemInstruction: `You write localized study content. The current OnPace interface language is ${outputLanguage}. All user-facing generated text must be exclusively in ${outputLanguage}, except proper nouns and acronyms. Never infer the response language from the input text.`,
         temperature: attempt === 0 ? 0.25 : 0.05,
         json: true,
       });
       try {
-        const parsed = parseAIJson<string[]>(lastAiOutput);
-        const normalized = Array.isArray(parsed)
+        const parsed = parseAIJson<BreakdownResponse>(lastAiOutput);
+        const normalized = Array.isArray(parsed?.subtasks)
           ? Array.from(
               new Set(
-                parsed
+                parsed.subtasks
                   .filter((item): item is string => typeof item === "string")
                   .map((item) => item.trim())
                   .filter((item) => item.length > 0 && item.length <= 160)
               )
             )
           : [];
-        if (normalized.length !== 3) {
-          throw new Error("Expected exactly three unique subtasks");
+        if (
+          parsed?.language !== userLang ||
+          normalized.length !== 3 ||
+          !matchesRequestedLanguage(normalized, userLang)
+        ) {
+          throw new Error("Expected three unique subtasks in the requested language");
         }
         subtasksText = normalized;
         break;
@@ -128,6 +182,19 @@ Do not output markdown code fences, do not output any surrounding text. Return r
         { error: copy.invalid },
         { status: 500 }
       );
+    }
+
+    if (regenerate && existingSubtasks && existingSubtasks.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("tasks")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("parent_id", parentTask.id);
+
+      if (deleteError) {
+        console.error("Failed to replace existing subtasks:", deleteError);
+        return NextResponse.json({ error: copy.save }, { status: 500 });
+      }
     }
 
     // Insert generated subtasks into tasks table

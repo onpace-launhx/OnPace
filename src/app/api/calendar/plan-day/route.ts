@@ -6,6 +6,12 @@ import {
   parseAIJson,
 } from "@/lib/ai/server";
 import { getStudentLearningContext } from "@/lib/ai/student-context";
+import {
+  languageName,
+  normalizeLanguage,
+  supportedLanguages,
+  type SupportedLanguage,
+} from "@/lib/i18n";
 
 interface PlannedBlock {
   title: string;
@@ -61,12 +67,18 @@ export async function POST(request: Request) {
     const tasks = context.openTasks;
     const sessions = sessionsResult.data;
 
-    const language = profile?.language || "en";
+    const requestedLanguage =
+      typeof body?.language === "string" &&
+      supportedLanguages.includes(body.language as SupportedLanguage)
+        ? (body.language as SupportedLanguage)
+        : null;
+    const language = requestedLanguage || normalizeLanguage(profile?.language);
+    const outputLanguage = languageName(language);
     const prompt = `Create a realistic study plan for ${requestedDate}.
 Student time zone: ${timeZone}
 Current local time: ${currentLocalTime || "not supplied"}
 Student: ${profile?.full_name || "Student"}
-Preferred response language: ${language}
+Required response language: ${outputLanguage}
 Daily study target: ${profile?.daily_study_goal_minutes || 60} minutes
 Incomplete tasks: ${JSON.stringify(tasks || [])}
 Recent notes that can guide revision: ${JSON.stringify(context.recentNotes.map((note) => note.title))}
@@ -91,6 +103,7 @@ Return ONLY JSON with this exact shape:
 
     const raw = await generateAIText(supabase, {
       prompt,
+      systemInstruction: `The current OnPace interface language is ${outputLanguage}. Write every generated plan note and block title exclusively in ${outputLanguage}, even if task titles use another language. Preserve only proper nouns and official course codes.`,
       temperature: 0.2,
       json: true,
     });

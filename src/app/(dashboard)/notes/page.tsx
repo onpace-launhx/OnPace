@@ -89,7 +89,8 @@ export default function NotesPage() {
         body: JSON.stringify({
           action: "enhance",
           text: content,
-          title: title
+          title: title,
+          language: lang,
         })
       });
       const data = await res.json();
@@ -252,6 +253,7 @@ export default function NotesPage() {
           fileUrl: archivedFileUrl,
           contentType: file.type,
           base64Data,
+          language: lang,
         }),
       });
 
@@ -355,7 +357,8 @@ export default function NotesPage() {
           note_id: selectedNote.id,
           title: selectedNote.title,
           content: selectedNote.content,
-          count: Number(practiceCount)
+          count: Number(practiceCount),
+          language: lang,
         })
       });
 
@@ -386,7 +389,8 @@ export default function NotesPage() {
           note_id: selectedNote.id,
           title: selectedNote.title,
           content: selectedNote.content,
-          count: Number(practiceCount)
+          count: Number(practiceCount),
+          language: lang,
         })
       });
 

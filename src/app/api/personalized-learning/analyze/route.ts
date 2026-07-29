@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { AIServiceError, generateAIText, parseAIJson } from "@/lib/ai/server"
+import { languageName, normalizeLanguage } from "@/lib/i18n"
 
 const MAX_TEXT_LENGTH = 40_000
 const MAX_QUESTION_LENGTH = 5_000
@@ -41,7 +42,8 @@ export async function POST(request: Request) {
     const fileBase64 = typeof body?.fileBase64 === "string" ? body.fileBase64 : ""
     const fileName = typeof body?.fileName === "string" ? body.fileName.trim() : "notes.pdf"
     const fileType = typeof body?.fileType === "string" ? body.fileType : ""
-    const language = ["en", "tr", "es", "zh"].includes(body?.language) ? body.language : "en"
+    const language = normalizeLanguage(body?.language)
+    const outputLanguage = languageName(language)
     const toolIds = Array.isArray(body?.toolIds)
       ? body.toolIds.filter((id: unknown): id is string => typeof id === "string" && id in LEARNING_TOOLS).slice(0, 3)
       : []
@@ -62,7 +64,7 @@ Use these selected learning tools:
 ${selectedInstructions}
 
 Important rules:
-- Answer in ${language === "tr" ? "Turkish" : language === "es" ? "Spanish" : language === "zh" ? "Simplified Chinese" : "English"}.
+- Answer exclusively in ${outputLanguage}, even if the source material uses another language.
 - Be accurate and distinguish source facts from a clearly labelled illustrative example.
 - Never invent citations, statistics, formulas, or source content.
 - Keep the direct answer concise; give each selected tool its own useful section.
@@ -71,6 +73,7 @@ Important rules:
 
     const raw = await generateAIText(supabase, {
       prompt,
+      systemInstruction: `The current OnPace interface language is ${outputLanguage}. All generated titles, explanations, section labels, and questions must be written in ${outputLanguage}, except proper nouns, quotations, formulas, and acronyms.`,
       temperature: 0.25,
       json: true,
       skipGateway: Boolean(fileBase64),

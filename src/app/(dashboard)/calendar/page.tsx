@@ -1144,6 +1144,7 @@ export default function CalendarPage() {
           date: localDate,
           currentLocalTime: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          language: lang,
         }),
       });
       const data = await response.json();
@@ -1161,7 +1162,7 @@ export default function CalendarPage() {
     } finally {
       setIsPlanningDay(false);
     }
-  }, []);
+  }, [lang]);
 
   const handleConfirmDayPlan = async () => {
     if (dayPlanBlocks.length === 0) return;

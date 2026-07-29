@@ -5,6 +5,7 @@ import {
   generateAIText,
   parseAIJson,
 } from "@/lib/ai/server";
+import { languageName, localized, normalizeLanguage } from "@/lib/i18n";
 
 export async function POST(request: Request) {
   try {
@@ -17,8 +18,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { fileUrl, contentType, base64Data, text, action = "ocr" } =
+    const { fileUrl, contentType, base64Data, text, action = "ocr", language } =
       await request.json();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("language")
+      .eq("id", user.id)
+      .maybeSingle();
+    const outputLanguageCode = normalizeLanguage(language || profile?.language);
+    const outputLanguage = languageName(outputLanguageCode);
+    const fallbackTitle = localized(outputLanguageCode, {
+      en: "Study Note",
+      tr: "Çalışma Notu",
+      es: "Apunte de estudio",
+      zh: "学习笔记",
+    });
+    const languageInstruction = `The current OnPace interface language is ${outputLanguage}. Write all generated titles, explanations, headings, summaries, and study content exclusively in ${outputLanguage}. Preserve only proper nouns, direct quotations, formulas, technical symbols, and acronyms when needed. Never infer the response language from the source text.`;
 
     // ── Handle Action: Enhance Text ──────────────────────────────────────────
     if (action === "enhance") {
@@ -34,6 +49,8 @@ Refine, organize, fix grammatical issues, add clear bold headers, bullet points,
 
 "${text}"
 
+The complete result must be written in ${outputLanguage}. Do not mix languages.
+
 Return ONLY a raw valid JSON object with "title" and "enhancedContent" properties.
 "title": a concise, accurate academic title.
 "enhancedContent": the beautifully formatted, structured, and expanded note content with bold headers (**Header**) and bullet points.
@@ -42,6 +59,7 @@ Return raw JSON only, no markdown code blocks or wrapper text.`;
 
       const rawRes = await generateAIText(supabase, {
         prompt: enhancePrompt,
+        systemInstruction: languageInstruction,
         temperature: 0.25,
         json: true,
       });
@@ -57,7 +75,7 @@ Return raw JSON only, no markdown code blocks or wrapper text.`;
         });
       } catch {
         return NextResponse.json({
-          title: "Enhanced Note",
+          title: fallbackTitle,
           enhancedContent: rawRes,
         });
       }
@@ -79,6 +97,7 @@ Return raw JSON only, no markdown code blocks or wrapper text.`;
 
     const prompt = `Analyze this study note image. Perform OCR to extract all written text, diagrams, formulas, and main points. 
 Generate a comprehensive, structured study note.
+Write the generated note in ${outputLanguage}. Preserve source quotations, formulas, proper nouns, and acronyms when necessary, but do not mix interface languages.
 
 Strict Formatting Rules for 'content':
 - DO NOT use the '#' character for headers. Instead, use bold text (e.g., "**Header Name**" on a new line) to separate sections.
@@ -94,6 +113,7 @@ Do not output markdown code fences, return raw JSON text only.`;
 
     const rawText = await generateAIText(supabase, {
       prompt,
+      systemInstruction: languageInstruction,
       temperature: 0.2,
       json: true,
       image: {
@@ -102,7 +122,7 @@ Do not output markdown code fences, return raw JSON text only.`;
       },
     });
 
-    let parsed = { title: "Study Note", content: rawText };
+    let parsed = { title: fallbackTitle, content: rawText };
     try {
       parsed = parseAIJson<{ title: string; content: string }>(rawText);
     } catch {
@@ -115,7 +135,7 @@ Do not output markdown code fences, return raw JSON text only.`;
       .insert([
         {
           user_id: user.id,
-          title: parsed.title || "Study Note",
+          title: parsed.title || fallbackTitle,
           content: parsed.content || rawText,
           file_url: fileUrl || null,
         },

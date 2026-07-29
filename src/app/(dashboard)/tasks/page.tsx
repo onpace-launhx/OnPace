@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import { getLocalizedCourseName, suggestedCourseNames } from "@/lib/course-labels";
-import { localeForLanguage, localized } from "@/lib/i18n";
+import { localeForLanguage, localized, normalizeLanguage } from "@/lib/i18n";
 
 function TasksPageContent() {
   const router = useRouter();
@@ -402,7 +402,11 @@ function TasksPageContent() {
       const response = await fetch("/api/tasks/breakdown", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: task.id }),
+        body: JSON.stringify({
+          taskId: task.id,
+          language: normalizeLanguage(lang),
+          regenerate: tasks.some((item) => item.parent_id === task.id),
+        }),
       });
 
       const payload = await response.json().catch(() => null);
@@ -416,7 +420,10 @@ function TasksPageContent() {
       const subtasks = payload.subtasks;
 
       if (Array.isArray(subtasks)) {
-        setTasks(prev => [...subtasks, ...prev]);
+        setTasks((current) => [
+          ...subtasks,
+          ...current.filter((item) => item.parent_id !== task.id),
+        ]);
       }
     } catch (err) {
       console.error(err);

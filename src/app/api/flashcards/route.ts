@@ -5,6 +5,7 @@ import {
   generateAIText,
   parseAIJson,
 } from "@/lib/ai/server";
+import { languageName, normalizeLanguage } from "@/lib/i18n";
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +18,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { note_id, title, content, count } = await request.json();
+    const { note_id, title, content, count, language } = await request.json();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("language")
+      .eq("id", user.id)
+      .maybeSingle();
+    const outputLanguage = languageName(
+      normalizeLanguage(language || profile?.language)
+    );
 
     if (!content || content.trim().length < 20) {
       return NextResponse.json(
@@ -32,6 +41,9 @@ export async function POST(request: Request) {
 Title: ${title}
 Content: ${content}
 
+Write every question and answer in ${outputLanguage}, regardless of the language of the source note.
+Only proper nouns, quotations, technical symbols, and acronyms may remain unchanged. Do not mix languages.
+
 Return ONLY a raw valid JSON array containing objects with exactly "question" and "answer" properties. Example output:
 [
   {"question": "What is the capital of France?", "answer": "Paris"},
@@ -41,6 +53,7 @@ Do not output markdown code fences, do not output any surrounding text. Return r
 
     const aiOutput = await generateAIText(supabase, {
       prompt,
+      systemInstruction: `The current OnPace interface language is ${outputLanguage}. Generate all user-facing flashcard text exclusively in ${outputLanguage}.`,
       temperature: 0.3,
       json: true,
     });

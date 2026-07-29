@@ -6,6 +6,12 @@ import {
   parseAIJson,
 } from "@/lib/ai/server";
 import { getStudentLearningContext } from "@/lib/ai/student-context";
+import {
+  languageName,
+  normalizeLanguage,
+  supportedLanguages,
+  type SupportedLanguage,
+} from "@/lib/i18n";
 
 export async function POST(request: Request) {
   try {
@@ -20,7 +26,13 @@ export async function POST(request: Request) {
 
     const { language } = await request.json();
     const context = await getStudentLearningContext(supabase, user.id);
-    const lang = context.profile?.language || language || "en";
+    const requestedLanguage =
+      typeof language === "string" &&
+      supportedLanguages.includes(language as SupportedLanguage)
+        ? (language as SupportedLanguage)
+        : null;
+    const lang = requestedLanguage || normalizeLanguage(context.profile?.language);
+    const outputLanguage = languageName(lang);
 
     // Build course context
     const courseContext = context.courses.length > 0
@@ -38,7 +50,8 @@ ${goalContext}
 
 Generate exactly 3 highly actionable, micro study-tasks for today (maximum 8 words each).
 Prioritize the nearest due work and fit the remaining daily focus time. Tailor the tasks to their courses if specified.
-The tasks MUST be in this language: "${lang === "tr" ? "Turkish" : lang === "es" ? "Spanish" : lang === "zh" ? "Chinese" : "English"}".
+The tasks MUST be exclusively in ${outputLanguage}, even when a course or existing task is written in another language.
+Only proper nouns, official course names, and acronyms may remain unchanged. Never mix languages.
 
 Return ONLY a raw valid JSON array of strings. Example format:
 ["First generated task details", "Second generated task details", "Third generated task details"]
@@ -47,6 +60,7 @@ Do not output markdown code fences, do not output any surrounding explanation. R
 
     const aiOutput = await generateAIText(supabase, {
       prompt,
+      systemInstruction: `The current OnPace interface language is ${outputLanguage}. Every user-facing task you generate must be written in ${outputLanguage}. Never infer the response language from the input text.`,
       temperature: 0.5,
       json: true,
     });
