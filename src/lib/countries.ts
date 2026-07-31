@@ -1,13 +1,25 @@
 import { localeForLanguage } from "@/lib/i18n";
 
-export const countryOptions = [
-  "TR", "US", "GB", "CA", "AU", "DE", "FR", "ES", "IT", "NL",
-  "CN", "JP", "KR", "IN", "PK", "SG", "MY", "ID", "BR", "MX",
-  "AR", "SA", "AE", "ZA", "NG", "EG", "PL", "SE", "NO", "DK",
-  "FI", "CH", "AT", "BE", "PT", "GR", "IE", "NZ", "RO", "CZ",
-] as const;
+const nonCountryRegionCodes = new Set([
+  "AC", "CP", "DG", "EA", "EU", "EZ", "IC", "TA", "UN", "XA", "XB",
+]);
 
-export type CountryCode = (typeof countryOptions)[number];
+function buildCountryOptions() {
+  const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
+  const codes: string[] = [];
+  for (let first = 65; first <= 90; first += 1) {
+    for (let second = 65; second <= 90; second += 1) {
+      const code = String.fromCharCode(first, second);
+      const name = displayNames.of(code);
+      if (name && name !== code && !nonCountryRegionCodes.has(code)) codes.push(code);
+    }
+  }
+  return codes;
+}
+
+export const countryOptions = buildCountryOptions();
+
+export type CountryCode = string;
 
 export function getCountryName(countryCode: string, language: string) {
   try {
@@ -17,4 +29,3 @@ export function getCountryName(countryCode: string, language: string) {
     return countryCode;
   }
 }
-
