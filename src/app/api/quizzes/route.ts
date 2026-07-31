@@ -62,6 +62,7 @@ Example output:
 Do not output markdown code fences, do not output any surrounding text. Return raw JSON text only.`;
 
     const aiOutput = await generateAIText(supabase, {
+      workload: "reasoning",
       prompt,
       systemInstruction: `The current OnPace interface language is ${outputLanguage}. Generate all user-facing quiz text exclusively in ${outputLanguage}.`,
       temperature: 0.3,

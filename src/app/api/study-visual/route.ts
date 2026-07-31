@@ -37,6 +37,7 @@ Return ONLY raw JSON in this shape:
 {"kind":"concept_map","title":"...","subtitle":"...","items":[{"label":"...","detail":"...","group":""}],"takeaway":"..."}`;
 
     const raw = await generateAIText(supabase, {
+      workload: "reasoning",
       prompt,
       systemInstruction: `You create accurate structured study visuals. The interface language is ${outputLanguage}. Return JSON only and never invent facts that are not supported by the supplied study material.`,
       temperature: 0.2,
@@ -54,4 +55,3 @@ Return ONLY raw JSON in this shape:
     );
   }
 }
-

@@ -38,9 +38,19 @@ Deno.serve(async (request) => {
     })
 
     if (request.method === "GET") {
-      const { data, error } = await admin.rpc("get_edge_integration_status")
-      if (error) return json({ error: error.message }, 500)
-      return json(Array.isArray(data) ? data[0] || {} : data || {})
+      const [statusResult, modelResult] = await Promise.all([
+        admin.rpc("get_edge_integration_status"),
+        admin.rpc("get_ai_model_settings"),
+      ])
+      if (statusResult.error) return json({ error: statusResult.error.message }, 500)
+      if (modelResult.error) return json({ error: modelResult.error.message }, 500)
+      const status = Array.isArray(statusResult.data)
+        ? statusResult.data[0] || {}
+        : statusResult.data || {}
+      const models = Array.isArray(modelResult.data)
+        ? modelResult.data[0] || {}
+        : modelResult.data || {}
+      return json({ ...status, ...models })
     }
 
     const body = await request.json()
@@ -65,6 +75,15 @@ Deno.serve(async (request) => {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (body.activeProvider === "gemini" || body.activeProvider === "openai") {
       updates.active_provider = body.activeProvider
+    }
+    if (body.openaiRoutingMode === "smart" || body.openaiRoutingMode === "single") {
+      updates.openai_routing_mode = body.openaiRoutingMode
+    }
+    if (
+      body.openaiDefaultModel === "gpt-4o-mini" ||
+      body.openaiDefaultModel === "gpt-5.6-luna"
+    ) {
+      updates.openai_default_model = body.openaiDefaultModel
     }
     if (typeof body.emailFromAddress === "string") {
       const requestedAddress = body.emailFromAddress.trim().toLowerCase()

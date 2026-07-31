@@ -72,11 +72,11 @@ Important rules:
 {"title":"short topic title","sourceSummary":"2-5 sentence summary","directAnswer":"direct answer or core study note","toolSections":[{"id":"one selected id","title":"localized section title","content":"helpful study content"}],"nextQuestion":"one short interactive question"}`
 
     const raw = await generateAIText(supabase, {
+      workload: "reasoning",
       prompt,
       systemInstruction: `The current OnPace interface language is ${outputLanguage}. All generated titles, explanations, section labels, and questions must be written in ${outputLanguage}, except proper nouns, quotations, formulas, and acronyms.`,
       temperature: 0.25,
       json: true,
-      skipGateway: Boolean(fileBase64),
       ...(fileBase64 ? { document: { base64: fileBase64, mimeType: "application/pdf", filename: fileName || "notes.pdf" } } : {}),
     })
     const parsed = parseAIJson<LearningResult>(raw)

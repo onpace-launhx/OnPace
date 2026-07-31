@@ -111,6 +111,7 @@ export async function POST(request: Request) {
     }
 
     const raw = await generateAIText(supabase, {
+      workload: "reasoning",
       json: true,
       temperature: 0.1,
       systemInstruction: `You extract a single actionable request from a student's message. The interface language is ${language}. Today is ${today} in timezone ${timeZone}.

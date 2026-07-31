@@ -375,6 +375,7 @@ Return ONLY a raw valid JSON object with the following structure:
 Do not output markdown code fences, do not output any surrounding text. Return raw JSON text only.`;
 
     const aiOutput = await generateAIText(supabase, {
+      workload: "reasoning",
       prompt,
       temperature: 0.3,
       json: true,

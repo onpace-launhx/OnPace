@@ -155,6 +155,7 @@ export async function POST(request: Request) {
     try {
       const language = profileResult.data?.language || "en";
       const raw = await generateAIText(supabase, {
+        workload: "fast",
         prompt: `You detect semantically duplicate student tasks and calendar events.
 Response language for each reason: ${language}.
 Incoming items: ${JSON.stringify(unresolved)}

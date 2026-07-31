@@ -102,6 +102,7 @@ Return ONLY JSON with this exact shape:
 }`;
 
     const raw = await generateAIText(supabase, {
+      workload: "reasoning",
       prompt,
       systemInstruction: `The current OnPace interface language is ${outputLanguage}. Write every generated plan note and block title exclusively in ${outputLanguage}, even if task titles use another language. Preserve only proper nouns and official course codes.`,
       temperature: 0.2,

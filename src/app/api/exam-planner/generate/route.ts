@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     const outputLanguage = languageName(normalizeLanguage(language));
     const context = await getStudentLearningContext(supabase, user.id);
     const raw = await generateAIText(supabase, {
+      workload: "reasoning",
       temperature: 0.2,
       json: true,
       systemInstruction: `The current OnPace interface language is ${outputLanguage}. Write every generated exam title and study topic exclusively in ${outputLanguage}, except proper nouns and official course codes.`,

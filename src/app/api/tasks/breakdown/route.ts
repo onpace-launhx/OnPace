@@ -146,6 +146,7 @@ Do not output markdown code fences, do not output any surrounding text. Return r
     let lastAiOutput = "";
     for (let attempt = 0; attempt < 2; attempt += 1) {
       lastAiOutput = await generateAIText(supabase, {
+        workload: "reasoning",
         prompt,
         systemInstruction: `You write localized study content. The current OnPace interface language is ${outputLanguage}. All user-facing generated text must be exclusively in ${outputLanguage}, except proper nouns and acronyms. Never infer the response language from the input text.`,
         temperature: attempt === 0 ? 0.25 : 0.05,

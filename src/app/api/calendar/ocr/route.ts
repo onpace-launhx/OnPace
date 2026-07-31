@@ -145,6 +145,7 @@ If the image is not legible or has no schedule information, return an empty arra
 Do NOT wrap in markdown backticks or explanation text, ONLY return the raw JSON array.`;
 
     const rawText = await generateAIText(supabase, {
+      workload: "reasoning",
       prompt,
       temperature: 0.1,
       json: true,

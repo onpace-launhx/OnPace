@@ -63,6 +63,7 @@ For calendar creation, task creation, or destructive changes, first show the exa
 The dedicated "Plan My Day with AI" action in the Calendar can save a confirmed plan.`;
 
     const reply = await generateAIText(supabase, {
+      workload: "fast",
       prompt: message,
       systemInstruction,
       history: history

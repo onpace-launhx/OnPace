@@ -59,6 +59,7 @@ Moderation Rules:
 Respond with exactly one word: "SAFE" or "FLAGGED". Do not include punctuation or markdown.`;
 
     const aiOutput = await generateAIText(supabase, {
+      workload: "fast",
       prompt,
       temperature: 0.1,
     });

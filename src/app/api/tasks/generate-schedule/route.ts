@@ -59,6 +59,7 @@ Return ONLY a raw valid JSON array of strings. Example format:
 Do not output markdown code fences, do not output any surrounding explanation. Return raw JSON text only.`;
 
     const aiOutput = await generateAIText(supabase, {
+      workload: "reasoning",
       prompt,
       systemInstruction: `The current OnPace interface language is ${outputLanguage}. Every user-facing task you generate must be written in ${outputLanguage}. Never infer the response language from the input text.`,
       temperature: 0.5,

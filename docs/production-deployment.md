@@ -84,12 +84,13 @@ admin broadcast can also create dashboard notifications.
 ## AI
 
 The Next.js API routes invoke `ai-gateway`; the Edge Function reads the selected
-provider key from Vault. The default Gemini model is `gemini-2.5-flash`. Override
-models only with non-public Edge Function environment variables:
+provider key from Vault. The default Gemini model is `gemini-2.5-flash`.
+OpenAI model selection is managed from the administrator panel: smart routing
+uses `gpt-4o-mini` for fast workloads and `gpt-5.6-luna` for study-quality
+workloads. No public model or API-key environment variable is required.
 
 ```powershell
 supabase secrets set GEMINI_MODEL="gemini-2.5-flash"
-supabase secrets set OPENAI_MODEL="gpt-4o-mini"
 ```
 
 After successful deployment and smoke tests, clear any old plaintext API-key

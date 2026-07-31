@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 type SupabaseLike = SupabaseClient
 
 export type AIProvider = "gemini" | "openai"
+export type AIWorkload = "fast" | "reasoning"
 
 export interface AIConfig {
   provider: AIProvider
@@ -17,21 +18,17 @@ export interface AIHistoryMessage {
 
 export interface GenerateAIOptions {
   prompt: string
+  workload?: AIWorkload
   systemInstruction?: string
   history?: AIHistoryMessage[]
   temperature?: number
   json?: boolean
-  /**
-   * A document sent only from a server-side route. Unlike an image, documents
-   * bypass the legacy gateway because older deployed versions do not forward
-   * arbitrary binary parts to providers.
-   */
+  /** A document forwarded through the authenticated AI gateway. */
   document?: {
     base64: string
     mimeType: string
     filename: string
   }
-  skipGateway?: boolean
   image?: {
     base64: string
     mimeType: string
@@ -50,13 +47,23 @@ export class AIServiceError extends Error {
 }
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+const DEFAULT_OPENAI_FAST_MODEL = "gpt-4o-mini"
+const DEFAULT_OPENAI_REASONING_MODEL = "gpt-5.6-luna"
 
 function normalizeProvider(value: unknown): AIProvider {
   return value === "openai" ? "openai" : "gemini"
 }
 
-export async function getAIConfig(supabase: SupabaseLike): Promise<AIConfig> {
+function defaultOpenAIModel(workload: AIWorkload) {
+  return workload === "fast"
+    ? DEFAULT_OPENAI_FAST_MODEL
+    : DEFAULT_OPENAI_REASONING_MODEL
+}
+
+export async function getAIConfig(
+  supabase: SupabaseLike,
+  workload: AIWorkload = "reasoning"
+): Promise<AIConfig> {
   const envProvider = normalizeProvider(process.env.AI_PROVIDER)
   const envKey =
     envProvider === "openai"
@@ -69,7 +76,7 @@ export async function getAIConfig(supabase: SupabaseLike): Promise<AIConfig> {
       apiKey: envKey,
       model:
         envProvider === "openai"
-          ? process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
+          ? process.env.OPENAI_MODEL || defaultOpenAIModel(workload)
           : process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
     }
   }
@@ -104,7 +111,7 @@ export async function getAIConfig(supabase: SupabaseLike): Promise<AIConfig> {
     apiKey,
     model:
       provider === "openai"
-        ? process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
+        ? process.env.OPENAI_MODEL || defaultOpenAIModel(workload)
         : process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
   }
 }
@@ -134,7 +141,7 @@ export async function generateAIText(
   supabase: SupabaseLike,
   options: GenerateAIOptions
 ): Promise<string> {
-  if (supabase.functions && !options.skipGateway) {
+  if (supabase.functions) {
     const { data, error, response } = await supabase.functions.invoke("ai-gateway", {
       body: options,
     })
@@ -165,10 +172,30 @@ export async function generateAIText(
     // being deployed. Provider and quota errors must never bypass the gateway.
   }
 
-  const config = await getAIConfig(supabase)
+  const workload = options.workload === "fast" ? "fast" : "reasoning"
+  const config = await getAIConfig(supabase, workload)
 
   if (config.provider === "openai") {
-    if (options.document) {
+    const useResponses = config.model.startsWith("gpt-5.6") || Boolean(options.document)
+    if (useResponses) {
+      const userContent: Array<Record<string, unknown>> = [
+        { type: "input_text", text: options.prompt },
+      ]
+      if (options.image) {
+        userContent.push({
+          type: "input_image",
+          image_url: `data:${options.image.mimeType};base64,${cleanBase64(options.image.base64)}`,
+          detail: "auto",
+        })
+      }
+      if (options.document) {
+        userContent.push({
+          type: "input_file",
+          filename: options.document.filename,
+          file_data: `data:${options.document.mimeType};base64,${cleanBase64(options.document.base64)}`,
+        })
+      }
+
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
@@ -190,24 +217,19 @@ export async function generateAIText(
             })),
             {
               role: "user",
-              content: [
-                { type: "input_text", text: options.prompt },
-                {
-                  type: "input_file",
-                  filename: options.document.filename,
-                  file_data: cleanBase64(options.document.base64),
-                },
-              ],
+              content: userContent,
             },
           ],
-          temperature: options.temperature ?? 0.3,
+          ...(config.model.startsWith("gpt-5.6")
+            ? { reasoning: { effort: workload === "reasoning" ? "low" : "none" } }
+            : { temperature: options.temperature ?? 0.3 }),
         }),
         signal: AbortSignal.timeout(60_000),
       })
 
       if (!response.ok) {
         throw new AIServiceError(
-          `OpenAI document request failed: ${await readError(response)}`,
+          `OpenAI Responses request failed: ${await readError(response)}`,
           response.status,
           "openai"
         )
@@ -222,7 +244,7 @@ export async function generateAIText(
           .join("")
 
       if (typeof text !== "string" || !text.trim()) {
-        throw new AIServiceError("OpenAI returned an empty document response.", 502, "openai")
+        throw new AIServiceError("OpenAI returned an empty response.", 502, "openai")
       }
 
       return text.trim()

@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     }
 
     const raw = await generateAIText(supabase, {
+      workload: "fast",
       temperature: 0.1,
       json: true,
       prompt: `Translate this product notification from English into Turkish (tr), Spanish (es), and Simplified Chinese (zh). Preserve all URLs, numbers, promotion codes, variables such as {{name}}, and intentional line breaks. Do not add greetings, explanations, or markdown fences. Return only JSON in exactly this shape: {"tr":{"subject":"...","content":"..."},"es":{"subject":"...","content":"..."},"zh":{"subject":"...","content":"..."}}.\n\nEnglish subject:\n${subject}\n\nEnglish content:\n${content}`,

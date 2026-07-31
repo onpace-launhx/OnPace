@@ -58,6 +58,7 @@ Return ONLY a raw valid JSON object with "title" and "enhancedContent" propertie
 Return raw JSON only, no markdown code blocks or wrapper text.`;
 
       const rawRes = await generateAIText(supabase, {
+        workload: "reasoning",
         prompt: enhancePrompt,
         systemInstruction: languageInstruction,
         temperature: 0.25,
@@ -112,6 +113,7 @@ Example format:
 Do not output markdown code fences, return raw JSON text only.`;
 
     const rawText = await generateAIText(supabase, {
+      workload: "reasoning",
       prompt,
       systemInstruction: languageInstruction,
       temperature: 0.2,

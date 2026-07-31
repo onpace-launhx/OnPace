@@ -48,6 +48,8 @@ interface IntegrationConfigResponse {
   has_openai?: boolean;
   has_resend?: boolean;
   active_provider?: string;
+  openai_routing_mode?: string;
+  openai_default_model?: string;
   email_from_address?: string;
   email_from_name?: string;
   has_r2_access_key?: boolean;
@@ -216,6 +218,8 @@ export default function AdminPage() {
   const [hasGemini, setHasGemini] = useState(false);
   const [hasOpenai, setHasOpenai] = useState(false);
   const [activeProvider, setActiveProvider] = useState("gemini");
+  const [openaiRoutingMode, setOpenaiRoutingMode] = useState<"smart" | "single">("smart");
+  const [openaiDefaultModel, setOpenaiDefaultModel] = useState<"gpt-4o-mini" | "gpt-5.6-luna">("gpt-5.6-luna");
   const [savingKey, setSavingKey] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -475,6 +479,8 @@ export default function AdminPage() {
       setHasOpenai(integrationData.has_openai || false);
       setHasResend(integrationData.has_resend || false);
       setActiveProvider(integrationData.active_provider || "gemini");
+      setOpenaiRoutingMode(integrationData.openai_routing_mode === "single" ? "single" : "smart");
+      setOpenaiDefaultModel(integrationData.openai_default_model === "gpt-4o-mini" ? "gpt-4o-mini" : "gpt-5.6-luna");
       setEmailFromName(integrationData.email_from_name || "OnPace");
       setHasR2AccessKey(integrationData.has_r2_access_key || false);
       setHasR2SecretKey(integrationData.has_r2_secret_key || false);
@@ -698,6 +704,8 @@ export default function AdminPage() {
         geminiKey: geminiKey.trim() || undefined,
         openaiKey: openaiKey.trim() || undefined,
         activeProvider,
+        openaiRoutingMode,
+        openaiDefaultModel,
       });
       setSaveSuccess(true);
       setGeminiKey("");
@@ -1518,7 +1526,7 @@ export default function AdminPage() {
                       className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none cursor-pointer"
                     >
                       <option value="gemini">Google Gemini (Flash)</option>
-                      <option value="openai">OpenAI (GPT-4o Mini)</option>
+                      <option value="openai">OpenAI (Smart model routing)</option>
                     </select>
                   </div>
 
@@ -1531,6 +1539,43 @@ export default function AdminPage() {
                     </span>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">OpenAI Routing Strategy</label>
+                    <select
+                      value={openaiRoutingMode}
+                      onChange={(e) => setOpenaiRoutingMode(e.target.value === "single" ? "single" : "smart")}
+                      disabled={activeProvider !== "openai"}
+                      className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none cursor-pointer disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    >
+                      <option value="smart">Smart routing (Recommended)</option>
+                      <option value="single">Use one model for every request</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Single / Fallback Model</label>
+                    <select
+                      value={openaiDefaultModel}
+                      onChange={(e) => setOpenaiDefaultModel(e.target.value === "gpt-4o-mini" ? "gpt-4o-mini" : "gpt-5.6-luna")}
+                      disabled={activeProvider !== "openai" || openaiRoutingMode !== "single"}
+                      className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none cursor-pointer disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    >
+                      <option value="gpt-5.6-luna">GPT-5.6 Luna — higher study quality</option>
+                      <option value="gpt-4o-mini">GPT-4o mini — lowest cost</option>
+                    </select>
+                  </div>
+                </div>
+
+                {activeProvider === "openai" && openaiRoutingMode === "smart" && (
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-3 text-[11px] text-indigo-900">
+                    <p className="font-bold">Smart routing is active</p>
+                    <p className="mt-1 leading-relaxed">
+                      Study plans, task breakdowns, quizzes, learning analysis and study visuals use GPT-5.6 Luna. Short chat, moderation, translation and duplicate detection use GPT-4o mini.
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>

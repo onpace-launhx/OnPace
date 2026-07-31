@@ -120,6 +120,7 @@ Return ONLY a valid raw JSON object with "categoryCode" (4-digit string, e.g. "5
     // Attempt AI categorization using active AI key
     try {
       const raw = await generateAIText(supabase, {
+        workload: "fast",
         prompt: aiPrompt,
         temperature: 0.1,
         json: true,
