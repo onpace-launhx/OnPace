@@ -26,6 +26,8 @@ import {
   Check
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
+import { StudyVisual } from "@/components/ai/StudyVisual";
+import type { StudyVisualSpec } from "@/lib/study-visual";
 
 export default function NotesPage() {
   const router = useRouter();
@@ -75,6 +77,8 @@ export default function NotesPage() {
   // AI Note Enhancement states
   const [enhancingAI, setEnhancingAI] = useState(false);
   const [enhancedResult, setEnhancedResult] = useState<{ title?: string; enhancedContent: string } | null>(null);
+  const [studyVisual, setStudyVisual] = useState<StudyVisualSpec | null>(null);
+  const [generatingVisual, setGeneratingVisual] = useState(false);
 
   const handleEnhanceNoteWithAI = async () => {
     if (!content.trim() || content.trim().length < 5) {
@@ -103,6 +107,25 @@ export default function NotesPage() {
       alert("Network error while enhancing note.");
     }
     setEnhancingAI(false);
+  };
+
+  const handleGenerateStudyVisual = async () => {
+    if (content.trim().length < 5 || generatingVisual) return;
+    setGeneratingVisual(true);
+    try {
+      const response = await fetch("/api/study-visual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: content, title, language: lang }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.visual) throw new Error(data.error || "Study visual could not be created.");
+      setStudyVisual(data.visual);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Study visual could not be created.");
+    } finally {
+      setGeneratingVisual(false);
+    }
   };
 
   useEffect(() => {
@@ -612,6 +635,16 @@ export default function NotesPage() {
             </button>
 
             <button
+              onClick={handleGenerateStudyVisual}
+              disabled={generatingVisual || !content.trim()}
+              className="rounded-xl border border-brand/20 bg-brand/5 px-3.5 py-2.5 text-xs font-bold text-brand transition-all hover:bg-brand/10 disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+              title="Generate a structured visual study aid"
+            >
+              {generatingVisual ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit size={14} />}
+              <span className="hidden xl:inline">{lang === "tr" ? "Görsel çalışma" : lang === "es" ? "Visual de estudio" : lang === "zh" ? "学习可视化" : "Study visual"}</span>
+            </button>
+
+            <button
               onClick={handleSaveNote}
               disabled={savingNote}
               className="px-4 py-2.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
@@ -937,6 +970,21 @@ export default function NotesPage() {
             )}
           </div>
         </aside>
+      )}
+
+      {studyVisual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-extrabold text-surface-dark">{lang === "tr" ? "Görsel çalışma özeti" : "Visual study aid"}</p>
+                <p className="mt-0.5 text-xs text-gray-400">{title}</p>
+              </div>
+              <button onClick={() => setStudyVisual(null)} className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-200">{t.common.close}</button>
+            </div>
+            <StudyVisual visual={studyVisual} />
+          </div>
+        </div>
       )}
 
       {/* Modal: AI Enhanced Comparison View */}

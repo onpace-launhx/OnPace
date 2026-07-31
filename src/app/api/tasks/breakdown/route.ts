@@ -19,6 +19,12 @@ type BreakdownResponse = {
   subtasks?: unknown;
 };
 
+function hasEnoughTitleContent(value: string) {
+  const compact = value.trim().replace(/\s+/gu, "");
+  const cjkCharacters = compact.match(/[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/gu) || [];
+  return cjkCharacters.length >= 2 || Array.from(compact).length >= 3;
+}
+
 function matchesRequestedLanguage(
   subtasks: string[],
   language: SupportedLanguage
@@ -73,7 +79,7 @@ export async function POST(request: Request) {
     }
 
     const title = parentTask.title;
-    if (!title || title.trim().length < 3) {
+    if (!title || !hasEnoughTitleContent(title)) {
       return NextResponse.json({ error: "Task title is too short to break down." }, { status: 400 });
     }
 
@@ -225,7 +231,7 @@ Do not output markdown code fences, do not output any surrounding text. Return r
 
     return NextResponse.json({ subtasks: insertedSubtasks });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Task breakdown server exception:", error);
     return NextResponse.json(
       { error: "Task breakdown failed.", code: "BREAKDOWN_FAILED" },

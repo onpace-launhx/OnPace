@@ -21,7 +21,7 @@ import {
   Settings2
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
-import { getLocalizedCourseName, suggestedCourseNames } from "@/lib/course-labels";
+import { getLocalizedCourseName, getSuggestedCourseCatalog } from "@/lib/course-labels";
 import { localeForLanguage, localized, normalizeLanguage } from "@/lib/i18n";
 
 function TasksPageContent() {
@@ -340,7 +340,11 @@ function TasksPageContent() {
     setTasks((current) => current.filter((task) => !completedIdSet.has(task.id)));
   };
 
-  const handleAddCourse = async (courseName = newCourseName) => {
+  const handleAddCourse = async (
+    courseName = newCourseName,
+    source: "catalog" | "custom" | "exam_suggestion" = "custom",
+    catalogKey: string | null = null
+  ) => {
     const normalizedName = courseName.trim().replace(/\s+/g, " ");
     if (!normalizedName || !profile?.id) return;
     if (
@@ -366,6 +370,8 @@ function TasksPageContent() {
         user_id: profile.id,
         name: normalizedName,
         color: colors[courses.length % colors.length],
+        course_source: source,
+        catalog_key: catalogKey,
       })
       .select("*")
       .single();
@@ -824,20 +830,21 @@ function TasksPageContent() {
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">{taskCopy.suggested}</p>
               <div className="flex flex-wrap gap-2">
-                {suggestedCourseNames.map((courseName) => {
+                {getSuggestedCourseCatalog(profile?.country).map((course) => {
                   const alreadyAdded = courses.some(
-                    (course) => course.name.trim().toLocaleLowerCase() === courseName.toLocaleLowerCase()
+                    (item) => item.name.trim().toLocaleLowerCase() === course.name.toLocaleLowerCase()
                   );
                   return (
                     <button
-                      key={courseName}
+                      key={course.key}
                       type="button"
                       disabled={savingCourse || alreadyAdded}
-                      onClick={() => void handleAddCourse(courseName)}
+                      onClick={() => void handleAddCourse(course.name, course.source, course.key)}
                       className="rounded-full border border-brand/15 bg-brand/5 px-3 py-1.5 text-xs font-bold text-brand hover:border-brand/35 disabled:cursor-default disabled:opacity-40"
                     >
                       {alreadyAdded ? "✓ " : "+ "}
-                      {getLocalizedCourseName(courseName, lang)}
+                      {course.source === "exam_suggestion" ? "★ " : ""}
+                      {getLocalizedCourseName(course.name, lang)}
                     </button>
                   );
                 })}

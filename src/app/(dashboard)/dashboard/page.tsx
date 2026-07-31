@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import { localeForLanguage, localized } from "@/lib/i18n";
+import { getLocalizedCourseName, getSuggestedCourseCatalog } from "@/lib/course-labels";
 
 const learningStyleNames: Record<string, Record<string, string>> = {
   visual: { tr: "Görsel", en: "Visual", es: "Visual", zh: "视觉" },
@@ -417,9 +418,12 @@ export default function DashboardPage() {
   const [newCourseName, setNewCourseName] = useState("");
   const [addingCourse, setAddingCourse] = useState(false);
 
-  const handleAddCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const normalizedName = newCourseName.trim().replace(/\s+/g, " ");
+  const addCourse = async (
+    courseName: string,
+    source: "catalog" | "custom" | "exam_suggestion" = "custom",
+    catalogKey: string | null = null
+  ) => {
+    const normalizedName = courseName.trim().replace(/\s+/g, " ");
     if (!normalizedName) return;
     if (
       courses.some(
@@ -448,7 +452,9 @@ export default function DashboardPage() {
         {
           user_id: profile.id,
           name: normalizedName,
-          color: randomColor
+          color: randomColor,
+          course_source: source,
+          catalog_key: catalogKey,
         }
       ])
       .select("*")
@@ -461,6 +467,11 @@ export default function DashboardPage() {
       alert(error?.message || dashboardCopy.courseSaveError);
     }
     setAddingCourse(false);
+  };
+
+  const handleAddCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await addCourse(newCourseName);
   };
 
   const handleDeleteCourse = async (courseId: string) => {
@@ -1115,13 +1126,30 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Add Course Form */}
+                        <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-xl bg-gray-50 p-2">
+                          {getSuggestedCourseCatalog(profile?.country).map((course) => {
+                            const alreadyAdded = courses.some((item) => item.name.trim().toLocaleLowerCase() === course.name.toLocaleLowerCase());
+                            return (
+                              <button
+                                key={course.key}
+                                type="button"
+                                disabled={addingCourse || alreadyAdded}
+                                onClick={() => void addCourse(course.name, course.source, course.key)}
+                                className="rounded-full border border-brand/15 bg-white px-2.5 py-1 text-[10px] font-bold text-brand disabled:opacity-40"
+                              >
+                                {alreadyAdded ? "✓ " : course.source === "exam_suggestion" ? "★ " : "+ "}
+                                {getLocalizedCourseName(course.name, lang)}
+                              </button>
+                            );
+                          })}
+                        </div>
                         <form onSubmit={handleAddCourse} className="flex gap-2">
                           <input
                             type="text"
                             required
                             value={newCourseName}
                             onChange={(e) => setNewCourseName(e.target.value)}
-                            placeholder="e.g. AP Chemistry"
+                            placeholder={lang === "tr" ? "Özel ders adı" : "Custom course name"}
                             className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
                           />
                           <button
@@ -1150,7 +1178,7 @@ export default function DashboardPage() {
                               <div key={course.id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-xl border border-gray-50">
                                 <span className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: course.color }} />
-                                  {course.name}
+                                  {getLocalizedCourseName(course.name, lang)}
                                 </span>
                                 <button
                                   onClick={() => handleDeleteCourse(course.id)}

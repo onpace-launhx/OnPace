@@ -6,13 +6,15 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { setRememberSessionIntent } from "@/lib/auth/remember-session";
 import { getBrowserSiteOrigin } from "@/lib/site-url";
-import { CheckCircle2, Lock, Mail, User, GraduationCap, Loader2, AlertCircle } from "lucide-react";
+import { CheckCircle2, Lock, Mail, User, GraduationCap, Loader2, AlertCircle, MapPin } from "lucide-react";
+import { countryOptions, getCountryName } from "@/lib/countries";
 
 export default function RegisterPage() {
   const router = useRouter();
   const supabase = createClient();
   const [fullName, setFullName] = useState("");
   const [gradeLevel, setGradeLevel] = useState("");
+  const [country, setCountry] = useState("");
   const [language, setLanguage] = useState("en");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -76,6 +78,7 @@ export default function RegisterPage() {
         data: {
           full_name: fullName,
           grade_level: gradeLevel,
+          country,
           language,
           promocode: promoVerified ? promoCode.trim() : null,
         },
@@ -286,6 +289,35 @@ export default function RegisterPage() {
               </select>
               <p className="mt-1.5 text-xs text-gray-500">
                 Verification and security emails will use this language.
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="country" className="block text-sm font-medium text-gray-700">
+                Country
+              </label>
+              <div className="mt-1 relative rounded-xl shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <MapPin className="h-5 w-5 text-gray-400" />
+                </div>
+                <select
+                  id="country"
+                  name="country"
+                  required
+                  value={country}
+                  onChange={(event) => setCountry(event.target.value)}
+                  className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand focus:border-brand sm:text-sm bg-white text-surface-dark transition-all outline-none cursor-pointer"
+                >
+                  <option value="" disabled>Select your country</option>
+                  {countryOptions.map((countryCode) => (
+                    <option key={countryCode} value={countryCode}>
+                      {getCountryName(countryCode, language)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500">
+                We use this only to suggest relevant exams and study paths.
               </p>
             </div>
 

@@ -36,8 +36,11 @@ import {
   Edit,
   Eye,
   X,
-  AlertCircle
+  AlertCircle,
+  BookOpen,
+  MapPin
 } from "lucide-react";
+import { formatBugReportTrackingNumber } from "@/lib/bug-report";
 
 interface IntegrationConfigResponse {
   error?: unknown;
@@ -302,6 +305,11 @@ export default function AdminPage() {
   const [bugFilterCode, setBugFilterCode] = useState("all");
   const [selectedBugScreenshot, setSelectedBugScreenshot] = useState<string | null>(null);
 
+  // Course selection audit states
+  const [courseSelections, setCourseSelections] = useState<any[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+  const [courseSearch, setCourseSearch] = useState("");
+
   // Adjust Plan Modal States
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [trialDuration, setTrialDuration] = useState("7"); // "7", "30", "lifetime", "free", "custom"
@@ -400,6 +408,7 @@ export default function AdminPage() {
       fetchModerationPosts();
       fetchAnnouncementsData();
       fetchBugReports();
+      fetchCourseSelections();
       
       setLoading(false);
     }
@@ -634,6 +643,13 @@ export default function AdminPage() {
       setBugReports(data);
     }
     setLoadingBugs(false);
+  }
+
+  async function fetchCourseSelections() {
+    setLoadingCourses(true);
+    const { data, error } = await supabase.rpc("admin_get_course_selections");
+    if (!error && data) setCourseSelections(data);
+    setLoadingCourses(false);
   }
 
   const handleUpdateBugStatus = async (reportId: string, newStatus: string) => {
@@ -1418,6 +1434,16 @@ export default function AdminPage() {
           >
             🐞 Bug Reports & AI Analytics
           </button>
+          {canManageUsers && (
+            <button
+              onClick={() => setActiveTab("courses")}
+              className={`pb-4 text-xs sm:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === "courses" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              📚 Course Selections
+            </button>
+          )}
           {isSuperAdmin && (
               <button
                 onClick={() => setActiveTab("moderation")}
@@ -3109,6 +3135,78 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* Student course selections audit */}
+        {activeTab === "courses" && canManageUsers && (
+          <div className="space-y-5">
+            <div className="flex flex-col gap-4 rounded-3xl border border-gray-150 bg-white p-6 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-extrabold text-surface-dark">
+                  <BookOpen className="text-brand" size={20} /> Student Course Selections
+                </h2>
+                <p className="mt-1 text-xs text-gray-400">Catalog, country-exam recommendations, and explicitly added custom courses.</p>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={courseSearch}
+                  onChange={(event) => setCourseSearch(event.target.value)}
+                  placeholder="Search student or course"
+                  className="rounded-xl border border-gray-200 px-3 py-2 text-xs text-surface-dark outline-none focus:border-brand"
+                />
+                <button onClick={fetchCourseSelections} className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-200">
+                  <RefreshCw size={13} />
+                </button>
+              </div>
+            </div>
+
+            {loadingCourses ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
+            ) : (
+              <div className="overflow-hidden rounded-3xl border border-gray-150 bg-white shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left text-xs">
+                    <thead className="bg-gray-50 text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
+                      <tr>
+                        <th className="px-5 py-3">Student</th>
+                        <th className="px-5 py-3">Country</th>
+                        <th className="px-5 py-3">Course</th>
+                        <th className="px-5 py-3">Source</th>
+                        <th className="px-5 py-3">Selected</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {courseSelections
+                        .filter((row) => {
+                          const query = courseSearch.trim().toLocaleLowerCase();
+                          return !query || [row.student_name, row.student_email, row.course_name, row.country]
+                            .some((value) => String(value || "").toLocaleLowerCase().includes(query));
+                        })
+                        .map((row) => (
+                          <tr key={row.id} className="hover:bg-gray-50/70">
+                            <td className="px-5 py-4">
+                              <p className="font-bold text-surface-dark">{row.student_name}</p>
+                              <p className="mt-0.5 text-[10px] text-gray-400">{row.student_email}</p>
+                            </td>
+                            <td className="px-5 py-4 font-semibold text-gray-600"><span className="inline-flex items-center gap-1"><MapPin size={12} /> {row.country || "—"}</span></td>
+                            <td className="px-5 py-4 font-bold text-surface-dark">{row.course_name}</td>
+                            <td className="px-5 py-4">
+                              <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase ${
+                                row.course_source === "custom" ? "bg-amber-50 text-amber-700" : row.course_source === "exam_suggestion" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"
+                              }`}>
+                                {row.course_source === "exam_suggestion" ? "Country exam" : row.course_source || "custom"}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-gray-400">{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+                {courseSelections.length === 0 && <p className="p-10 text-center text-xs text-gray-400">No course selections yet.</p>}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Bug Reports & AI Analytics Tab */}
         {activeTab === "bugs" && (
           <div className="space-y-6">
@@ -3162,6 +3260,9 @@ export default function AdminPage() {
                       className="bg-white border border-gray-150 p-5 rounded-3xl space-y-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
                     >
                       <div className="space-y-3">
+                        <div className="font-mono text-[11px] font-extrabold tracking-wide text-brand">
+                          {formatBugReportTrackingNumber(bug.id)}
+                        </div>
                         <div className="flex justify-between items-start gap-2">
                           <span className="px-2.5 py-1 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-extrabold flex items-center gap-1">
                             <Tag size={12} /> #{bug.ai_category_code || "9000"} - {bug.ai_category_name || "General Issue"}

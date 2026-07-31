@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateAIText, parseAIJson } from "@/lib/ai/server";
+import { formatBugReportTrackingNumber } from "@/lib/bug-report";
 
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_SCREENSHOT_TYPES = new Set([
@@ -207,7 +208,11 @@ Return ONLY a valid raw JSON object with "categoryCode" (4-digit string, e.g. "5
           .single();
 
         if (!fallbackError) {
-          return NextResponse.json({ success: true, reportId: fallbackReport.id });
+          return NextResponse.json({
+            success: true,
+            reportId: fallbackReport.id,
+            trackingNumber: formatBugReportTrackingNumber(fallbackReport.id),
+          });
         }
       }
       console.error("Error inserting bug report:", insertError);
@@ -217,6 +222,7 @@ Return ONLY a valid raw JSON object with "categoryCode" (4-digit string, e.g. "5
     return NextResponse.json({
       success: true,
       reportId: bugReport.id,
+      trackingNumber: formatBugReportTrackingNumber(bugReport.id),
     });
 
   } catch (error) {

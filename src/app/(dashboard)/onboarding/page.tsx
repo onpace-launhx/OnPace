@@ -3,18 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CheckCircle2, ChevronRight, ChevronLeft, GraduationCap, Clock, Award, Sparkles, BookOpen, Loader2 } from "lucide-react";
-
-const POPULAR_COURSES = [
-  { name: "AP Calculus", color: "#4F46E5" },
-  { name: "AP Chemistry", color: "#06B6D4" },
-  { name: "AP Biology", color: "#10B981" },
-  { name: "AP Physics", color: "#EF4444" },
-  { name: "AP US History", color: "#F59E0B" },
-  { name: "English Literature", color: "#EC4899" },
-  { name: "SAT Math Prep", color: "#8B5CF6" },
-  { name: "SAT Reading Prep", color: "#3B82F6" },
-];
+import { CheckCircle2, ChevronRight, ChevronLeft, Clock, Award, Sparkles, BookOpen, Loader2, MapPin } from "lucide-react";
+import { countryOptions, getCountryName } from "@/lib/countries";
+import { getLocalizedCourseName, getSuggestedCourseCatalog } from "@/lib/course-labels";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -27,6 +18,7 @@ export default function OnboardingPage() {
   // Step 1 Form Data
   const [learningStyles, setLearningStyles] = useState<string[]>(["visual"]);
   const [dailyGoal, setDailyGoal] = useState("60");
+  const [country, setCountry] = useState("");
 
   // Step 2 Form Data
   const [selectedCourses, setSelectedCourses] = useState<any[]>([]);
@@ -53,6 +45,7 @@ export default function OnboardingPage() {
         return;
       }
       setProfile(data);
+      setCountry(data?.country || "");
       setLoading(false);
     }
     loadProfile();
@@ -71,7 +64,12 @@ export default function OnboardingPage() {
     if (!customCourse.trim()) return;
     const colors = ["#4F46E5", "#06B6D4", "#10B981", "#EF4444", "#F59E0B", "#EC4899", "#8B5CF6"];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    const newCourse = { name: customCourse.trim(), color: randomColor };
+    const newCourse = {
+      name: customCourse.trim(),
+      color: randomColor,
+      source: "custom",
+      key: null,
+    };
     if (!selectedCourses.some(c => c.name === newCourse.name)) {
       setSelectedCourses([...selectedCourses, newCourse]);
     }
@@ -86,6 +84,8 @@ export default function OnboardingPage() {
         user_id: profile.id,
         name: c.name,
         color: c.color,
+        course_source: c.source || "custom",
+        catalog_key: c.key || null,
       }));
       await supabase.from("courses").insert(coursesToInsert);
     }
@@ -95,6 +95,7 @@ export default function OnboardingPage() {
       .from("profiles")
       .update({
         has_onboarded: true,
+        country,
         daily_study_goal_minutes: parseInt(dailyGoal),
         learning_styles: learningStyles
       })
@@ -117,6 +118,8 @@ export default function OnboardingPage() {
       </div>
     );
   }
+
+  const courseSuggestions = getSuggestedCourseCatalog(country);
 
   return (
     <div className="min-h-screen bg-surface-secondary flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -151,6 +154,30 @@ export default function OnboardingPage() {
               </div>
 
               <div className="space-y-4">
+                <div>
+                  <label htmlFor="onboarding-country" className="block text-sm font-semibold text-gray-700">
+                    Your country
+                  </label>
+                  <div className="relative mt-2">
+                    <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <select
+                      id="onboarding-country"
+                      required
+                      value={country}
+                      onChange={(event) => setCountry(event.target.value)}
+                      className="block w-full rounded-xl border border-gray-200 bg-white py-3 pl-9 pr-3 text-sm text-surface-dark outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+                    >
+                      <option value="" disabled>Select your country</option>
+                      {countryOptions.map((countryCode) => (
+                        <option key={countryCode} value={countryCode}>
+                          {getCountryName(countryCode, profile?.language || "en")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="mt-1.5 text-xs text-gray-500">We use this to recommend the right national exams.</p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700">
                     What are your learning styles? <span className="text-xs text-gray-400 font-normal">(Select all that apply)</span>
@@ -215,7 +242,7 @@ export default function OnboardingPage() {
 
               <div className="space-y-4">
                 <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1 border border-gray-50 rounded-xl bg-gray-50/50">
-                  {POPULAR_COURSES.map(course => {
+                  {courseSuggestions.map(course => {
                     const isSelected = selectedCourses.some(c => c.name === course.name);
                     return (
                       <button
@@ -223,7 +250,8 @@ export default function OnboardingPage() {
                         onClick={() => toggleCourseSelection(course)}
                         className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${isSelected ? "bg-brand text-white border-brand shadow-sm" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"}`}
                       >
-                        {course.name}
+                        {course.source === "exam_suggestion" ? "★ " : ""}
+                        {getLocalizedCourseName(course.name, profile?.language || "en")}
                       </button>
                     );
                   })}
@@ -323,7 +351,7 @@ export default function OnboardingPage() {
 
             {step < 3 ? (
               <button
-                disabled={step === 2 && selectedCourses.length === 0}
+                disabled={(step === 1 && !country) || (step === 2 && selectedCourses.length === 0)}
                 onClick={() => setStep(step + 1)}
                 className="flex items-center gap-1 px-5 py-2.5 bg-brand text-white text-sm font-semibold rounded-xl hover:bg-brand-hover active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
               >

@@ -188,6 +188,7 @@ const bugReportTranslations: Record<string, Record<string, string>> = {
     submitting: "Sending...",
     successTitle: "Your report has been received",
     successMessage: "Thank you. We will review the problem as soon as possible.",
+    trackingNumber: "Tracking number",
     thankYouButton: "Thank you for your bug report",
     error: "The report could not be sent. Please try again.",
   },
@@ -199,6 +200,7 @@ const bugReportTranslations: Record<string, Record<string, string>> = {
     submitting: "Gönderiliyor...",
     successTitle: "Bildiriminiz alındı",
     successMessage: "Sorunu en kısa sürede inceleyeceğiz.",
+    trackingNumber: "Takip numarası",
     thankYouButton: "Hata bildiriminiz için teşekkürler",
     error: "Bildirim gönderilemedi. Lütfen tekrar deneyin.",
   },
@@ -210,6 +212,7 @@ const bugReportTranslations: Record<string, Record<string, string>> = {
     submitting: "Enviando...",
     successTitle: "Hemos recibido tu informe",
     successMessage: "Gracias. Revisaremos el problema lo antes posible.",
+    trackingNumber: "Número de seguimiento",
     thankYouButton: "Gracias por informar del error",
     error: "No se pudo enviar el informe. Inténtalo de nuevo.",
   },
@@ -221,6 +224,7 @@ const bugReportTranslations: Record<string, Record<string, string>> = {
     submitting: "正在发送……",
     successTitle: "我们已收到你的报告",
     successMessage: "谢谢，我们会尽快检查这个问题。",
+    trackingNumber: "跟踪编号",
     thankYouButton: "感谢你的错误报告",
     error: "报告发送失败，请重试。",
   },
@@ -284,6 +288,7 @@ export function Sidebar() {
   const [bugDesc, setBugDesc] = useState("");
   const [submittingBug, setSubmittingBug] = useState(false);
   const [bugSubmitted, setBugSubmitted] = useState(false);
+  const [bugTrackingNumber, setBugTrackingNumber] = useState<string | null>(null);
   const [bugError, setBugError] = useState<string | null>(null);
   const screenshotCaptureRef = useRef<Promise<string | null> | null>(null);
 
@@ -295,6 +300,7 @@ export function Sidebar() {
   const handleOpenBugModal = () => {
     setShowBugModal(true);
     setBugSubmitted(false);
+    setBugTrackingNumber(null);
     setBugError(null);
     setBugDesc("");
 
@@ -341,6 +347,7 @@ export function Sidebar() {
       const data = await res.json();
       if (res.ok && data.success) {
         setBugSubmitted(true);
+        setBugTrackingNumber(typeof data.trackingNumber === "string" ? data.trackingNumber : null);
         setBugDesc("");
       } else {
         setBugError(
@@ -1147,6 +1154,12 @@ export function Sidebar() {
                   <p className="text-xs text-gray-500 mt-1">
                     {bugText.successMessage}
                   </p>
+                  {bugTrackingNumber && (
+                    <div className="mx-auto mt-3 w-fit rounded-xl border border-brand/15 bg-brand/5 px-3 py-2">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{bugText.trackingNumber}</p>
+                      <p className="mt-0.5 font-mono text-sm font-extrabold text-brand">{bugTrackingNumber}</p>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowBugModal(false)}

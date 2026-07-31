@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import { PersonalizedLearningStudio } from "@/components/dashboard/PersonalizedLearningStudio";
+import { StudyVisual } from "@/components/ai/StudyVisual";
+import type { StudyVisualSpec } from "@/lib/study-visual";
 
 export default function AiAssistantPage() {
   const router = useRouter();
@@ -34,6 +36,8 @@ export default function AiAssistantPage() {
   const [inputMsg, setInputMsg] = useState("");
   const [sending, setSending] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState("");
+  const [studyVisual, setStudyVisual] = useState<StudyVisualSpec | null>(null);
+  const [generatingVisual, setGeneratingVisual] = useState(false);
 
   // Premium modal popup & Custom alerts
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
@@ -355,6 +359,31 @@ export default function AiAssistantPage() {
     personalized: lang === "tr" ? "Kişiselleştirilmiş Çalışma" : lang === "zh" ? "个性化学习" : lang === "es" ? "Estudio personalizado" : "Personalized Study",
   };
 
+  const handleGenerateStudyVisual = async () => {
+    if (generatingVisual) return;
+    const latestUserMessage = [...messages].reverse().find((message) => message.sender === "user")?.text || "";
+    const source = inputMsg.trim() || latestUserMessage;
+    if (!source) {
+      setCustomAlert(lang === "tr" ? "Önce görselleştirilecek bir konu yazın." : "Enter a topic to visualize first.");
+      return;
+    }
+    setGeneratingVisual(true);
+    try {
+      const response = await fetch("/api/study-visual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, title: selectedCourse, language: lang }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.visual) throw new Error(data.error || "Study visual could not be created.");
+      setStudyVisual(data.visual);
+    } catch (error) {
+      setCustomAlert(error instanceof Error ? error.message : "Study visual could not be created.");
+    } finally {
+      setGeneratingVisual(false);
+    }
+  };
+
   const chatLabels = {
     newChat: lang === "tr" ? "Yeni sohbet" : lang === "zh" ? "新对话" : lang === "es" ? "Nuevo chat" : "New chat",
     history: lang === "tr" ? "Sohbet geçmişi" : lang === "zh" ? "对话历史" : lang === "es" ? "Historial de chats" : "Chat history",
@@ -457,6 +486,11 @@ export default function AiAssistantPage() {
             </div>
           );
         })}
+        {studyVisual && (
+          <div className="mx-auto w-full max-w-3xl py-2">
+            <StudyVisual visual={studyVisual} />
+          </div>
+        )}
         {messages.length <= 1 && !sending && (
           <div className="mx-auto max-w-2xl pt-2 pb-6 text-center space-y-4">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{chatLabels.suggestions}</p>
@@ -496,6 +530,16 @@ export default function AiAssistantPage() {
           placeholder={selectedCourse ? `Ask study coach about ${selectedCourse}...` : (t.ai.placeholderChat || "Ask study coach...")}
           className="flex-1 px-4 py-3 bg-transparent text-sm outline-none text-surface-dark placeholder-gray-400"
         />
+        <button
+          type="button"
+          onClick={handleGenerateStudyVisual}
+          disabled={generatingVisual || (!inputMsg.trim() && !messages.some((message) => message.sender === "user"))}
+          className="flex items-center gap-1.5 rounded-2xl border border-brand/20 bg-brand/5 px-3 text-xs font-bold text-brand transition-all hover:bg-brand/10 disabled:opacity-40"
+          title="Generate a structured visual study aid"
+        >
+          {generatingVisual ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          <span className="hidden sm:inline">{lang === "tr" ? "Görsel çalışma" : lang === "es" ? "Visual de estudio" : lang === "zh" ? "学习可视化" : "Study visual"}</span>
+        </button>
         <button
           type="submit"
           disabled={!inputMsg.trim() || sending}
