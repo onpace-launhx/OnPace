@@ -28,6 +28,7 @@ import {
 import { getTranslations } from "@/lib/translations";
 import { localeForLanguage, localized } from "@/lib/i18n";
 import { getLocalizedCourseName, getSuggestedCourseCatalog } from "@/lib/course-labels";
+import { compareTasksByDueDateThenPriority } from "@/lib/task-sort";
 
 const learningStyleNames: Record<string, Record<string, string>> = {
   visual: { tr: "Görsel", en: "Visual", es: "Visual", zh: "视觉" },
@@ -815,15 +816,9 @@ export default function DashboardPage() {
         : (remainingMinutes > 0
           ? `You have logged ${totalStudyMinutes} minutes of focused study today. ${remainingMinutes} minutes remain.`
           : `You completed today's ${dailyGoal}-minute focus goal. Great work!`);
-  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
   const nextTask = [...tasks]
     .filter((task) => !task.done && task.taskOrigin !== "ai_schedule")
-    .sort((first, second) => {
-      const firstDue = first.dueDate ? new Date(first.dueDate).getTime() : Number.POSITIVE_INFINITY;
-      const secondDue = second.dueDate ? new Date(second.dueDate).getTime() : Number.POSITIVE_INFINITY;
-      if (firstDue !== secondDue) return firstDue - secondDue;
-      return (priorityRank[first.priority] ?? 1) - (priorityRank[second.priority] ?? 1);
-    })[0];
+    .sort((first, second) => compareTasksByDueDateThenPriority(first, second))[0];
   const todayPlanRecommendation = localized(lang, {
     en: nextTask
       ? `Next task: “${nextTask.text}”. I can create a draft that uses your remaining ${remainingMinutes} minutes.`
@@ -841,12 +836,7 @@ export default function DashboardPage() {
 
   const orderedTasks = tasks
     .filter((task) => !task.done && task.taskOrigin !== "ai_schedule")
-    .sort((a, b) => {
-      const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
-      const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
-      if (dueA !== dueB) return dueA - dueB;
-      return (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
-    });
+    .sort((a, b) => compareTasksByDueDateThenPriority(a, b));
   const startOfTodayForTasks = new Date();
   startOfTodayForTasks.setHours(0, 0, 0, 0);
   const overdueTaskCount = orderedTasks.filter((task) => task.dueDate && new Date(task.dueDate) < startOfTodayForTasks).length;

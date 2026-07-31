@@ -23,6 +23,7 @@ import {
 import { getTranslations } from "@/lib/translations";
 import { getLocalizedCourseName, getSuggestedCourseCatalog } from "@/lib/course-labels";
 import { localeForLanguage, localized, normalizeLanguage } from "@/lib/i18n";
+import { compareTasksByDueDateThenPriority } from "@/lib/task-sort";
 
 function TasksPageContent() {
   const router = useRouter();
@@ -454,14 +455,11 @@ function TasksPageContent() {
   const mainTasks = tasks.filter(t => !t.parent_id);
   const studentTasks = mainTasks.filter(t => t.task_origin !== "ai_schedule");
   const studyPlanTasks = mainTasks.filter(t => t.task_origin === "ai_schedule");
-  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
   const sortTasks = (items: any[]) => [...items].sort((a, b) => {
-    const dueA = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
-    const dueB = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
-    if (dueA !== dueB) return dueA - dueB;
-    const priorityDifference = (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
-    if (priorityDifference !== 0) return priorityDifference;
-    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    return compareTasksByDueDateThenPriority(
+      { dueDate: a.due_date, priority: a.priority, createdAt: a.created_at },
+      { dueDate: b.due_date, priority: b.priority, createdAt: b.created_at }
+    );
   });
   const visibleMainTasks = activeView === "study-plan" ? studyPlanTasks : studentTasks;
   const mainTodoTasks = sortTasks(visibleMainTasks.filter(t => t.status !== "completed"));
