@@ -6,6 +6,7 @@ import {
   parseAIJson,
 } from "@/lib/ai/server";
 import { languageName, localized, normalizeLanguage } from "@/lib/i18n";
+import { normalizeStudyVisual } from "@/lib/study-visual";
 
 export async function POST(request: Request) {
   try {
@@ -51,9 +52,12 @@ Refine, organize, fix grammatical issues, add clear bold headers, bullet points,
 
 The complete result must be written in ${outputLanguage}. Do not mix languages.
 
-Return ONLY a raw valid JSON object with "title" and "enhancedContent" properties.
+When the material contains a meaningful process, sequence, comparison, relationship, or checklist, also create a structured "visual" object. Never write placeholders such as "Diagram 1", "Formula 1", or unsupported generic facts. Use null when the source does not support a useful visual.
+
+Return ONLY a raw valid JSON object with "title", "enhancedContent", and "visual" properties.
 "title": a concise, accurate academic title.
 "enhancedContent": the beautifully formatted, structured, and expanded note content with bold headers (**Header**) and bullet points.
+"visual": null or a source-grounded diagram with 3 to 6 items: {"kind":"flow|timeline|comparison|concept_map|checklist","title":"...","subtitle":"...","items":[{"label":"...","detail":"...","group":""}],"takeaway":"..."}.
 
 Return raw JSON only, no markdown code blocks or wrapper text.`;
 
@@ -69,10 +73,12 @@ Return raw JSON only, no markdown code blocks or wrapper text.`;
         const parsed = parseAIJson<{
           title: string;
           enhancedContent: string;
+          visual?: unknown;
         }>(rawRes);
         return NextResponse.json({
           title: parsed.title,
           enhancedContent: parsed.enhancedContent,
+          visual: normalizeStudyVisual(parsed.visual),
         });
       } catch {
         return NextResponse.json({
@@ -97,17 +103,18 @@ Return raw JSON only, no markdown code blocks or wrapper text.`;
     }
 
     const prompt = `Analyze this study note image. Perform OCR to extract all written text, diagrams, formulas, and main points. 
-Generate a comprehensive, structured study note.
+Generate a comprehensive, structured study note. When the source contains a real process, sequence, comparison, relationship, or checklist, include a structured visual specification that the OnPace interface can render as a polished diagram. Do not request or describe an image. Never invent placeholder diagrams, formulas, or generic facts.
 Write the generated note in ${outputLanguage}. Preserve source quotations, formulas, proper nouns, and acronyms when necessary, but do not mix interface languages.
 
 Strict Formatting Rules for 'content':
 - DO NOT use the '#' character for headers. Instead, use bold text (e.g., "**Header Name**" on a new line) to separate sections.
-- Return ONLY a raw valid JSON object with "title" and "content" properties.
+- Return ONLY a raw valid JSON object with "title", "content", and "visual" properties.
 
 Example format:
 {
   "title": "Mitosis Cell Division",
-  "content": "**Mitosis**\\nMitosis is a process of cell division...\\n\\n**Stages**\\n1. Prophase..."
+  "content": "**Mitosis**\\nMitosis is a process of cell division...\\n\\n**Stages**\\n1. Prophase...",
+  "visual": {"kind":"flow","title":"Stages of mitosis","subtitle":"A simplified sequence","items":[{"label":"Prophase","detail":"Chromosomes condense.","group":""}],"takeaway":"The stages occur in order."}
 }
 
 Do not output markdown code fences, return raw JSON text only.`;
@@ -124,7 +131,11 @@ Do not output markdown code fences, return raw JSON text only.`;
       },
     });
 
-    let parsed = { title: fallbackTitle, content: rawText };
+    let parsed: { title: string; content: string; visual?: unknown } = {
+      title: fallbackTitle,
+      content: rawText,
+      visual: null,
+    };
     try {
       parsed = parseAIJson<{ title: string; content: string }>(rawText);
     } catch {
@@ -149,7 +160,10 @@ Do not output markdown code fences, return raw JSON text only.`;
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ note: newNote });
+    return NextResponse.json({
+      note: newNote,
+      visual: normalizeStudyVisual(parsed.visual),
+    });
   } catch (error) {
     console.error("Notes analyze route error:", error);
     return NextResponse.json(

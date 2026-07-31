@@ -294,6 +294,28 @@ export default function AiAssistantPage() {
           { session_id: activeSessionId, role: "assistant", content: reply }
         ]);
       }
+
+      const requestsVisual = /\b(diagram|visual|flowchart|flow chart|timeline|concept map|schema|scheme|diagrama|mapa visual|línea de tiempo)\b|şema|akış|zaman çizelgesi|kavram haritası|图示|流程图|时间线|概念图/i.test(userText);
+      if (requestsVisual) {
+        setGeneratingVisual(true);
+        try {
+          const visualResponse = await fetch("/api/study-visual", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source: `${fullMessageText}\n\n${reply}`,
+              title: selectedCourse || userText,
+              language: lang,
+            }),
+          });
+          const visualData = await visualResponse.json();
+          if (visualResponse.ok && visualData.visual) setStudyVisual(visualData.visual);
+        } catch {
+          // The text answer remains usable when the optional diagram cannot be rendered.
+        } finally {
+          setGeneratingVisual(false);
+        }
+      }
     } catch (error) {
       setMessages((prev) => [
         ...prev,
@@ -538,7 +560,7 @@ export default function AiAssistantPage() {
           title="Generate a structured visual study aid"
         >
           {generatingVisual ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          <span className="hidden sm:inline">{lang === "tr" ? "Görsel çalışma" : lang === "es" ? "Visual de estudio" : lang === "zh" ? "学习可视化" : "Study visual"}</span>
+          <span className="hidden sm:inline">{lang === "tr" ? "Görsel şema" : lang === "es" ? "Esquema visual" : lang === "zh" ? "学习图示" : "Visual diagram"}</span>
         </button>
         <button
           type="submit"

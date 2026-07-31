@@ -60,6 +60,7 @@ interface IntegrationConfigResponse {
 }
 
 type MaintenanceLanguage = "en" | "tr" | "es" | "zh";
+type AdminLanguage = MaintenanceLanguage;
 type MaintenanceContent = Record<MaintenanceLanguage, {
   badge: string;
   title: string;
@@ -85,6 +86,61 @@ const ADMIN_UI_COPY = {
   zh: {
     back: "返回工作台", title: "管理面板", subtitle: "管理用户资料、优惠活动和系统参数。",
     superConsole: "超级管理员控制台", subConsole: "子管理员控制台", totalStudents: "注册学生总数", proMembers: "活跃 Pro 会员", proRatio: "Pro 占比", totalAdmins: "管理员总数",
+  },
+} as const;
+
+const PROMO_ADMIN_COPY = {
+  en: {
+    title: "Promo codes & trial access", description: "Create exact-duration campaigns and manage every redeemed trial from one place.", create: "Create promo code",
+    promoCode: "Promo code", type: "Benefit type", percentage: "Percentage discount", freeTrial: "Free Pro trial (days)", lifetime: "Lifetime Pro access",
+    value: "Discount / trial value", trialDays: "Trial days", maxUses: "Maximum uses", unlimited: "Unlimited", start: "Start date", end: "End date",
+    created: "Promo code created.", code: "Code", details: "Benefit", usage: "Usage", dates: "Valid dates", status: "Status", actions: "Actions",
+    noPromos: "No promo campaigns have been created.", expired: "Expired", limitReached: "Limit reached", active: "Active", edit: "Edit", delete: "Delete",
+    redemptions: "Promo trial users", redemptionHelp: "View who used each code and adjust their exact trial dates.", allCodes: "All codes", user: "User",
+    benefit: "Granted benefit", trialPeriod: "Trial period", redeemed: "Redeemed", manage: "Manage", noRedemptions: "No users have redeemed this code yet.",
+    proTrial: "free Pro trial", freeTier: "Free tier", proTier: "Pro tier", days: "days", expires: "Expires", trialExpired: "Trial expired",
+    adjustTitle: "Adjust trial access", forStudent: "Student", targetTier: "Access type", customTrial: "Custom Pro trial", exactStart: "Trial start",
+    exactEnd: "Trial end", extraDays: "Add extra days", addDays: "Add days", graceDays: "Grace days", failedRetries: "Failed payment retries",
+    nextBilling: "Next billing date", save: "Save access", cancel: "Cancel", invalidDays: "Trial days must be at least 1.", invalidDates: "Trial end must be later than trial start.",
+  },
+  tr: {
+    title: "Promosyon kodları ve deneme erişimi", description: "Kesin süreli kampanyalar oluşturun ve kod kullanan tüm deneme hesaplarını tek yerden yönetin.", create: "Promosyon kodu oluştur",
+    promoCode: "Promosyon kodu", type: "Avantaj türü", percentage: "Yüzde indirim", freeTrial: "Ücretsiz Pro deneme (gün)", lifetime: "Ömür boyu Pro erişim",
+    value: "İndirim / deneme değeri", trialDays: "Deneme günü", maxUses: "Azami kullanım", unlimited: "Sınırsız", start: "Başlangıç", end: "Bitiş",
+    created: "Promosyon kodu oluşturuldu.", code: "Kod", details: "Avantaj", usage: "Kullanım", dates: "Geçerlilik", status: "Durum", actions: "İşlemler",
+    noPromos: "Henüz promosyon kampanyası oluşturulmadı.", expired: "Süresi doldu", limitReached: "Limit doldu", active: "Aktif", edit: "Düzenle", delete: "Sil",
+    redemptions: "Promosyon denemesi kullananlar", redemptionHelp: "Her kodu kullanan kişileri görün ve kesin deneme tarihlerini düzenleyin.", allCodes: "Tüm kodlar", user: "Kullanıcı",
+    benefit: "Verilen avantaj", trialPeriod: "Deneme süresi", redeemed: "Kullanım tarihi", manage: "Yönet", noRedemptions: "Bu kodu henüz kullanan olmadı.",
+    proTrial: "ücretsiz Pro deneme", freeTier: "Ücretsiz paket", proTier: "Pro paket", days: "gün", expires: "Bitiş", trialExpired: "Deneme bitti",
+    adjustTitle: "Deneme erişimini düzenle", forStudent: "Öğrenci", targetTier: "Erişim türü", customTrial: "Özel Pro deneme", exactStart: "Deneme başlangıcı",
+    exactEnd: "Deneme bitişi", extraDays: "Ek gün ver", addDays: "Gün ekle", graceDays: "Ek tolerans günü", failedRetries: "Başarısız ödeme denemesi",
+    nextBilling: "Sonraki ödeme tarihi", save: "Erişimi kaydet", cancel: "İptal", invalidDays: "Deneme günü en az 1 olmalıdır.", invalidDates: "Deneme bitişi başlangıçtan sonra olmalıdır.",
+  },
+  es: {
+    title: "Códigos promocionales y pruebas", description: "Crea campañas con duración exacta y administra todas las pruebas canjeadas desde un solo lugar.", create: "Crear código promocional",
+    promoCode: "Código promocional", type: "Tipo de beneficio", percentage: "Descuento porcentual", freeTrial: "Prueba Pro gratis (días)", lifetime: "Acceso Pro de por vida",
+    value: "Valor del descuento / prueba", trialDays: "Días de prueba", maxUses: "Usos máximos", unlimited: "Ilimitado", start: "Fecha de inicio", end: "Fecha de fin",
+    created: "Código promocional creado.", code: "Código", details: "Beneficio", usage: "Uso", dates: "Vigencia", status: "Estado", actions: "Acciones",
+    noPromos: "No hay campañas promocionales.", expired: "Caducado", limitReached: "Límite alcanzado", active: "Activo", edit: "Editar", delete: "Eliminar",
+    redemptions: "Usuarios de prueba promocional", redemptionHelp: "Consulta quién usó cada código y ajusta sus fechas exactas de prueba.", allCodes: "Todos los códigos", user: "Usuario",
+    benefit: "Beneficio otorgado", trialPeriod: "Periodo de prueba", redeemed: "Canjeado", manage: "Gestionar", noRedemptions: "Nadie ha canjeado este código todavía.",
+    proTrial: "prueba Pro gratuita", freeTier: "Plan gratuito", proTier: "Plan Pro", days: "días", expires: "Finaliza", trialExpired: "Prueba finalizada",
+    adjustTitle: "Ajustar acceso de prueba", forStudent: "Estudiante", targetTier: "Tipo de acceso", customTrial: "Prueba Pro personalizada", exactStart: "Inicio de la prueba",
+    exactEnd: "Fin de la prueba", extraDays: "Añadir días extra", addDays: "Añadir días", graceDays: "Días de gracia", failedRetries: "Reintentos de pago fallidos",
+    nextBilling: "Próxima fecha de cobro", save: "Guardar acceso", cancel: "Cancelar", invalidDays: "La prueba debe durar al menos 1 día.", invalidDates: "El fin de la prueba debe ser posterior al inicio.",
+  },
+  zh: {
+    title: "优惠码与试用权限", description: "创建精确天数的活动，并在一个位置管理所有已兑换的试用账户。", create: "创建优惠码",
+    promoCode: "优惠码", type: "权益类型", percentage: "百分比折扣", freeTrial: "免费 Pro 试用（天）", lifetime: "终身 Pro 权限",
+    value: "折扣 / 试用数值", trialDays: "试用天数", maxUses: "最大使用次数", unlimited: "不限", start: "开始日期", end: "结束日期",
+    created: "优惠码已创建。", code: "代码", details: "权益", usage: "使用情况", dates: "有效日期", status: "状态", actions: "操作",
+    noPromos: "尚未创建优惠活动。", expired: "已过期", limitReached: "已达上限", active: "有效", edit: "编辑", delete: "删除",
+    redemptions: "优惠试用用户", redemptionHelp: "查看每个代码的使用者并调整其准确试用日期。", allCodes: "全部代码", user: "用户",
+    benefit: "已授予权益", trialPeriod: "试用期间", redeemed: "兑换时间", manage: "管理", noRedemptions: "尚无人使用此代码。",
+    proTrial: "免费 Pro 试用", freeTier: "免费版", proTier: "Pro 版", days: "天", expires: "结束", trialExpired: "试用已结束",
+    adjustTitle: "调整试用权限", forStudent: "学生", targetTier: "权限类型", customTrial: "自定义 Pro 试用", exactStart: "试用开始",
+    exactEnd: "试用结束", extraDays: "增加额外天数", addDays: "增加天数", graceDays: "宽限天数", failedRetries: "付款失败次数",
+    nextBilling: "下次付款日期", save: "保存权限", cancel: "取消", invalidDays: "试用天数至少为 1 天。", invalidDates: "试用结束时间必须晚于开始时间。",
   },
 } as const;
 
@@ -147,6 +203,14 @@ function normalizeMaintenanceContent(value: unknown): MaintenanceContent {
   );
 }
 
+function toLocalDateTimeInput(value: string | Date | null | undefined) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 async function requestIntegrationConfig(
   body?: Record<string, unknown>
 ): Promise<IntegrationConfigResponse> {
@@ -181,6 +245,8 @@ export default function AdminPage() {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [promocodes, setPromocodes] = useState<any[]>([]);
+  const [promoRedemptions, setPromoRedemptions] = useState<any[]>([]);
+  const [promoRedemptionFilter, setPromoRedemptionFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -321,6 +387,9 @@ export default function AdminPage() {
   const [adjustGraceDays, setAdjustGraceDays] = useState(0);
   const [adjustFailedAttempts, setAdjustFailedAttempts] = useState(0);
   const [adjustNextBilling, setAdjustNextBilling] = useState("");
+  const [adjustTrialStart, setAdjustTrialStart] = useState("");
+  const [adjustTrialEnd, setAdjustTrialEnd] = useState("");
+  const [extraTrialDays, setExtraTrialDays] = useState("1");
 
   // Viewing User Billing Details States
   const [viewingBillingDetails, setViewingBillingDetails] = useState<any | null>(null);
@@ -357,6 +426,15 @@ export default function AdminPage() {
   const [editingPromoStartDate, setEditingPromoStartDate] = useState("");
   const [editingPromoEndDate, setEditingPromoEndDate] = useState("");
   const [savingPromo, setSavingPromo] = useState(false);
+
+  const adminLanguage: AdminLanguage = ["en", "tr", "es", "zh"].includes(currentUserProfile?.language)
+    ? currentUserProfile.language
+    : "en";
+  const promoCopy = PROMO_ADMIN_COPY[adminLanguage];
+  const adminDateLocale = adminLanguage === "tr" ? "tr-TR" : adminLanguage === "es" ? "es-ES" : adminLanguage === "zh" ? "zh-CN" : "en-US";
+  const visiblePromoRedemptions = promoRedemptionFilter === "all"
+    ? promoRedemptions
+    : promoRedemptions.filter((redemption) => redemption.promocode_id === promoRedemptionFilter);
 
   useEffect(() => {
     async function loadAdminData() {
@@ -451,12 +529,12 @@ export default function AdminPage() {
 
   async function fetchProfiles() {
     const { data, error } = await supabase
-      .rpc("get_profiles_with_emails");
+      .rpc("admin_get_trial_profiles");
     
     if (!error && data) {
       setProfiles(data);
     } else {
-      console.warn("RPC get_profiles_with_emails failed, falling back to profiles table select:", error);
+      console.warn("RPC admin_get_trial_profiles failed, falling back to profiles table select:", error);
       // Alert the exact error to the user so they can diagnose database function setup
       if (error && error.message) {
         alert("Email retrieval warning: " + error.message + " (Running profiles table fallback without emails)");
@@ -684,13 +762,12 @@ export default function AdminPage() {
   };
 
   async function fetchPromocodes() {
-    const { data, error } = await supabase
-      .from("promocodes")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (!error && data) {
-      setPromocodes(data);
-    }
+    const [promoResult, redemptionResult] = await Promise.all([
+      supabase.from("promocodes").select("*").order("created_at", { ascending: false }),
+      supabase.rpc("admin_get_promo_redemptions"),
+    ]);
+    if (!promoResult.error && promoResult.data) setPromocodes(promoResult.data);
+    if (!redemptionResult.error && redemptionResult.data) setPromoRedemptions(redemptionResult.data);
   }
 
   const handleSaveAiSettings = async (e: React.FormEvent) => {
@@ -753,7 +830,13 @@ export default function AdminPage() {
   const handleOpenAdjustAccess = (user: any) => {
     setSelectedUser(user);
     setTrialDuration(user.plan === "free" ? "free" : (user.trial_ends_at ? "custom" : "lifetime"));
-    setCustomTrialDays("14");
+    const start = user.trial_start_at ? new Date(user.trial_start_at) : new Date();
+    const end = user.trial_ends_at ? new Date(user.trial_ends_at) : new Date(start.getTime() + 3 * 86_400_000);
+    const currentDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86_400_000));
+    setCustomTrialDays(String(currentDays));
+    setAdjustTrialStart(toLocalDateTimeInput(start));
+    setAdjustTrialEnd(toLocalDateTimeInput(end));
+    setExtraTrialDays("1");
     setAdjustGraceDays(user.grace_days_granted || 0);
     setAdjustFailedAttempts(user.failed_payment_attempts || 0);
     setAdjustNextBilling(user.next_billing_date ? new Date(user.next_billing_date).toISOString().slice(0, 16) : "");
@@ -764,32 +847,36 @@ export default function AdminPage() {
     setUpdatingId(selectedUser.id);
 
     let nextPlan = "free";
+    let startsAt: string | null = null;
     let expiresAt: string | null = null;
 
     if (trialDuration !== "free") {
       nextPlan = "pro";
-      if (trialDuration === "7") {
-        expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      } else if (trialDuration === "30") {
-        expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      } else if (trialDuration === "custom") {
-        const days = Number(customTrialDays) || 14;
-        expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-      } else {
+      if (trialDuration === "lifetime") {
         expiresAt = null; // Lifetime
+      } else {
+        const start = adjustTrialStart ? new Date(adjustTrialStart) : new Date();
+        const end = adjustTrialEnd ? new Date(adjustTrialEnd) : null;
+        if (!end || end <= start) {
+          alert(promoCopy.invalidDates);
+          setUpdatingId(null);
+          return;
+        }
+        startsAt = start.toISOString();
+        expiresAt = end.toISOString();
       }
     }
 
     const targetNextBilling = adjustNextBilling.trim() ? new Date(adjustNextBilling).toISOString() : null;
 
-    // Call dynamic self-contained plan update RPC v2
-    const { error } = await supabase.rpc("update_student_plan_admin_v2", {
-      target_user_id: selectedUser.id,
-      target_plan: nextPlan,
-      target_expires_at: expiresAt,
-      target_grace_days: Number(adjustGraceDays),
-      target_failed_attempts: Number(adjustFailedAttempts),
-      target_next_billing: targetNextBilling
+    const { error } = await supabase.rpc("admin_update_trial_access", {
+      p_user_id: selectedUser.id,
+      p_plan: nextPlan,
+      p_trial_start: startsAt,
+      p_trial_end: expiresAt,
+      p_grace_days: Number(adjustGraceDays),
+      p_failed_attempts: Number(adjustFailedAttempts),
+      p_next_billing: targetNextBilling
     });
 
     if (!error) {
@@ -798,12 +885,19 @@ export default function AdminPage() {
           ? { 
               ...p, 
               plan: nextPlan, 
+              trial_start_at: startsAt,
               trial_ends_at: expiresAt,
+              subscription_status: nextPlan === "free" ? "none" : expiresAt ? "trialing" : "active",
               grace_days_granted: Number(adjustGraceDays),
               failed_payment_attempts: Number(adjustFailedAttempts),
               next_billing_date: targetNextBilling
             } 
           : p
+      ));
+      setPromoRedemptions((current) => current.map((redemption) =>
+        redemption.user_id === selectedUser.id
+          ? { ...redemption, trial_started_at: startsAt, trial_ends_at: expiresAt, plan: nextPlan, subscription_status: nextPlan === "free" ? "none" : expiresAt ? "trialing" : "active" }
+          : redemption
       ));
     } else {
       alert("Failed to update plan: " + error.message);
@@ -811,6 +905,35 @@ export default function AdminPage() {
 
     setUpdatingId(null);
     setSelectedUser(null);
+  };
+
+  const handleTrialDurationChange = (value: string) => {
+    setTrialDuration(value);
+    if (value === "free" || value === "lifetime") return;
+    const days = value === "7" ? 7 : value === "30" ? 30 : Math.max(1, Number(customTrialDays) || 3);
+    const start = new Date();
+    const end = new Date(start.getTime() + days * 86_400_000);
+    setAdjustTrialStart(toLocalDateTimeInput(start));
+    setAdjustTrialEnd(toLocalDateTimeInput(end));
+    setCustomTrialDays(String(days));
+  };
+
+  const handleCustomTrialDaysChange = (value: string) => {
+    setCustomTrialDays(value);
+    const days = Number(value);
+    if (!Number.isFinite(days) || days < 1) return;
+    const start = adjustTrialStart ? new Date(adjustTrialStart) : new Date();
+    setAdjustTrialEnd(toLocalDateTimeInput(new Date(start.getTime() + days * 86_400_000)));
+  };
+
+  const handleAddTrialDays = () => {
+    const days = Number(extraTrialDays);
+    if (!Number.isFinite(days) || days < 1) {
+      alert(promoCopy.invalidDays);
+      return;
+    }
+    const base = adjustTrialEnd ? new Date(adjustTrialEnd) : new Date();
+    setAdjustTrialEnd(toLocalDateTimeInput(new Date(base.getTime() + days * 86_400_000)));
   };
 
   // Open Billing Details & Transaction History Modal
@@ -908,13 +1031,18 @@ export default function AdminPage() {
   const handleCreatePromocode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPromoCode.trim() || !startDate || !endDate) return;
+    const numericValue = discountType === "lifetime" ? 0 : Number(discountValue);
+    if (discountType === "free_trial" && numericValue < 1) {
+      alert(promoCopy.invalidDays);
+      return;
+    }
     setCreatingPromo(true);
     setPromoSuccess(false);
 
     const payload = {
       code: newPromoCode.trim().toUpperCase(),
       discount_type: discountType,
-      discount_value: Number(discountValue),
+      discount_value: numericValue,
       max_uses: maxUses.trim() ? Number(maxUses) : null,
       start_date: new Date(startDate).toISOString(),
       end_date: new Date(endDate).toISOString()
@@ -931,6 +1059,8 @@ export default function AdminPage() {
       setPromocodes([data, ...promocodes]);
       setNewPromoCode("");
       setMaxUses("");
+      setDiscountValue(discountType === "free_trial" ? 3 : 20);
+      await fetchPromocodes();
       setTimeout(() => setPromoSuccess(false), 3000);
     } else {
       alert(error?.message || "Failed to create promo code.");
@@ -1020,12 +1150,17 @@ export default function AdminPage() {
   // Save Promo Code Changes
   const handleSavePromoCode = async () => {
     if (!editingPromo) return;
+    const numericValue = editingPromoDiscountType === "lifetime" ? 0 : Number(editingPromoDiscountValue);
+    if (editingPromoDiscountType === "free_trial" && numericValue < 1) {
+      alert(promoCopy.invalidDays);
+      return;
+    }
     setSavingPromo(true);
 
     const payload = {
       code: editingPromoCode.trim().toUpperCase(),
       discount_type: editingPromoDiscountType,
-      discount_value: Number(editingPromoDiscountValue),
+      discount_value: numericValue,
       max_uses: editingPromoMaxUses.trim() ? Number(editingPromoMaxUses) : null,
       start_date: new Date(editingPromoStartDate).toISOString(),
       end_date: new Date(editingPromoEndDate).toISOString()
@@ -1043,6 +1178,7 @@ export default function AdminPage() {
           : p
       ));
       setEditingPromo(null);
+      await fetchPromocodes();
     } else {
       alert(error.message || "Failed to update promo code.");
     }
@@ -2206,20 +2342,20 @@ export default function AdminPage() {
           <div className="bg-white border border-gray-150 rounded-2xl shadow-sm p-6 space-y-6">
             <div>
               <h2 className="text-base font-bold text-surface-dark flex items-center gap-2">
-                <Tag className="text-brand" size={18} /> Promo Codes Management
+                <Tag className="text-brand" size={18} /> {promoCopy.title}
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Create campaigns, set maximum utilization caps, discount values, and validity schedules.
+                {promoCopy.description}
               </p>
             </div>
 
             {/* Create Promocode Form */}
             <form onSubmit={handleCreatePromocode} className="bg-gray-50/50 p-4 border border-gray-200/60 rounded-2xl space-y-4">
-              <h3 className="text-xs font-bold text-surface-dark flex items-center gap-1"><PlusCircle size={14} className="text-brand" /> Create New Promo Code</h3>
+              <h3 className="text-xs font-bold text-surface-dark flex items-center gap-1"><PlusCircle size={14} className="text-brand" /> {promoCopy.create}</h3>
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Promo Code (Uppercase)</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.promoCode}</label>
                   <input
                     type="text"
                     required
@@ -2231,27 +2367,31 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Discount Type</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.type}</label>
                   <select
                     value={discountType}
-                    onChange={(e: any) => setDiscountType(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value as "percentage" | "free_trial" | "lifetime";
+                      setDiscountType(value);
+                      setDiscountValue(value === "free_trial" ? 3 : value === "percentage" ? 20 : 0);
+                    }}
                     className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none cursor-pointer font-semibold"
                   >
-                    <option value="percentage">Percentage Discount (%)</option>
-                    <option value="free_trial">Free Pro Trial (Days)</option>
-                    <option value="lifetime">Lifetime Free Pro Access</option>
+                    <option value="percentage">{promoCopy.percentage} (%)</option>
+                    <option value="free_trial">{promoCopy.freeTrial}</option>
+                    <option value="lifetime">{promoCopy.lifetime}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Discount / Trial Value</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{discountType === "free_trial" ? promoCopy.trialDays : promoCopy.value}</label>
                   <input
                     type="number"
                     required
                     disabled={discountType === "lifetime"}
                     value={discountType === "lifetime" ? 0 : discountValue}
                     onChange={(e) => setDiscountValue(Number(e.target.value))}
-                    min={0}
+                    min={discountType === "free_trial" ? 1 : 0}
                     className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
                   />
                 </div>
@@ -2259,18 +2399,18 @@ export default function AdminPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Max Uses Count (Empty = Unlimited)</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.maxUses}</label>
                   <input
                     type="number"
                     value={maxUses}
                     onChange={(e) => setMaxUses(e.target.value)}
-                    placeholder="Unlimited"
+                    placeholder={promoCopy.unlimited}
                     className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Start Date</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.start}</label>
                   <input
                     type="datetime-local"
                     required
@@ -2281,7 +2421,7 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">End Date (Expiration)</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.end}</label>
                   <input
                     type="datetime-local"
                     required
@@ -2296,7 +2436,7 @@ export default function AdminPage() {
                 <div>
                   {promoSuccess && (
                     <p className="text-xs text-green-500 font-semibold flex items-center gap-1 animate-pulse">
-                      <CheckCircle2 size={12} /> Promo code successfully created!
+                      <CheckCircle2 size={12} /> {promoCopy.created}
                     </p>
                   )}
                 </div>
@@ -2306,7 +2446,7 @@ export default function AdminPage() {
                   className="px-4 py-2 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                 >
                   {creatingPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Tag size={12} />}
-                  Create Promo Code
+                  {promoCopy.create}
                 </button>
               </div>
             </form>
@@ -2316,18 +2456,18 @@ export default function AdminPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                    <th className="px-5 py-3">Code</th>
-                    <th className="px-5 py-3">Discount Details</th>
-                    <th className="px-5 py-3">Usage</th>
-                    <th className="px-5 py-3">Valid Dates</th>
-                    <th className="px-5 py-3">Status</th>
-                    <th className="px-5 py-3 text-right">Delete</th>
+                    <th className="px-5 py-3">{promoCopy.code}</th>
+                    <th className="px-5 py-3">{promoCopy.details}</th>
+                    <th className="px-5 py-3">{promoCopy.usage}</th>
+                    <th className="px-5 py-3">{promoCopy.dates}</th>
+                    <th className="px-5 py-3">{promoCopy.status}</th>
+                    <th className="px-5 py-3 text-right">{promoCopy.actions}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-150 text-xs text-gray-700 bg-white">
                   {promocodes.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-5 py-6 text-center text-gray-400">No active promo codes campaigns registered.</td>
+                      <td colSpan={6} className="px-5 py-6 text-center text-gray-400">{promoCopy.noPromos}</td>
                     </tr>
                   ) : (
                     promocodes.map((promo) => {
@@ -2342,24 +2482,30 @@ export default function AdminPage() {
                           <td className="px-5 py-3 font-bold text-surface-dark">{promo.code}</td>
                           <td className="px-5 py-3">
                             <span className="font-semibold text-xs">
-                              {promo.discount_type === "lifetime" ? "Lifetime Pro Access" :
-                               promo.discount_type === "free_trial" ? `${promo.discount_value} Days Free Pro Trial` :
-                               `${promo.discount_value}% Discount Percentage`}
+                              {promo.discount_type === "lifetime" ? promoCopy.lifetime :
+                               promo.discount_type === "free_trial" ? `${promo.discount_value} ${promoCopy.days} ${promoCopy.proTrial}` :
+                               `${promo.discount_value}% ${promoCopy.percentage}`}
                             </span>
                           </td>
                           <td className="px-5 py-3 font-medium">
-                            {promo.uses_count} / {promo.max_uses !== null ? promo.max_uses : "∞"}
+                            <button
+                              type="button"
+                              onClick={() => setPromoRedemptionFilter(promo.id)}
+                              className="font-bold text-brand hover:underline"
+                            >
+                              {promo.uses_count} / {promo.max_uses !== null ? promo.max_uses : "∞"}
+                            </button>
                           </td>
                           <td className="px-5 py-3 text-gray-500">
                             {start.toLocaleDateString()} to {end.toLocaleDateString()}
                           </td>
                           <td className="px-5 py-3">
                             {isExpired ? (
-                              <span className="px-2 py-0.5 rounded bg-red-50 border border-red-100 text-red-500 text-[10px] font-bold">Expired</span>
+                              <span className="px-2 py-0.5 rounded bg-red-50 border border-red-100 text-red-500 text-[10px] font-bold">{promoCopy.expired}</span>
                             ) : limitReached ? (
-                              <span className="px-2 py-0.5 rounded bg-red-50 border border-red-100 text-red-500 text-[10px] font-bold">Limit Reached</span>
+                              <span className="px-2 py-0.5 rounded bg-red-50 border border-red-100 text-red-500 text-[10px] font-bold">{promoCopy.limitReached}</span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded bg-green-50 border border-green-100 text-green-600 text-[10px] font-bold">Active</span>
+                              <span className="px-2 py-0.5 rounded bg-green-50 border border-green-100 text-green-600 text-[10px] font-bold">{promoCopy.active}</span>
                             )}
                           </td>
                           <td className="px-5 py-3 text-right">
@@ -2367,14 +2513,14 @@ export default function AdminPage() {
                                <button
                                  onClick={() => handleOpenEditPromo(promo)}
                                  className="p-1 hover:text-brand text-gray-400 transition-colors cursor-pointer"
-                                 title="Edit Promo Code"
+                                 title={promoCopy.edit}
                                >
                                  <Edit size={14} />
                                </button>
                                <button
                                  onClick={() => handleDeletePromocode(promo.id)}
                                  className="p-1 hover:text-red-500 text-gray-400 transition-colors cursor-pointer"
-                                 title="Delete Promo Code"
+                                 title={promoCopy.delete}
                                >
                                  <Trash2 size={14} />
                                </button>
@@ -2387,6 +2533,88 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+
+            <section className="overflow-hidden rounded-2xl border border-brand/10 bg-brand/[0.025]">
+              <div className="flex flex-col gap-3 border-b border-brand/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-extrabold text-surface-dark">
+                    <User size={15} className="text-brand" /> {promoCopy.redemptions}
+                  </h3>
+                  <p className="mt-1 text-xs text-gray-400">{promoCopy.redemptionHelp}</p>
+                </div>
+                <select
+                  value={promoRedemptionFilter}
+                  onChange={(event) => setPromoRedemptionFilter(event.target.value)}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-surface-dark outline-none"
+                >
+                  <option value="all">{promoCopy.allCodes}</option>
+                  {promocodes.map((promo) => <option key={promo.id} value={promo.id}>{promo.code}</option>)}
+                </select>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[880px] text-left text-xs">
+                  <thead className="bg-white/70 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    <tr>
+                      <th className="px-5 py-3">{promoCopy.code}</th>
+                      <th className="px-5 py-3">{promoCopy.user}</th>
+                      <th className="px-5 py-3">{promoCopy.benefit}</th>
+                      <th className="px-5 py-3">{promoCopy.trialPeriod}</th>
+                      <th className="px-5 py-3">{promoCopy.redeemed}</th>
+                      <th className="px-5 py-3 text-right">{promoCopy.manage}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {visiblePromoRedemptions.length === 0 ? (
+                      <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400">{promoCopy.noRedemptions}</td></tr>
+                    ) : visiblePromoRedemptions.map((redemption) => {
+                      const trialStart = redemption.trial_started_at ? new Date(redemption.trial_started_at) : null;
+                      const trialEnd = redemption.trial_ends_at ? new Date(redemption.trial_ends_at) : null;
+                      return (
+                        <tr key={redemption.id} className="hover:bg-brand/[0.025]">
+                          <td className="px-5 py-3 font-extrabold text-brand">{redemption.code}</td>
+                          <td className="px-5 py-3">
+                            <span className="block font-bold text-surface-dark">{redemption.full_name}</span>
+                            <span className="text-[10px] text-gray-400">{redemption.email}</span>
+                          </td>
+                          <td className="px-5 py-3 font-semibold text-gray-600">
+                            {redemption.discount_type === "free_trial"
+                              ? `${redemption.granted_value} ${promoCopy.days} ${promoCopy.proTrial}`
+                              : redemption.discount_type === "lifetime"
+                                ? promoCopy.lifetime
+                                : `${redemption.granted_value}% ${promoCopy.percentage}`}
+                          </td>
+                          <td className="px-5 py-3 text-gray-500">
+                            {trialStart && trialEnd
+                              ? `${trialStart.toLocaleString(adminDateLocale)} → ${trialEnd.toLocaleString(adminDateLocale)}`
+                              : "—"}
+                          </td>
+                          <td className="px-5 py-3 text-gray-500">{new Date(redemption.redeemed_at).toLocaleString(adminDateLocale)}</td>
+                          <td className="px-5 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAdjustAccess(
+                                profiles.find((profile) => profile.id === redemption.user_id) || {
+                                  id: redemption.user_id,
+                                  full_name: redemption.full_name,
+                                  email: redemption.email,
+                                  plan: redemption.plan,
+                                  subscription_status: redemption.subscription_status,
+                                  trial_start_at: redemption.trial_started_at,
+                                  trial_ends_at: redemption.trial_ends_at,
+                                }
+                              )}
+                              className="inline-flex items-center gap-1 rounded-lg border border-brand/15 bg-brand/5 px-2.5 py-1.5 text-[10px] font-bold text-brand hover:bg-brand/10"
+                            >
+                              <Clock size={11} /> {promoCopy.manage}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
         )}
 
@@ -2420,8 +2648,12 @@ export default function AdminPage() {
                   )}
                   {profiles.map((profile) => {
                     const isUserPro = profile.plan === "pro";
-                    const isExpired = profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date();
-                    const isTrial = profile.trial_ends_at !== null;
+                    const trialEnd = profile.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+                    const isTrialActive = Boolean(trialEnd && trialEnd > new Date());
+                    const isExpired = Boolean(trialEnd && trialEnd <= new Date());
+                    const trialDays = isTrialActive && trialEnd
+                      ? Math.max(1, Math.ceil((trialEnd.getTime() - Date.now()) / 86_400_000))
+                      : 0;
                     
                     return (
                       <tr key={profile.id} className="hover:bg-gray-50/50">
@@ -2439,17 +2671,21 @@ export default function AdminPage() {
                           {profile.grade_level || "Not specified"}
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${isUserPro && !isExpired ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-600"}`}>
-                            {isUserPro && !isExpired ? (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${isTrialActive || (isUserPro && !isExpired) ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-600"}`}>
+                            {isTrialActive ? (
                               <>
-                                <Sparkles size={12} /> Pro Tier
+                                <Clock size={12} /> {trialDays} {promoCopy.days} {promoCopy.proTrial}
+                              </>
+                            ) : isUserPro && !isExpired ? (
+                              <>
+                                <Sparkles size={12} /> {promoCopy.proTier}
                               </>
                             ) : profile.plan === "founding" ? (
                               <>
                                 <Sparkles size={12} className="text-purple-500 animate-pulse" /> Founding
                               </>
                             ) : (
-                              "Free Tier"
+                              promoCopy.freeTier
                             )}
                           </span>
                           {profile.discount_percent > 0 && (
@@ -2459,7 +2695,13 @@ export default function AdminPage() {
                           )}
                         </td>
                         <td className="px-6 py-4 text-xs text-gray-500">
-                          {isUserPro && !isExpired ? (
+                          {isTrialActive ? (
+                            <div className="space-y-0.5">
+                              <span className="font-bold text-brand">{trialDays} {promoCopy.days} {promoCopy.proTrial}</span>
+                              <span className="block text-[10px] text-gray-400">{promoCopy.expires}: {trialEnd?.toLocaleString(adminDateLocale)}</span>
+                              {profile.active_promocode && <span className="block text-[10px] font-semibold text-purple-500">{profile.active_promocode}</span>}
+                            </div>
+                          ) : isUserPro && !isExpired ? (
                             profile.billing_cycle === "monthly" ? (
                               <div className="space-y-0.5">
                                 <span className="font-bold text-gray-700 flex items-center gap-1"><Clock size={11} className="text-brand" /> Monthly Plan</span>
@@ -2481,7 +2723,7 @@ export default function AdminPage() {
                           ) : profile.plan === "founding" ? (
                             <span className="font-semibold text-purple-650">Lifetime Access</span>
                           ) : isExpired ? (
-                            <span className="text-red-500 font-bold">Trial Expired</span>
+                            <span className="text-red-500 font-bold">{promoCopy.trialExpired}</span>
                           ) : (
                             "Free Active"
                           )}
@@ -3560,13 +3802,13 @@ export default function AdminPage() {
         {/* Modal: Change Plan / Trial Expiration */}
         {selectedUser && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full space-y-6 relative border border-gray-150 shadow-xl">
+            <div className="max-h-[92vh] w-full max-w-lg space-y-6 overflow-y-auto rounded-3xl border border-gray-150 bg-white p-6 shadow-xl sm:p-8">
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-base font-bold text-surface-dark flex items-center gap-2">
-                    <Sparkles className="text-brand animate-pulse" /> Adjust Access Level
+                    <Sparkles className="text-brand animate-pulse" /> {promoCopy.adjustTitle}
                   </h3>
-                  <p className="text-xs text-gray-400 mt-1">For student: {selectedUser.full_name}</p>
+                  <p className="text-xs text-gray-400 mt-1">{promoCopy.forStudent}: {selectedUser.full_name || selectedUser.email}</p>
                 </div>
                 <button onClick={() => setSelectedUser(null)} className="text-gray-400 hover:text-gray-650 text-xl font-bold cursor-pointer">
                   &times;
@@ -3575,39 +3817,79 @@ export default function AdminPage() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Select Target Tier</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.targetTier}</label>
                   <select
                     value={trialDuration}
-                    onChange={(e) => setTrialDuration(e.target.value)}
+                    onChange={(e) => handleTrialDurationChange(e.target.value)}
                     className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none cursor-pointer font-semibold"
                   >
-                    <option value="free">Free Tier (Standard Access)</option>
-                    <option value="7">Pro Tier: 7 Days Trial</option>
-                    <option value="30">Pro Tier: 30 Days Access</option>
-                    <option value="custom">Pro Tier: Custom Days Trial</option>
-                    <option value="lifetime">Pro Tier: Lifetime Access</option>
+                    <option value="free">{promoCopy.freeTier}</option>
+                    <option value="7">7 {promoCopy.days} {promoCopy.proTrial}</option>
+                    <option value="30">30 {promoCopy.days} {promoCopy.proTrial}</option>
+                    <option value="custom">{promoCopy.customTrial}</option>
+                    <option value="lifetime">{promoCopy.lifetime}</option>
                   </select>
                 </div>
 
                 {trialDuration === "custom" && (
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Number of Trial Days</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.trialDays}</label>
                     <input
                       type="number"
                       required
                       min={1}
                       max={3650}
                       value={customTrialDays}
-                      onChange={(e) => setCustomTrialDays(e.target.value)}
+                      onChange={(e) => handleCustomTrialDaysChange(e.target.value)}
                       placeholder="e.g. 14"
                       className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white font-semibold"
                     />
                   </div>
                 )}
 
+                {trialDuration !== "free" && trialDuration !== "lifetime" && (
+                  <div className="space-y-3 rounded-2xl border border-brand/10 bg-brand/[0.025] p-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">{promoCopy.exactStart}</label>
+                        <input
+                          type="datetime-local"
+                          value={adjustTrialStart}
+                          onChange={(event) => setAdjustTrialStart(event.target.value)}
+                          className="mt-2 block w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-semibold text-surface-dark outline-none focus:ring-1 focus:ring-brand"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">{promoCopy.exactEnd}</label>
+                        <input
+                          type="datetime-local"
+                          value={adjustTrialEnd}
+                          onChange={(event) => setAdjustTrialEnd(event.target.value)}
+                          className="mt-2 block w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-semibold text-surface-dark outline-none focus:ring-1 focus:ring-brand"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">{promoCopy.extraDays}</label>
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          value={extraTrialDays}
+                          onChange={(event) => setExtraTrialDays(event.target.value)}
+                          className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-semibold text-surface-dark outline-none focus:ring-1 focus:ring-brand"
+                        />
+                        <button type="button" onClick={handleAddTrialDays} className="rounded-xl border border-brand/20 bg-brand/5 px-3 py-2 text-xs font-bold text-brand hover:bg-brand/10">
+                          <PlusCircle size={13} className="mr-1 inline" /> {promoCopy.addDays}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Grace Days Granted</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.graceDays}</label>
                     <input
                       type="number"
                       min={0}
@@ -3618,7 +3900,7 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Failed Payment Retries</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.failedRetries}</label>
                     <input
                       type="number"
                       min={0}
@@ -3630,7 +3912,7 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Next Billing Renewal Date</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.nextBilling}</label>
                   <input
                     type="datetime-local"
                     value={adjustNextBilling}
@@ -3644,7 +3926,7 @@ export default function AdminPage() {
                     onClick={() => setSelectedUser(null)}
                     className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
                   >
-                    Cancel
+                    {promoCopy.cancel}
                   </button>
                   <button
                     onClick={handleUpdatePlan}
@@ -3944,7 +4226,7 @@ export default function AdminPage() {
                     className="flex-1 py-2.5 rounded-xl bg-brand text-xs font-bold text-white hover:bg-brand-hover cursor-pointer flex items-center justify-center gap-1"
                   >
                     {savingStudentProfile && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    Save Changes
+                    {promoCopy.save}
                   </button>
                 </div>
               </div>
@@ -3959,9 +4241,9 @@ export default function AdminPage() {
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-base font-bold text-surface-dark flex items-center gap-2">
-                    <Tag className="text-brand" /> Edit Promo Code Campaign
+                    <Tag className="text-brand" /> {promoCopy.edit} · {editingPromo.code}
                   </h3>
-                  <p className="text-xs text-gray-400 mt-1">Adjust parameters for code: {editingPromo.code}</p>
+                  <p className="text-xs text-gray-400 mt-1">{promoCopy.description}</p>
                 </div>
                 <button onClick={() => setEditingPromo(null)} className="text-gray-400 hover:text-gray-650 text-xl font-bold cursor-pointer">
                   &times;
@@ -3970,7 +4252,7 @@ export default function AdminPage() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Promo Code String</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.promoCode}</label>
                   <input
                     type="text"
                     required
@@ -3983,24 +4265,24 @@ export default function AdminPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Discount Type</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.type}</label>
                     <select
                       value={editingPromoDiscountType}
-                      onChange={(e) => setEditingPromoDiscountType(e.target.value as any)}
+                      onChange={(e) => setEditingPromoDiscountType(e.target.value as "percentage" | "free_trial" | "lifetime")}
                       className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-white text-surface-dark outline-none cursor-pointer font-semibold"
                     >
-                      <option value="percentage">Percentage Discount</option>
-                      <option value="free_trial">Free Pro Trial Days</option>
-                      <option value="lifetime">Lifetime Pro Upgrade</option>
+                      <option value="percentage">{promoCopy.percentage}</option>
+                      <option value="free_trial">{promoCopy.freeTrial}</option>
+                      <option value="lifetime">{promoCopy.lifetime}</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Discount Value</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{editingPromoDiscountType === "free_trial" ? promoCopy.trialDays : promoCopy.value}</label>
                     <input
                       type="number"
                       required
-                      min={0}
+                      min={editingPromoDiscountType === "free_trial" ? 1 : 0}
                       disabled={editingPromoDiscountType === "lifetime"}
                       value={editingPromoDiscountType === "lifetime" ? "" : editingPromoDiscountValue}
                       onChange={(e) => setEditingPromoDiscountValue(Number(e.target.value))}
@@ -4012,18 +4294,18 @@ export default function AdminPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Max Usage Limit</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.maxUses}</label>
                     <input
                       type="number"
                       value={editingPromoMaxUses}
                       onChange={(e) => setEditingPromoMaxUses(e.target.value)}
-                      placeholder="∞ (Unlimited)"
+                      placeholder={promoCopy.unlimited}
                       className="block w-full mt-2 px-3 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Start Date</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.start}</label>
                     <input
                       type="datetime-local"
                       required
@@ -4035,7 +4317,7 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">End Date (Expiration)</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{promoCopy.end}</label>
                   <input
                     type="datetime-local"
                     required
@@ -4050,7 +4332,7 @@ export default function AdminPage() {
                     onClick={() => setEditingPromo(null)}
                     className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
                   >
-                    Cancel
+                    {promoCopy.cancel}
                   </button>
                   <button
                     onClick={handleSavePromoCode}
@@ -4058,7 +4340,7 @@ export default function AdminPage() {
                     className="flex-1 py-2.5 rounded-xl bg-brand text-xs font-bold text-white hover:bg-brand-hover cursor-pointer flex items-center justify-center gap-1"
                   >
                     {savingPromo && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    Save Changes
+                    {promoCopy.save}
                   </button>
                 </div>
               </div>

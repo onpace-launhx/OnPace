@@ -134,7 +134,10 @@ Deno.serve(async (request) => {
                 : []),
               ...history.map((message) => ({
                 role: message.role,
-                content: [{ type: "input_text", text: message.content }],
+                content: [{
+                  type: message.role === "assistant" ? "output_text" : "input_text",
+                  text: message.content,
+                }],
               })),
               { role: "user", content: userContent },
             ],

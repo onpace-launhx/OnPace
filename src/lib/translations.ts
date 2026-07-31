@@ -66,7 +66,7 @@ export const translations: Record<string, Record<string, any>> = {
       generateSchedule: "Generate Study Schedule",
       trialBanner: "You have {days} days remaining in your Pro Trial. Enjoy unlimited AI assistant and notes tools!",
       trialEndedTitle: "Pro Trial Ended",
-      trialEndedDesc: "Your 21-day Pro Trial has expired. Your profile has been moved to the Free plan. Your notebooks, schedules, and checklists are fully preserved, but premium tools are now locked.",
+      trialEndedDesc: "Your Pro Trial has expired. Your profile has been moved to the Free plan. Your notebooks, schedules, and checklists are fully preserved, but premium tools are now locked.",
       keepFree: "Keep Free",
       upgradeToPro: "Upgrade to Pro"
     },
@@ -299,7 +299,7 @@ export const translations: Record<string, Record<string, any>> = {
       generateSchedule: "Çalışma Programı Oluştur",
       trialBanner: "Pro Deneme Sürümünüzün bitmesine {days} gün kaldı. Sınırsız Yapay Zeka asistanı ve not araçlarının tadını çıkarın!",
       trialEndedTitle: "Pro Deneme Süresi Bitti",
-      trialEndedDesc: "21 günlük Pro deneme süreniz sona erdi. Profiliniz Ücretsiz plana taşındı. Defterleriniz, çalışma programlarınız ve kontrol listeleriniz tamamen korunur, ancak premium araçlar kilitlenmiştir.",
+      trialEndedDesc: "Pro deneme süreniz sona erdi. Profiliniz Ücretsiz plana taşındı. Defterleriniz, çalışma programlarınız ve kontrol listeleriniz tamamen korunur, ancak premium araçlar kilitlenmiştir.",
       keepFree: "Ücretsiz Devam Et",
       upgradeToPro: "Pro Plana Yükselt"
     },
@@ -532,7 +532,7 @@ export const translations: Record<string, Record<string, any>> = {
       generateSchedule: "Generar Calendario de Estudio",
       trialBanner: "Te quedan {days} días en tu prueba Pro. ¡Disfruta de herramientas ilimitadas de asistente de IA y notas!",
       trialEndedTitle: "Prueba Pro Finalizada",
-      trialEndedDesc: "Tu prueba Pro de 21 días ha expirado. Tu perfil ha sido transferido al plan Free. Tus cuadernos, calendarios y listas se conservan por completo, pero las herramientas premium ahora están bloqueadas.",
+      trialEndedDesc: "Tu prueba Pro ha expirado. Tu perfil ha sido transferido al plan Free. Tus cuadernos, calendarios y listas se conservan por completo, pero las herramientas premium ahora están bloqueadas.",
       keepFree: "Mantener Gratis",
       upgradeToPro: "Actualizar a Pro"
     },
@@ -765,7 +765,7 @@ export const translations: Record<string, Record<string, any>> = {
       generateSchedule: "生成定制日程表",
       trialBanner: "您的 Pro 免费试用还剩 {days} 天。尽情享受无限 AI 辅助与笔记卡片工具吧！",
       trialEndedTitle: "Pro 试用已结束",
-      trialEndedDesc: "您的21天 Pro 免费试用已结束，账户已转为免费版。您的笔记本、日程和清单已安全保留，但高级 AI 功能已被锁定。",
+      trialEndedDesc: "您的 Pro 免费试用已结束，账户已转为免费版。您的笔记本、日程和清单已安全保留，但高级 AI 功能已被锁定。",
       keepFree: "保持免费版",
       upgradeToPro: "升级至 Pro 专业版"
     },

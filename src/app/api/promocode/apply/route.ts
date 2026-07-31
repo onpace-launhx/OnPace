@@ -1,131 +1,83 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+type PromoValidation = {
+  valid: boolean;
+  error_message: string | null;
+  discount_type: "percentage" | "free_trial" | "lifetime" | null;
+  discount_value: number | null;
+  description: string | null;
+};
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
-    
-    // Check session
-    const { data: { user } } = await supabase.auth.getUser();
-
     const { code, isSignup } = await request.json();
+    const inputCode = typeof code === "string" ? code.trim() : "";
 
-    if (!code || !code.trim()) {
+    if (!inputCode) {
       return NextResponse.json({ error: "Promo code is required" }, { status: 400 });
     }
 
-    const inputCode = code.trim();
-
-    // 1. Fetch promocode details
-    const { data: promo, error: promoError } = await supabase
-      .from("promocodes")
-      .select("*")
-      .ilike("code", inputCode)
-      .single();
-
-    if (promoError || !promo) {
-      return NextResponse.json({ error: "Invalid promo code." }, { status: 400 });
-    }
-
-    const now = new Date();
-    const startDate = new Date(promo.start_date);
-    const endDate = new Date(promo.end_date);
-
-    if (now < startDate || now > endDate) {
-      return NextResponse.json({ error: "This promo code has expired or is not active yet." }, { status: 400 });
-    }
-
-    if (promo.max_uses !== null && promo.uses_count >= promo.max_uses) {
-      return NextResponse.json({ error: "This promo code has reached its maximum usage limit." }, { status: 400 });
-    }
-
-    // If it's just a validation check during signup, return success early without applying
     if (isSignup) {
-      let desc = "";
-      if (promo.discount_type === "lifetime") {
-        desc = "Lifetime Free Pro Access";
-      } else if (promo.discount_type === "free_trial") {
-        desc = `${promo.discount_value} Days Free Pro Trial`;
-      } else {
-        desc = `${promo.discount_value}% Discount on Purchase`;
+      const { data, error } = await supabase.rpc("validate_promocode", {
+        p_code: inputCode,
+      });
+      const promo = (Array.isArray(data) ? data[0] : data) as PromoValidation | null;
+
+      if (error || !promo?.valid) {
+        return NextResponse.json(
+          { error: promo?.error_message || error?.message || "Invalid promo code." },
+          { status: 400 }
+        );
       }
+
       return NextResponse.json({
         success: true,
         valid: true,
-        description: desc,
+        description: promo.description,
         discount_type: promo.discount_type,
-        discount_value: promo.discount_value
+        discount_value: promo.discount_value,
       });
     }
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2. Determine changes to user profile
-    let targetPlan = "free";
-    let trialEnds: string | null = null;
-    let discountPercent = 0;
-
-    if (promo.discount_type === "lifetime") {
-      targetPlan = "pro";
-    } else if (promo.discount_type === "free_trial") {
-      targetPlan = "pro";
-      const targetDate = new Date();
-      targetDate.setDate(targetDate.getDate() + promo.discount_value);
-      trialEnds = targetDate.toISOString();
-    } else if (promo.discount_type === "percentage") {
-      discountPercent = promo.discount_value;
+    const { data, error } = await supabase.rpc("redeem_promocode", {
+      p_code: inputCode,
+    });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // 3. Update profile
-    const updateData: any = {};
-    if (promo.discount_type !== "percentage") {
-      updateData.plan = targetPlan;
-      updateData.trial_ends_at = trialEnds;
-      updateData.subscription_status = "active";
-    } else {
-      updateData.discount_percent = discountPercent;
-    }
-
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update(updateData)
-      .eq("id", user.id);
-
-    if (updateError) {
-      console.error("Failed to apply promocode to profile:", updateError);
-      return NextResponse.json({ error: "Failed to apply promo code." }, { status: 500 });
-    }
-
-    // 4. Increment promo usage count
-    const { error: incError } = await supabase
-      .from("promocodes")
-      .update({ uses_count: promo.uses_count + 1 })
-      .eq("id", promo.id);
-
-    if (incError) {
-      console.error("Failed to increment promo usage count:", incError);
-    }
-
-    let message = "";
-    if (promo.discount_type === "lifetime") {
-      message = "Lifetime Pro Access activated successfully! 🎉";
-    } else if (promo.discount_type === "free_trial") {
-      message = `${promo.discount_value}-day Pro Trial activated successfully! 🚀`;
-    } else if (promo.discount_type === "percentage") {
-      message = `${promo.discount_value}% Discount applied to your billing checkout! 💰`;
-    }
+    const redemption = Array.isArray(data) ? data[0] : data;
+    const type = redemption?.discount_type;
+    const value = Number(redemption?.discount_value || 0);
+    const message =
+      type === "lifetime"
+        ? "Lifetime Pro Access activated successfully!"
+        : type === "free_trial"
+          ? `${value}-day Pro Trial activated successfully!`
+          : `${value}% discount applied successfully!`;
 
     return NextResponse.json({
       success: true,
       message,
-      discount_type: promo.discount_type,
-      discount_value: promo.discount_value
+      discount_type: type,
+      discount_value: value,
+      trial_started_at: redemption?.trial_started_at || null,
+      trial_ends_at: redemption?.trial_ends_at || null,
     });
-
-  } catch (error: any) {
+  } catch (error) {
     console.error("Promocode apply error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to apply promo code." },
+      { status: 500 }
+    );
   }
 }

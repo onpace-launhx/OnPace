@@ -76,7 +76,11 @@ export default function NotesPage() {
 
   // AI Note Enhancement states
   const [enhancingAI, setEnhancingAI] = useState(false);
-  const [enhancedResult, setEnhancedResult] = useState<{ title?: string; enhancedContent: string } | null>(null);
+  const [enhancedResult, setEnhancedResult] = useState<{
+    title?: string;
+    enhancedContent: string;
+    visual?: StudyVisualSpec | null;
+  } | null>(null);
   const [studyVisual, setStudyVisual] = useState<StudyVisualSpec | null>(null);
   const [generatingVisual, setGeneratingVisual] = useState(false);
 
@@ -286,6 +290,8 @@ export default function NotesPage() {
       } else if (analyzeData.note) {
         setNotes((currentNotes) => [analyzeData.note, ...currentNotes]);
         handleSelectNote(analyzeData.note);
+        setEditMode("preview");
+        if (analyzeData.visual) setStudyVisual(analyzeData.visual);
       }
     } catch (error) {
       alert(
@@ -485,10 +491,10 @@ export default function NotesPage() {
   const currentQuestion = activeQuiz?.questions?.[currentQuestionIdx];
 
   return (
-    <main className="flex-1 flex flex-col md:flex-row h-screen overflow-hidden bg-[#F8F9FC]">
+    <main className="flex-1 flex h-screen min-w-0 flex-col overflow-hidden bg-[#F8F9FC] md:flex-row">
       
       {/* 1. Left Sidebar: Notebook list */}
-      <aside className={`w-full md:w-80 border-r border-gray-150 bg-white p-5 flex flex-col justify-between shrink-0 overflow-y-auto ${
+      <aside className={`w-full md:w-72 xl:w-80 border-r border-gray-150 bg-white p-5 flex flex-col justify-between shrink-0 overflow-y-auto ${
         isMobileViewingEditor ? "hidden md:flex" : "flex"
       }`}>
         <div className="space-y-6">
@@ -582,13 +588,13 @@ export default function NotesPage() {
       </aside>
 
       {/* 2. Center Column: Sleek Note Editor */}
-      <section className={`flex-1 flex flex-col bg-white border-r border-gray-100 overflow-y-auto p-5 sm:p-6 lg:p-8 ${
+      <section className={`min-w-0 flex-1 flex flex-col bg-white border-r border-gray-100 overflow-y-auto p-5 sm:p-6 lg:p-7 ${
         isMobileViewingEditor ? "flex" : "hidden md:flex"
       }`}>
       
         {/* Editor controls header */}
-        <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-6 shrink-0">
-          <div className="flex items-center gap-3 w-full max-w-xl">
+        <div className="mb-6 flex shrink-0 flex-col gap-3 border-b border-gray-100 pb-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+          <div className="flex min-w-0 items-center gap-3 w-full max-w-xl">
             <button
               onClick={() => setIsMobileViewingEditor(false)}
               className="md:hidden p-2 hover:bg-gray-100 rounded-xl text-gray-500 cursor-pointer"
@@ -604,7 +610,7 @@ export default function NotesPage() {
             />
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 2xl:shrink-0 2xl:justify-end">
             <div className="flex p-0.5 bg-gray-100 rounded-xl border border-gray-200">
               <button
                 onClick={() => setEditMode("write")}
@@ -641,7 +647,7 @@ export default function NotesPage() {
               title="Generate a structured visual study aid"
             >
               {generatingVisual ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit size={14} />}
-              <span className="hidden xl:inline">{lang === "tr" ? "Görsel çalışma" : lang === "es" ? "Visual de estudio" : lang === "zh" ? "学习可视化" : "Study visual"}</span>
+              <span>{lang === "tr" ? "Görsel şema" : lang === "es" ? "Esquema visual" : lang === "zh" ? "学习图示" : "Visual diagram"}</span>
             </button>
 
             <button
@@ -702,7 +708,7 @@ export default function NotesPage() {
 
       {/* 3. Right Column: Premium AI Practice Hub */}
       {selectedNote && (
-        <aside className="w-full md:w-[420px] bg-[#F8F9FC] p-5 sm:p-6 flex flex-col shrink-0 overflow-y-auto border-l border-gray-100">
+        <aside className="w-full md:w-[360px] 2xl:w-[420px] bg-[#F8F9FC] p-5 sm:p-6 flex flex-col shrink-0 overflow-y-auto border-l border-gray-100">
           <div className="space-y-6">
             
             {/* Header */}
@@ -1031,6 +1037,11 @@ export default function NotesPage() {
                 <div className="text-xs text-gray-700 leading-relaxed font-sans">
                   <MarkdownPreview content={enhancedResult.enhancedContent} />
                 </div>
+                {enhancedResult.visual && (
+                  <div className="pt-3">
+                    <StudyVisual visual={enhancedResult.visual} />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1046,6 +1057,8 @@ export default function NotesPage() {
                 onClick={() => {
                   if (enhancedResult.title) setTitle(enhancedResult.title);
                   setContent(enhancedResult.enhancedContent);
+                  if (enhancedResult.visual) setStudyVisual(enhancedResult.visual);
+                  setEditMode("preview");
                   setEnhancedResult(null);
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 active:scale-95 transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5"
