@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { setRememberSessionIntent } from "@/lib/auth/remember-session";
@@ -14,16 +14,10 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const oauthError = params.get("error");
-
-    if (oauthError) {
-      setErrorMsg(oauthError);
-    }
-  }, []);
+  const [errorMsg, setErrorMsg] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("error");
+  });
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +116,7 @@ export default function LoginPage() {
           {errorMsg && (
             <div className="rounded-xl bg-red-50 p-4 border border-red-100 flex items-start gap-3 mb-6">
               <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-              <span className="text-sm font-medium text-red-700">{errorMsg}</span>
+              <span className="content-break-anywhere min-w-0 text-sm font-medium text-red-700">{errorMsg}</span>
             </div>
           )}
 

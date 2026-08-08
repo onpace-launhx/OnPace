@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getBrowserSiteOrigin } from "@/lib/site-url";
 
 type Language = "en" | "tr" | "es" | "zh";
+const RESEND_COOLDOWN_SECONDS = 60;
 
 const COPY = {
   en: {
@@ -15,7 +16,8 @@ const COPY = {
     description: "Enter the 6-digit security code sent to your email.",
     requiredDescription: "Your account exists, but your email is not verified yet. Enter the code we sent to continue.",
     code: "Verification code", verify: "Verify and sign in", verifying: "Verifying...",
-    resend: "Send a new code", resending: "Sending...", resent: "A new verification code has been sent.",
+    resend: "Send a new code", resending: "Sending...", resendIn: (seconds: number) => "Send a new code in " + seconds + "s", resent: "A new verification code has been sent.",
+    resendRateLimited: "Please wait a moment before requesting another code.", resendFailed: "We could not send a new code. Please try again shortly.",
     invalid: "The code is invalid or has expired. Request a new code and try again.",
     successTitle: "Email verified", success: "Your account was verified successfully. You are now signed in.",
     redirecting: "Opening your dashboard...", back: "Back to sign in",
@@ -26,7 +28,8 @@ const COPY = {
     description: "E-postanıza gönderilen 6 haneli güvenlik kodunu girin.",
     requiredDescription: "Hesabınız mevcut ancak e-postanız henüz doğrulanmamış. Devam etmek için gönderdiğimiz kodu girin.",
     code: "Doğrulama kodu", verify: "Doğrula ve giriş yap", verifying: "Doğrulanıyor...",
-    resend: "Yeni kod gönder", resending: "Gönderiliyor...", resent: "Yeni doğrulama kodu gönderildi.",
+    resend: "Yeni kod gönder", resending: "Gönderiliyor...", resendIn: (seconds: number) => seconds + " sn sonra yeni kod gönder", resent: "Yeni doğrulama kodu gönderildi.",
+    resendRateLimited: "Yeni kod istemeden önce lütfen kısa süre bekleyin.", resendFailed: "Yeni kod gönderilemedi. Lütfen kısa süre sonra tekrar deneyin.",
     invalid: "Kod geçersiz veya süresi dolmuş. Yeni kod isteyip tekrar deneyin.",
     successTitle: "E-posta doğrulandı", success: "Hesabınız başarıyla doğrulandı ve otomatik olarak giriş yapıldı.",
     redirecting: "Çalışma paneliniz açılıyor...", back: "Giriş ekranına dön",
@@ -37,7 +40,8 @@ const COPY = {
     description: "Introduce el código de seguridad de 6 dígitos enviado a tu correo.",
     requiredDescription: "Tu cuenta existe, pero el correo aún no está verificado. Introduce el código que enviamos para continuar.",
     code: "Código de verificación", verify: "Verificar e iniciar sesión", verifying: "Verificando...",
-    resend: "Enviar un código nuevo", resending: "Enviando...", resent: "Se ha enviado un nuevo código de verificación.",
+    resend: "Enviar un código nuevo", resending: "Enviando...", resendIn: (seconds: number) => "Enviar un código nuevo en " + seconds + " s", resent: "Se ha enviado un nuevo código de verificación.",
+    resendRateLimited: "Espera un momento antes de solicitar otro código.", resendFailed: "No pudimos enviar un código nuevo. Inténtalo de nuevo en unos momentos.",
     invalid: "El código no es válido o ha caducado. Solicita uno nuevo e inténtalo de nuevo.",
     successTitle: "Correo verificado", success: "Tu cuenta se verificó correctamente y ya has iniciado sesión.",
     redirecting: "Abriendo tu panel...", back: "Volver al inicio de sesión",
@@ -48,7 +52,8 @@ const COPY = {
     description: "请输入发送到您邮箱的 6 位安全验证码。",
     requiredDescription: "您的账户已创建，但邮箱尚未验证。请输入我们发送的验证码以继续。",
     code: "验证码", verify: "验证并登录", verifying: "正在验证...",
-    resend: "发送新验证码", resending: "正在发送...", resent: "新的验证码已发送。",
+    resend: "发送新验证码", resending: "正在发送...", resendIn: (seconds: number) => seconds + " 秒后发送新验证码", resent: "新的验证码已发送。",
+    resendRateLimited: "请稍候再请求新的验证码。", resendFailed: "无法发送新验证码，请稍后重试。",
     invalid: "验证码无效或已过期。请获取新验证码后重试。",
     successTitle: "邮箱已验证", success: "您的账户已成功验证并自动登录。",
     redirecting: "正在打开您的学习面板...", back: "返回登录",
@@ -66,6 +71,10 @@ function buildEmailRedirect(origin: string, language: Language) {
   return callback.toString();
 }
 
+function resendCooldownKey(email: string) {
+  return "onpace-verification-resend:" + email;
+}
+
 function VerifyEmailContent() {
   const params = useSearchParams();
   const supabase = createClient();
@@ -77,10 +86,26 @@ function VerifyEmailContent() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [otpVerified, setOtpVerified] = useState(false);
   const isSuccess = linkedVerification || otpVerified;
+
+  useEffect(() => {
+    if (!email) return;
+
+    const updateCooldown = () => {
+      const expiresAt = Number(window.localStorage.getItem(resendCooldownKey(email)) || "0");
+      const secondsLeft = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setCooldownSeconds(secondsLeft);
+      if (secondsLeft === 0) window.localStorage.removeItem(resendCooldownKey(email));
+    };
+
+    updateCooldown();
+    const interval = window.setInterval(updateCooldown, 1_000);
+    return () => window.clearInterval(interval);
+  }, [email]);
 
   useEffect(() => {
     if (!isSuccess) return;
@@ -108,7 +133,7 @@ function VerifyEmailContent() {
   }
 
   async function handleResend() {
-    if (!email) return;
+    if (!email || resending || cooldownSeconds > 0) return;
     setResending(true);
     setError(null);
     setMessage(null);
@@ -117,8 +142,21 @@ function VerifyEmailContent() {
       email,
       options: { emailRedirectTo: buildEmailRedirect(getBrowserSiteOrigin(), language) },
     });
-    if (resendError) setError(resendError.message);
-    else setMessage(t.resent);
+    if (resendError) {
+      const details = resendError.message.toLowerCase();
+      setError(
+        details.includes("rate") || details.includes("too many")
+          ? t.resendRateLimited
+          : t.resendFailed
+      );
+    } else {
+      window.localStorage.setItem(
+        resendCooldownKey(email),
+        String(Date.now() + RESEND_COOLDOWN_SECONDS * 1_000)
+      );
+      setCooldownSeconds(RESEND_COOLDOWN_SECONDS);
+      setMessage(t.resent);
+    }
     setResending(false);
   }
 
@@ -173,15 +211,15 @@ function VerifyEmailContent() {
                     placeholder="000000"
                   />
                 </div>
-                {error && <p className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-600">{error}</p>}
-                {message && <p className="rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-600">{message}</p>}
+                {error && <p className="content-break-anywhere rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-600">{error}</p>}
+                {message && <p className="content-break-anywhere rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-600">{message}</p>}
                 <button type="submit" disabled={loading || code.length !== 6} className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-hover disabled:opacity-50">
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? t.verifying : t.verify}
                 </button>
-                <button type="button" onClick={handleResend} disabled={resending} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-xs font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50">
+                <button type="button" onClick={handleResend} disabled={resending || cooldownSeconds > 0} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-xs font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50">
                   <RefreshCw className={`h-4 w-4 ${resending ? "animate-spin" : ""}`} />
-                  {resending ? t.resending : t.resend}
+                  {resending ? t.resending : cooldownSeconds > 0 ? t.resendIn(cooldownSeconds) : t.resend}
                 </button>
               </form>
             )}

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import { localeForLanguage, localized } from "@/lib/i18n";
+import { hasActiveFocusEntitlement } from "@/lib/entitlements";
 
 type AmbientSound = "rain" | "white-noise" | "forest";
 
@@ -322,6 +323,13 @@ export default function FocusPage() {
       
       setProfile(data);
 
+      if (!hasActiveFocusEntitlement(data)) {
+        window.localStorage.removeItem(`onpace-focus-timer:${user.id}`);
+        setTimerRestored(true);
+        setLoading(false);
+        return;
+      }
+
       // Keep an in-progress timer alive when the user navigates away and returns.
       // The saved timestamp lets the timer continue accurately even while this page is unmounted.
       const savedTimer = window.localStorage.getItem(`onpace-focus-timer:${user.id}`);
@@ -351,14 +359,11 @@ export default function FocusPage() {
       }
       setTimerRestored(true);
 
-      // Load user's focus history for analytics
-      const { data: history } = await supabase
-        .from("focus_sessions")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-      if (history) {
-        setFocusHistory(history);
+      // Focus records are read through an entitlement-checked server route.
+      const historyResponse = await fetch("/api/focus/sessions?limit=100");
+      if (historyResponse.ok) {
+        const payload = await historyResponse.json();
+        setFocusHistory(payload.sessions || []);
       }
 
       setLoading(false);
@@ -380,10 +385,7 @@ export default function FocusPage() {
     }));
   }, [profile?.id, timerRestored, studyLength, breakLength, mode, minutes, seconds, elapsedSeconds, isActive]);
 
-  const now = new Date();
-  const trialEnds = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
-  const isTrialActive = trialEnds && trialEnds > now;
-  const isPro = profile?.plan === "pro" || profile?.plan === "founding" || isTrialActive;
+  const isPro = hasActiveFocusEntitlement(profile);
 
   // Tab Switch / Visibility Distraction Detector
   useEffect(() => {
@@ -432,17 +434,19 @@ export default function FocusPage() {
     setIsSavingSession(true);
     
     try {
-      const { data } = await supabase.from("focus_sessions").insert([
-        {
-          user_id: profile.id,
+      const response = await fetch("/api/focus/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           duration_seconds: elapsedSeconds,
-          mode: mode,
-          completed: completed
-        }
-      ]).select("*").single();
-
-      if (data) {
-        setFocusHistory(prev => [data, ...prev]);
+          mode,
+          completed,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Unable to save focus session.");
+      if (payload.session) {
+        setFocusHistory(prev => [payload.session, ...prev]);
       }
     } catch (err) {
       console.error("Failed to save focus session metrics:", err);
@@ -454,7 +458,7 @@ export default function FocusPage() {
   // 3. Countdown Timer loop with analytics tracking
   useEffect(() => {
     let interval: any = null;
-    if (isActive) {
+    if (isActive && isPro) {
       interval = setInterval(() => {
         setElapsedSeconds(prev => prev + 1);
 
@@ -480,9 +484,10 @@ export default function FocusPage() {
       }, 1000);
     } else {
       clearInterval(interval);
+      if (isActive) void releaseFullscreenLock();
     }
     return () => clearInterval(interval);
-  }, [isActive, minutes, seconds, mode, lang, elapsedSeconds]);
+  }, [isActive, isPro, minutes, seconds, mode, lang, elapsedSeconds]);
 
   // Long, stereo, colored-noise soundscapes avoid the harsh two-second loop
   // that previously made the ambience sound like a broken television.
@@ -580,6 +585,10 @@ export default function FocusPage() {
   }, [ambientVolume]);
 
   const handleStartSession = async () => {
+    if (!isPro) {
+      setPremiumModalOpen(true);
+      return;
+    }
     setIsActive(true);
     if (mode !== "study") {
       await releaseFullscreenLock();
@@ -670,6 +679,52 @@ export default function FocusPage() {
           <p className="text-sm font-semibold text-gray-400">{t.common.loading}</p>
         </div>
       </div>
+    );
+  }
+
+  if (!isPro) {
+    const accessCopy = localized(lang, {
+      en: {
+        title: "Focus Mode needs an active plan",
+        description: "Your trial or Pro access has ended. Upgrade to resume the timer, focus history, and immersive study tools.",
+        action: "View plans",
+        back: "Back to dashboard",
+      },
+      tr: {
+        title: "Focus Mode için aktif paket gerekli",
+        description: "Deneme veya Pro erişimin sona erdi. Zamanlayıcıyı, odak geçmişini ve çalışma araçlarını kullanmak için paketini yükselt.",
+        action: "Paketleri görüntüle",
+        back: "Panele dön",
+      },
+      es: {
+        title: "Focus Mode necesita un plan activo",
+        description: "Tu prueba o acceso Pro ha terminado. Actualiza tu plan para volver a usar el temporizador, el historial y las herramientas de concentración.",
+        action: "Ver planes",
+        back: "Volver al panel",
+      },
+      zh: {
+        title: "专注模式需要有效方案",
+        description: "您的试用或 Pro 权限已到期。升级方案后可继续使用计时器、专注历史和沉浸式学习工具。",
+        action: "查看方案",
+        back: "返回面板",
+      },
+    });
+    return (
+      <main className="flex min-h-full min-w-0 flex-1 items-center justify-center bg-[#070A13] p-6 text-white">
+        <section className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-7 text-center shadow-2xl backdrop-blur-md">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/20 text-brand">
+            <Lock size={26} />
+          </div>
+          <h1 className="mt-5 text-xl font-extrabold">{accessCopy.title}</h1>
+          <p className="mt-3 text-sm leading-6 text-gray-400">{accessCopy.description}</p>
+          <button onClick={() => router.push("/billing")} className="mt-6 w-full rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-hover">
+            {accessCopy.action}
+          </button>
+          <button onClick={() => router.push("/dashboard")} className="mt-3 w-full rounded-xl border border-white/10 px-4 py-3 text-sm font-bold text-gray-300 transition hover:bg-white/5">
+            {accessCopy.back}
+          </button>
+        </section>
+      </main>
     );
   }
 

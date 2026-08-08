@@ -44,6 +44,12 @@ export default function DashboardLayout({
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+          await supabase.rpc("refresh_my_subscription_access");
+          void fetch("/api/billing/manage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "sync_my_campaign_access" }),
+          });
           const { data: prof } = await supabase
             .from("profiles")
             .select("role, language, maintenance_access")
@@ -185,6 +191,67 @@ export default function DashboardLayout({
   const visiblePins = pinnedAnnouncements.filter(
     (a) => !dismissedPins.includes(a.id)
   );
+  const announcementCopy = {
+    en: {
+      dismissAnnouncement: "Dismiss announcement",
+      feedbackSurvey: "Feedback survey",
+      announcement: "Announcement",
+      thanks: "Thank you for your response!",
+      answer: "Your answer...",
+      skip: "Skip",
+      dismiss: "Dismiss",
+      submit: "Submit response",
+      gotIt: "Got it!",
+      close: "Close",
+    },
+    tr: {
+      dismissAnnouncement: "Duyuruyu kapat",
+      feedbackSurvey: "Geri bildirim anketi",
+      announcement: "Duyuru",
+      thanks: "Yanıtınız için teşekkürler!",
+      answer: "Yanıtınız...",
+      skip: "Atla",
+      dismiss: "Kapat",
+      submit: "Yanıtı gönder",
+      gotIt: "Anladım!",
+      close: "Kapat",
+    },
+    es: {
+      dismissAnnouncement: "Cerrar anuncio",
+      feedbackSurvey: "Encuesta de comentarios",
+      announcement: "Anuncio",
+      thanks: "¡Gracias por tu respuesta!",
+      answer: "Tu respuesta...",
+      skip: "Omitir",
+      dismiss: "Cerrar",
+      submit: "Enviar respuesta",
+      gotIt: "¡Entendido!",
+      close: "Cerrar",
+    },
+    zh: {
+      dismissAnnouncement: "关闭公告",
+      feedbackSurvey: "反馈问卷",
+      announcement: "公告",
+      thanks: "感谢您的回复！",
+      answer: "请输入您的回答...",
+      skip: "跳过",
+      dismiss: "关闭",
+      submit: "提交回复",
+      gotIt: "知道了！",
+      close: "关闭",
+    },
+  }[userLang as "en" | "tr" | "es" | "zh"] || {
+    dismissAnnouncement: "Dismiss announcement",
+    feedbackSurvey: "Feedback survey",
+    announcement: "Announcement",
+    thanks: "Thank you for your response!",
+    answer: "Your answer...",
+    skip: "Skip",
+    dismiss: "Dismiss",
+    submit: "Submit response",
+    gotIt: "Got it!",
+    close: "Close",
+  };
 
   if (isFullscreenPage) {
     return <div className="min-h-screen bg-surface-secondary">{children}</div>;
@@ -206,7 +273,7 @@ export default function DashboardLayout({
           <button
             onClick={() => handleDismissPin(ann.id)}
             className="shrink-0 p-1 hover:bg-white/20 rounded-lg transition-all cursor-pointer active:scale-95"
-            aria-label="Dismiss announcement"
+            aria-label={announcementCopy.dismissAnnouncement}
           >
             <X size={13} />
           </button>
@@ -236,12 +303,13 @@ export default function DashboardLayout({
                 <div className="flex items-center gap-2">
                   <Megaphone size={18} />
                   <span className="text-xs font-extrabold uppercase tracking-wider opacity-80">
-                    {popupAnn.type === "feedback" ? "📋 Feedback Survey" : "📢 Announcement"}
+                    {popupAnn.type === "feedback" ? "📋 " + announcementCopy.feedbackSurvey : "📢 " + announcementCopy.announcement}
                   </span>
                 </div>
                 <button
                   onClick={handleClosePopup}
                   className="p-1 hover:bg-white/20 rounded-lg transition-all cursor-pointer"
+                  aria-label={announcementCopy.close}
                 >
                   <X size={15} />
                 </button>
@@ -254,7 +322,7 @@ export default function DashboardLayout({
               {popupSubmitted ? (
                 <div className="text-center py-4 space-y-3">
                   <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
-                  <p className="text-sm font-bold text-green-700">Thank you for your response!</p>
+                  <p className="text-sm font-bold text-green-700">{announcementCopy.thanks}</p>
                 </div>
               ) : (
                 <>
@@ -277,7 +345,7 @@ export default function DashboardLayout({
                                 [q.id || idx]: e.target.value,
                               }))
                             }
-                            placeholder="Your answer..."
+                            placeholder={announcementCopy.answer}
                             className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand resize-none text-gray-900 bg-white placeholder-gray-400"
                           />
                         </div>
@@ -290,7 +358,7 @@ export default function DashboardLayout({
                       onClick={handleClosePopup}
                       className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-50 cursor-pointer transition-all"
                     >
-                      {popupAnn.type === "feedback" ? "Skip" : "Dismiss"}
+                      {popupAnn.type === "feedback" ? announcementCopy.skip : announcementCopy.dismiss}
                     </button>
                     {popupAnn.type === "feedback" ? (
                       <button
@@ -301,7 +369,7 @@ export default function DashboardLayout({
                         {submittingPopup ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          "Submit Response"
+                          announcementCopy.submit
                         )}
                       </button>
                     ) : (
@@ -309,7 +377,7 @@ export default function DashboardLayout({
                         onClick={handleClosePopup}
                         className="flex-1 py-2.5 bg-brand text-white rounded-xl text-xs font-bold hover:bg-brand-hover cursor-pointer transition-all active:scale-95"
                       >
-                        Got it!
+                        {announcementCopy.gotIt}
                       </button>
                     )}
                   </div>

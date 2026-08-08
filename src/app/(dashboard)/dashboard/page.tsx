@@ -508,27 +508,18 @@ export default function DashboardPage() {
 
       if (profileData) {
         setGoalDraft(String(profileData.daily_study_goal_minutes || 60));
-        const now = new Date();
-        const trialEnds = profileData.trial_ends_at ? new Date(profileData.trial_ends_at) : null;
-        const isTrialActive = trialEnds && trialEnds > now;
-
-        // Auto-downgrade when trialing but trial ends date is past
-        if (profileData.subscription_status === "trialing" && !isTrialActive) {
-          setShowTrialEndedModal(true);
-          const updatedProfile = {
-            ...profileData,
-            subscription_status: "expired",
-            plan: "free"
-          };
-          setProfile(updatedProfile);
-          
-          await supabase
-            .from("profiles")
-            .update({ subscription_status: "expired", plan: "free" })
-            .eq("id", user.id);
-        } else {
-          setProfile(profileData);
-        }
+        await supabase.rpc("refresh_my_subscription_access");
+        const { data: refreshedProfile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+        const effectiveProfile = refreshedProfile || profileData;
+        const trialWasExpired = profileData.subscription_status === "trialing"
+          && profileData.trial_ends_at
+          && new Date(profileData.trial_ends_at) <= new Date();
+        if (trialWasExpired && effectiveProfile.plan === "free") setShowTrialEndedModal(true);
+        setProfile(effectiveProfile);
       }
 
       // Fetch user courses

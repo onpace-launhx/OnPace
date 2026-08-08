@@ -41,6 +41,8 @@ import {
   MapPin
 } from "lucide-react";
 import { formatBugReportTrackingNumber } from "@/lib/bug-report";
+import { SubscriptionOperationsPanel } from "@/components/admin/SubscriptionOperationsPanel";
+import { BulkAccessControls } from "@/components/admin/BulkAccessControls";
 
 interface IntegrationConfigResponse {
   error?: unknown;
@@ -61,6 +63,9 @@ interface IntegrationConfigResponse {
 
 type MaintenanceLanguage = "en" | "tr" | "es" | "zh";
 type AdminLanguage = MaintenanceLanguage;
+type PaymentPlanKey = "pro_monthly" | "pro_yearly" | "founding_member";
+type PaymentCheckoutUrls = Record<PaymentPlanKey, string>;
+type LocalizedPlanNames = Record<PaymentPlanKey, Record<MaintenanceLanguage, string>>;
 type MaintenanceContent = Record<MaintenanceLanguage, {
   badge: string;
   title: string;
@@ -70,22 +75,74 @@ type MaintenanceContent = Record<MaintenanceLanguage, {
   back_soon: string;
 }>;
 
+const DEFAULT_PAYMENT_CHECKOUT_URLS: PaymentCheckoutUrls = {
+  pro_monthly: "https://eshipx.com/store/onpace/onpacemonthly",
+  pro_yearly: "",
+  founding_member: "",
+};
+
+const DEFAULT_LOCALIZED_PLAN_NAMES: LocalizedPlanNames = {
+  pro_monthly: { en: "Pro Monthly", tr: "Pro Aylık", es: "Pro Mensual", zh: "Pro 月度版" },
+  pro_yearly: { en: "Pro Yearly", tr: "Pro Yıllık", es: "Pro Anual", zh: "Pro 年度版" },
+  founding_member: { en: "Founding Member", tr: "Kurucu Üye", es: "Miembro Fundador", zh: "创始会员" },
+};
+
+const PAYMENT_SETTINGS_COPY = {
+  en: { accept: "Accept EshipX payments", acceptHelp: "Open or close package purchases instantly.", catalog: "EshipX package catalog", catalogHelp: "Set the destination link for each package. Only secure EshipX links are accepted.", links: "Payment links", names: "Localized package names", monthly: "Monthly", yearly: "Yearly", lifetime: "Lifetime / Founding", enabled: "Payments are open", disabled: "Payments are closed", saveHint: "Link and name changes take effect after saving system settings." },
+  tr: { accept: "eShipX ödemelerini kabul et", acceptHelp: "Paket satın alımlarını anında açın veya kapatın.", catalog: "eShipX paket kataloğu", catalogHelp: "Her paketin yönleneceği ödeme bağlantısını belirleyin. Yalnızca güvenli eShipX bağlantıları kabul edilir.", links: "Ödeme bağlantıları", names: "Dile özel paket adları", monthly: "Aylık", yearly: "Yıllık", lifetime: "Ömür boyu / Kurucu", enabled: "Ödemeler açık", disabled: "Ödemeler kapalı", saveHint: "Bağlantı ve ad değişiklikleri sistem ayarlarını kaydettikten sonra geçerli olur." },
+  es: { accept: "Aceptar pagos de EshipX", acceptHelp: "Activa o desactiva las compras de planes al instante.", catalog: "Catálogo de planes de EshipX", catalogHelp: "Define el enlace de pago de cada plan. Solo se aceptan enlaces seguros de EshipX.", links: "Enlaces de pago", names: "Nombres localizados de los planes", monthly: "Mensual", yearly: "Anual", lifetime: "De por vida / Fundador", enabled: "Pagos activados", disabled: "Pagos desactivados", saveHint: "Los cambios de enlaces y nombres se aplican al guardar los ajustes del sistema." },
+  zh: { accept: "接受 EshipX 付款", acceptHelp: "即时开启或关闭套餐购买。", catalog: "EshipX 套餐目录", catalogHelp: "为每个套餐设置付款目标链接，仅接受安全的 EshipX 链接。", links: "付款链接", names: "多语言套餐名称", monthly: "月度", yearly: "年度", lifetime: "终身 / 创始会员", enabled: "付款已开启", disabled: "付款已关闭", saveHint: "链接和名称将在保存系统设置后生效。" },
+} as const;
+
+function normalizePaymentCheckoutUrls(value: unknown): PaymentCheckoutUrls {
+  const source = value && typeof value === "object" ? value as Partial<Record<PaymentPlanKey, unknown>> : {};
+  return {
+    pro_monthly: typeof source.pro_monthly === "string" ? source.pro_monthly : DEFAULT_PAYMENT_CHECKOUT_URLS.pro_monthly,
+    pro_yearly: typeof source.pro_yearly === "string" ? source.pro_yearly : "",
+    founding_member: typeof source.founding_member === "string" ? source.founding_member : "",
+  };
+}
+
+function normalizeLocalizedPlanNames(value: unknown): LocalizedPlanNames {
+  const source = value && typeof value === "object" ? value as Partial<Record<PaymentPlanKey, unknown>> : {};
+  return (Object.keys(DEFAULT_LOCALIZED_PLAN_NAMES) as PaymentPlanKey[]).reduce((result, plan) => {
+    const localized = source[plan] && typeof source[plan] === "object"
+      ? source[plan] as Partial<Record<MaintenanceLanguage, unknown>>
+      : {};
+    result[plan] = (Object.keys(DEFAULT_LOCALIZED_PLAN_NAMES[plan]) as MaintenanceLanguage[]).reduce((names, language) => {
+      names[language] = typeof localized[language] === "string" && localized[language]?.trim()
+        ? localized[language]!.trim()
+        : DEFAULT_LOCALIZED_PLAN_NAMES[plan][language];
+      return names;
+    }, {} as Record<MaintenanceLanguage, string>);
+    return result;
+  }, {} as LocalizedPlanNames);
+}
+
 const ADMIN_UI_COPY = {
   en: {
     back: "Back to Dashboard", title: "Administrator Panel", subtitle: "Manage user profiles, promotional discount campaigns, and system parameters.",
     superConsole: "Super Admin Console", subConsole: "Sub-Admin Console", totalStudents: "Total Registered Students", proMembers: "Active Pro Members", proRatio: "Pro Ratio", totalAdmins: "Total Administrators",
+    usersTab: "Users & Stats", promosTab: "Promo codes", paymentsTab: "Payments & Plans", configTab: "System Config", logsTab: "Audit Logs", bugsTab: "Bug Reports & AI Analytics", coursesTab: "Course Selections",
+    registered: "Registered students", name: "Full name", grade: "Grade level", subscription: "Subscription plan", expiration: "Expiration / status", role: "Admin role", actions: "Actions", emptyUsers: "No users registered yet.", anonymous: "Anonymous user", unspecified: "Not specified", founding: "Founding", monthly: "Monthly plan", yearly: "Yearly plan", renews: "Renews", lifetime: "Lifetime access", proTrial: "Pro trial", freeActive: "Free active", student: "Student", subAdmin: "Sub-admin", setPlan: "Set plan", history: "History", cancelSub: "Cancel subscription", editProfile: "Edit profile", editRole: "Edit role", deleteUser: "Delete",
   },
   tr: {
     back: "Panele dön", title: "Yönetici Paneli", subtitle: "Kullanıcı profillerini, promosyon kampanyalarını ve sistem ayarlarını yönetin.",
     superConsole: "Süper Yönetici Konsolu", subConsole: "Alt Yönetici Konsolu", totalStudents: "Toplam kayıtlı öğrenci", proMembers: "Aktif Pro üyeler", proRatio: "Pro oranı", totalAdmins: "Toplam yönetici",
+    usersTab: "Kullanıcılar ve İstatistikler", promosTab: "Promosyon Kodları", paymentsTab: "Ödeme ve Paketler", configTab: "Sistem Ayarları", logsTab: "İşlem Kayıtları", bugsTab: "Hata Bildirimleri ve AI Analizi", coursesTab: "Ders Seçimleri",
+    registered: "Kayıtlı öğrenciler", name: "Ad soyad", grade: "Sınıf seviyesi", subscription: "Abonelik paketi", expiration: "Bitiş / durum", role: "Yönetici rolü", actions: "İşlemler", emptyUsers: "Henüz kayıtlı kullanıcı yok.", anonymous: "İsimsiz kullanıcı", unspecified: "Belirtilmemiş", founding: "Kurucu", monthly: "Aylık paket", yearly: "Yıllık paket", renews: "Yenilenme", lifetime: "Ömür boyu erişim", proTrial: "Pro deneme", freeActive: "Ücretsiz aktif", student: "Öğrenci", subAdmin: "Alt yönetici", setPlan: "Paket tanımla", history: "Geçmiş", cancelSub: "Aboneliği iptal et", editProfile: "Profili düzenle", editRole: "Rolü düzenle", deleteUser: "Sil",
   },
   es: {
     back: "Volver al panel", title: "Panel de administración", subtitle: "Gestiona perfiles de usuario, campañas promocionales y parámetros del sistema.",
     superConsole: "Consola de superadministrador", subConsole: "Consola de subadministrador", totalStudents: "Total de estudiantes registrados", proMembers: "Miembros Pro activos", proRatio: "Proporción Pro", totalAdmins: "Total de administradores",
+    usersTab: "Usuarios y estadísticas", promosTab: "Códigos promocionales", paymentsTab: "Pagos y planes", configTab: "Configuración", logsTab: "Registro de auditoría", bugsTab: "Errores y análisis de IA", coursesTab: "Selección de cursos",
+    registered: "Estudiantes registrados", name: "Nombre completo", grade: "Nivel", subscription: "Plan", expiration: "Vencimiento / estado", role: "Rol administrativo", actions: "Acciones", emptyUsers: "Aún no hay usuarios registrados.", anonymous: "Usuario anónimo", unspecified: "No especificado", founding: "Fundador", monthly: "Plan mensual", yearly: "Plan anual", renews: "Renueva", lifetime: "Acceso de por vida", proTrial: "Prueba Pro", freeActive: "Gratis activo", student: "Estudiante", subAdmin: "Subadministrador", setPlan: "Asignar plan", history: "Historial", cancelSub: "Cancelar suscripción", editProfile: "Editar perfil", editRole: "Editar rol", deleteUser: "Eliminar",
   },
   zh: {
     back: "返回工作台", title: "管理面板", subtitle: "管理用户资料、优惠活动和系统参数。",
     superConsole: "超级管理员控制台", subConsole: "子管理员控制台", totalStudents: "注册学生总数", proMembers: "活跃 Pro 会员", proRatio: "Pro 占比", totalAdmins: "管理员总数",
+    usersTab: "用户与统计", promosTab: "优惠码", paymentsTab: "付款与套餐", configTab: "系统设置", logsTab: "审计日志", bugsTab: "错误报告与 AI 分析", coursesTab: "课程选择",
+    registered: "已注册学生", name: "姓名", grade: "年级", subscription: "订阅套餐", expiration: "到期 / 状态", role: "管理员角色", actions: "操作", emptyUsers: "暂无注册用户。", anonymous: "匿名用户", unspecified: "未填写", founding: "创始会员", monthly: "月度套餐", yearly: "年度套餐", renews: "续费时间", lifetime: "终身权限", proTrial: "Pro 试用", freeActive: "免费套餐有效", student: "学生", subAdmin: "子管理员", setPlan: "设置套餐", history: "历史", cancelSub: "取消订阅", editProfile: "编辑资料", editRole: "编辑角色", deleteUser: "删除",
   },
 } as const;
 
@@ -246,6 +303,7 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [promocodes, setPromocodes] = useState<any[]>([]);
   const [promoRedemptions, setPromoRedemptions] = useState<any[]>([]);
+  const [promoLoadError, setPromoLoadError] = useState("");
   const [promoRedemptionFilter, setPromoRedemptionFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -312,8 +370,8 @@ export default function AdminPage() {
 
   // System Settings (Payment, Maintenance, Pricing, Resend)
   const [paymentGatewayEnabled, setPaymentGatewayEnabled] = useState(false);
-  const [paymentProvider, setPaymentProvider] = useState("unconfigured");
-  const [paymentProviderConfigured, setPaymentProviderConfigured] = useState(false);
+  const [paymentCheckoutUrls, setPaymentCheckoutUrls] = useState<PaymentCheckoutUrls>(DEFAULT_PAYMENT_CHECKOUT_URLS);
+  const [localizedPlanNames, setLocalizedPlanNames] = useState<LocalizedPlanNames>(DEFAULT_LOCALIZED_PLAN_NAMES);
   const [disabledMsgTR, setDisabledMsgTR] = useState("");
   const [disabledMsgEN, setDisabledMsgEN] = useState("");
   const [disabledMsgES, setDisabledMsgES] = useState("");
@@ -431,6 +489,14 @@ export default function AdminPage() {
     ? currentUserProfile.language
     : "en";
   const promoCopy = PROMO_ADMIN_COPY[adminLanguage];
+  const paymentSettingsCopy = PAYMENT_SETTINGS_COPY[adminLanguage];
+  const durationMismatchLabel = adminLanguage === "tr"
+    ? "Süre uyuşmazlığı"
+    : adminLanguage === "es"
+      ? "Duración incoherente"
+      : adminLanguage === "zh"
+        ? "时长不一致"
+        : "Duration mismatch";
   const adminDateLocale = adminLanguage === "tr" ? "tr-TR" : adminLanguage === "es" ? "es-ES" : adminLanguage === "zh" ? "zh-CN" : "en-US";
   const visiblePromoRedemptions = promoRedemptionFilter === "all"
     ? promoRedemptions
@@ -577,10 +643,8 @@ export default function AdminPage() {
 
     if (sysData) {
       setPaymentGatewayEnabled(sysData.payment_gateway_enabled || false);
-      setPaymentProvider(sysData.payment_provider || "unconfigured");
-      setPaymentProviderConfigured(
-        sysData.payment_provider_configured === true
-      );
+      setPaymentCheckoutUrls(normalizePaymentCheckoutUrls(sysData.payment_checkout_urls));
+      setLocalizedPlanNames(normalizeLocalizedPlanNames(sysData.plan_names));
       setDisabledMsgTR(sysData.payment_disabled_message?.tr || "");
       setDisabledMsgEN(sysData.payment_disabled_message?.en || "");
       setProMonthlyPrice(sysData.plan_prices?.pro_monthly ?? sysData.plan_prices?.pro ?? 6.99);
@@ -625,8 +689,10 @@ export default function AdminPage() {
       }
 
       const data = await requestIntegrationConfig({
-        paymentGatewayEnabled:
-          paymentProviderConfigured && paymentGatewayEnabled,
+        paymentGatewayEnabled,
+        paymentProvider: "eshipx",
+        paymentCheckoutUrls,
+        planNames: localizedPlanNames,
         maintenanceMode,
         maintenanceContent,
         planPrices: {
@@ -655,6 +721,27 @@ export default function AdminPage() {
           ? error.message
           : "Sistem ayarları kaydedilemedi."
       );
+    } finally {
+      setSavingSystemSettings(false);
+    }
+  };
+
+  const handlePaymentGatewayChange = async (enabled: boolean) => {
+    const previous = paymentGatewayEnabled;
+    setPaymentGatewayEnabled(enabled);
+    setSavingSystemSettings(true);
+    setSystemSettingsError(null);
+    try {
+      await requestIntegrationConfig({
+        paymentGatewayEnabled: enabled,
+        paymentProvider: "eshipx",
+        ...(enabled ? { paymentCheckoutUrls, planNames: localizedPlanNames } : {}),
+      });
+      setSaveSystemSettingsSuccess(true);
+      setTimeout(() => setSaveSystemSettingsSuccess(false), 3000);
+    } catch (error) {
+      setPaymentGatewayEnabled(previous);
+      setSystemSettingsError(error instanceof Error ? error.message : "Ödeme ayarı değiştirilemedi.");
     } finally {
       setSavingSystemSettings(false);
     }
@@ -762,12 +849,15 @@ export default function AdminPage() {
   };
 
   async function fetchPromocodes() {
+    setPromoLoadError("");
     const [promoResult, redemptionResult] = await Promise.all([
       supabase.from("promocodes").select("*").order("created_at", { ascending: false }),
       supabase.rpc("admin_get_promo_redemptions"),
     ]);
     if (!promoResult.error && promoResult.data) setPromocodes(promoResult.data);
     if (!redemptionResult.error && redemptionResult.data) setPromoRedemptions(redemptionResult.data);
+    const loadError = promoResult.error?.message || redemptionResult.error?.message;
+    if (loadError) setPromoLoadError(loadError);
   }
 
   const handleSaveAiSettings = async (e: React.FormEvent) => {
@@ -1205,6 +1295,7 @@ export default function AdminPage() {
   const perms = currentUserProfile?.permissions || [];
   const canManageUsers = isSuperAdmin || perms.includes("manage_users");
   const canManagePromocodes = isSuperAdmin || perms.includes("manage_promocodes");
+  const canManageBilling = isSuperAdmin || perms.includes("manage_billing");
   const canManageSettings = isSuperAdmin || perms.includes("manage_settings");
   const canManageCommunications =
     isSuperAdmin || perms.includes("manage_communications");
@@ -1481,6 +1572,7 @@ export default function AdminPage() {
   const hasAnyPermission =
     canManageUsers ||
     canManagePromocodes ||
+    canManageBilling ||
     canManageSettings ||
     canManageCommunications ||
     canViewLogs;
@@ -1504,8 +1596,8 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8F9FC] p-6 lg:p-10 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-[#F8F9FC] p-3 font-sans sm:p-5 lg:p-8">
+      <div className="mx-auto w-full max-w-[1800px] space-y-6 lg:space-y-8">
         
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-200/60 pb-5">
@@ -1529,7 +1621,7 @@ export default function AdminPage() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-200 gap-6 overflow-x-auto pb-px">
+        <div className="flex flex-wrap gap-x-5 gap-y-2 border-b border-gray-200 pb-px">
           {(isSuperAdmin || perms.includes("manage_users")) && (
             <button
               onClick={() => setActiveTab("users")}
@@ -1537,7 +1629,7 @@ export default function AdminPage() {
                 activeTab === "users" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              👥 Users & Stats
+              👥 {adminText.usersTab}
             </button>
           )}
           {(isSuperAdmin || perms.includes("manage_promocodes")) && (
@@ -1547,7 +1639,17 @@ export default function AdminPage() {
                 activeTab === "promocodes" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              🏷️ Promocodes
+              🏷️ {adminText.promosTab}
+            </button>
+          )}
+          {canManageBilling && (
+            <button
+              onClick={() => setActiveTab("billing_operations")}
+              className={`pb-4 text-xs sm:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === "billing_operations" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {adminText.paymentsTab}
             </button>
           )}
           {(isSuperAdmin || perms.includes("manage_settings")) && (
@@ -1557,7 +1659,7 @@ export default function AdminPage() {
                 activeTab === "config" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              ⚙️ System Config
+              ⚙️ {adminText.configTab}
             </button>
           )}
           {(isSuperAdmin || perms.includes("view_logs")) && (
@@ -1567,7 +1669,7 @@ export default function AdminPage() {
                 activeTab === "logs" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              📋 Audit Logs
+              📋 {adminText.logsTab}
             </button>
           )}
           <button
@@ -1576,7 +1678,7 @@ export default function AdminPage() {
               activeTab === "bugs" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
-            🐞 Bug Reports & AI Analytics
+            🐞 {adminText.bugsTab}
           </button>
           {canManageUsers && (
             <button
@@ -1585,7 +1687,7 @@ export default function AdminPage() {
                 activeTab === "courses" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              📚 Course Selections
+              📚 {adminText.coursesTab}
             </button>
           )}
           {isSuperAdmin && (
@@ -1870,19 +1972,15 @@ export default function AdminPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-150">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-bold text-surface-dark">💳 Accept Real Payments</p>
-                      <p className="text-[10px] text-gray-500">Enable online checkout for plan upgrades</p>
+                      <p className="text-xs font-bold text-surface-dark">💳 {paymentSettingsCopy.accept}</p>
+                      <p className="text-[10px] text-gray-500">{paymentSettingsCopy.acceptHelp}</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={paymentGatewayEnabled}
-                      onChange={(e) => setPaymentGatewayEnabled(e.target.checked)}
-                      disabled={!paymentProviderConfigured && !paymentGatewayEnabled}
-                      title={
-                        paymentProviderConfigured
-                          ? "Ödeme kabulünü aç veya kapat"
-                          : "Önce gerçek bir ödeme sağlayıcısı yapılandırılmalıdır"
-                      }
+                      onChange={(e) => void handlePaymentGatewayChange(e.target.checked)}
+                      disabled={savingSystemSettings}
+                      title={paymentSettingsCopy.accept}
                       className="h-5 w-5 rounded border-gray-300 text-brand focus:ring-brand cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
                     />
                   </div>
@@ -2106,15 +2204,71 @@ export default function AdminPage() {
                   </p>
                 </div>
 
-                {!paymentProviderConfigured && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs text-amber-800">
-                    <p className="font-bold">Gerçek ödeme sağlayıcısı henüz yapılandırılmadı.</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
-                      Ödeme kabulü güvenlik amacıyla kapalı tutuluyor. Sağlayıcı adaptörü ve imzalı webhook
-                      tamamlandıktan sonra bu anahtar kullanılabilir. Mevcut sağlayıcı: {paymentProvider}.
-                    </p>
+                <div className="rounded-3xl border border-indigo-100 bg-indigo-50/35 p-4 sm:p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-extrabold text-surface-dark">{paymentSettingsCopy.catalog}</h3>
+                      <p className="mt-1 max-w-3xl text-[11px] leading-5 text-gray-500">{paymentSettingsCopy.catalogHelp}</p>
+                    </div>
+                    <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-black ${paymentGatewayEnabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>
+                      {paymentGatewayEnabled ? paymentSettingsCopy.enabled : paymentSettingsCopy.disabled}
+                    </span>
                   </div>
-                )}
+
+                  <div className="mt-5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{paymentSettingsCopy.links}</p>
+                    <div className="mt-2 grid gap-3 xl:grid-cols-3">
+                      {([
+                        ["pro_monthly", paymentSettingsCopy.monthly],
+                        ["pro_yearly", paymentSettingsCopy.yearly],
+                        ["founding_member", paymentSettingsCopy.lifetime],
+                      ] as Array<[PaymentPlanKey, string]>).map(([plan, label]) => (
+                        <label key={plan} className="rounded-2xl border border-gray-150 bg-white p-3 text-[10px] font-bold text-gray-600">
+                          {label}
+                          <input
+                            type="url"
+                            value={paymentCheckoutUrls[plan]}
+                            onChange={(event) => setPaymentCheckoutUrls((current) => ({ ...current, [plan]: event.target.value }))}
+                            placeholder="https://eshipx.com/store/..."
+                            className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-medium text-surface-dark outline-none focus:border-brand"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{paymentSettingsCopy.names}</p>
+                    <div className="mt-2 grid gap-3 xl:grid-cols-2">
+                      {([
+                        ["pro_yearly", paymentSettingsCopy.yearly],
+                        ["founding_member", paymentSettingsCopy.lifetime],
+                      ] as Array<[PaymentPlanKey, string]>).map(([plan, label]) => (
+                        <div key={plan} className="rounded-2xl border border-gray-150 bg-white p-4">
+                          <p className="text-xs font-extrabold text-surface-dark">{label}</p>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {(["en", "tr", "es", "zh"] as MaintenanceLanguage[]).map((language) => (
+                              <label key={language} className="text-[9px] font-black uppercase tracking-wider text-gray-400">
+                                {language}
+                                <input
+                                  required
+                                  maxLength={80}
+                                  value={localizedPlanNames[plan][language]}
+                                  onChange={(event) => setLocalizedPlanNames((current) => ({
+                                    ...current,
+                                    [plan]: { ...current[plan], [language]: event.target.value },
+                                  }))}
+                                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-semibold normal-case tracking-normal text-surface-dark outline-none focus:border-brand"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="mt-3 text-[10px] leading-4 text-gray-500">{paymentSettingsCopy.saveHint}</p>
+                </div>
 
                 {/* Plan Pricing Editors */}
                 <div>
@@ -2338,6 +2492,10 @@ export default function AdminPage() {
         )}
 
         {/* Promo Codes Management Panel */}
+        {activeTab === "billing_operations" && canManageBilling && (
+          <SubscriptionOperationsPanel language={adminLocale} profiles={profiles} />
+        )}
+
         {activeTab === "promocodes" && canManagePromocodes && (
           <div className="bg-white border border-gray-150 rounded-2xl shadow-sm p-6 space-y-6">
             <div>
@@ -2348,6 +2506,11 @@ export default function AdminPage() {
                 {promoCopy.description}
               </p>
             </div>
+            {promoLoadError && (
+              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                {adminLanguage === "tr" ? "Promosyon kullanım kayıtları yüklenemedi" : adminLanguage === "es" ? "No se pudieron cargar los canjes" : adminLanguage === "zh" ? "无法加载兑换记录" : "Promo redemption records could not be loaded"}: {promoLoadError}
+              </div>
+            )}
 
             {/* Create Promocode Form */}
             <form onSubmit={handleCreatePromocode} className="bg-gray-50/50 p-4 border border-gray-200/60 rounded-2xl space-y-4">
@@ -2475,7 +2638,10 @@ export default function AdminPage() {
                       const start = new Date(promo.start_date);
                       const end = new Date(promo.end_date);
                       const isExpired = now > end || now < start;
-                      const limitReached = promo.max_uses !== null && promo.uses_count >= promo.max_uses;
+                      const recordedUsageCount = promoRedemptions.filter((redemption) => redemption.promocode_id === promo.id).length;
+                      const reliableUsageCount = Math.max(Number(promo.uses_count) || 0, recordedUsageCount);
+                      const hasUsageMismatch = recordedUsageCount !== Number(promo.uses_count || 0);
+                      const limitReached = promo.max_uses !== null && reliableUsageCount >= promo.max_uses;
 
                       return (
                         <tr key={promo.id} className="hover:bg-gray-50/40">
@@ -2493,8 +2659,9 @@ export default function AdminPage() {
                               onClick={() => setPromoRedemptionFilter(promo.id)}
                               className="font-bold text-brand hover:underline"
                             >
-                              {promo.uses_count} / {promo.max_uses !== null ? promo.max_uses : "∞"}
+                              {reliableUsageCount} / {promo.max_uses !== null ? promo.max_uses : "∞"}
                             </button>
+                            {hasUsageMismatch && <span className="ml-1 text-[9px] font-bold text-amber-600">DB ↔ log</span>}
                           </td>
                           <td className="px-5 py-3 text-gray-500">
                             {start.toLocaleDateString()} to {end.toLocaleDateString()}
@@ -2569,6 +2736,12 @@ export default function AdminPage() {
                     ) : visiblePromoRedemptions.map((redemption) => {
                       const trialStart = redemption.trial_started_at ? new Date(redemption.trial_started_at) : null;
                       const trialEnd = redemption.trial_ends_at ? new Date(redemption.trial_ends_at) : null;
+                      const actualTrialDays = trialStart && trialEnd
+                        ? Math.round((trialEnd.getTime() - trialStart.getTime()) / 86_400_000)
+                        : null;
+                      const hasDurationMismatch = redemption.discount_type === "free_trial"
+                        && actualTrialDays !== null
+                        && actualTrialDays !== Number(redemption.granted_value);
                       return (
                         <tr key={redemption.id} className="hover:bg-brand/[0.025]">
                           <td className="px-5 py-3 font-extrabold text-brand">{redemption.code}</td>
@@ -2582,6 +2755,11 @@ export default function AdminPage() {
                               : redemption.discount_type === "lifetime"
                                 ? promoCopy.lifetime
                                 : `${redemption.granted_value}% ${promoCopy.percentage}`}
+                              {hasDurationMismatch && (
+                                <span className="mt-1 block rounded-md bg-red-50 px-1.5 py-1 text-[9px] font-extrabold text-red-700">
+                                  {durationMismatchLabel}: {redemption.granted_value} / {actualTrialDays}
+                                </span>
+                              )}
                           </td>
                           <td className="px-5 py-3 text-gray-500">
                             {trialStart && trialEnd
@@ -2620,29 +2798,65 @@ export default function AdminPage() {
 
         {/* Users Table */}
         {activeTab === "users" && canManageUsers && (
+          <div className="space-y-4">
+            {canManageBilling && <BulkAccessControls language={adminLocale} onComplete={fetchProfiles} />}
           <div className="bg-white border border-gray-150 rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-base font-bold text-surface-dark">Registered Students</h2>
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4 sm:px-6 sm:py-5">
+              <h2 className="text-base font-bold text-surface-dark">{adminText.registered}</h2>
               {loading && <Loader2 className="h-5 w-5 animate-spin text-brand" />}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+            <div className="grid gap-3 p-3 sm:p-4 lg:hidden">
+              {profiles.length === 0 && <p className="py-8 text-center text-sm text-gray-400">{adminText.emptyUsers}</p>}
+              {profiles.map((profile) => {
+                const trialEnd = profile.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+                const isTrialActive = Boolean(trialEnd && trialEnd > new Date());
+                const trialDays = isTrialActive && trialEnd ? Math.max(1, Math.ceil((trialEnd.getTime() - Date.now()) / 86_400_000)) : 0;
+                const planLabel = isTrialActive
+                  ? `${trialDays} ${promoCopy.days} ${promoCopy.proTrial}`
+                  : profile.plan === "founding" ? adminText.founding
+                    : profile.plan === "pro" ? promoCopy.proTier : promoCopy.freeTier;
+                return (
+                  <article key={profile.id} className="rounded-2xl border border-gray-150 bg-white p-4 shadow-xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0"><h3 className="truncate text-sm font-extrabold text-surface-dark">{profile.full_name || adminText.anonymous}</h3><p className="mt-0.5 break-all text-[11px] text-gray-400">{profile.email}</p></div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${profile.plan === "pro" || profile.plan === "founding" || isTrialActive ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-600"}`}>{planLabel}</span>
+                    </div>
+                    <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                      <div><dt className="font-bold text-gray-400">{adminText.grade}</dt><dd className="mt-1 font-semibold text-gray-700">{profile.grade_level || adminText.unspecified}</dd></div>
+                      <div><dt className="font-bold text-gray-400">{adminText.role}</dt><dd className="mt-1 font-semibold text-gray-700">{profile.role === "super_admin" ? "Super Admin" : profile.role === "admin" ? adminText.subAdmin : adminText.student}</dd></div>
+                      <div className="col-span-2"><dt className="font-bold text-gray-400">{adminText.expiration}</dt><dd className="mt-1 font-semibold text-gray-700">{trialEnd ? trialEnd.toLocaleString(adminDateLocale) : profile.billing_cycle === "lifetime" || profile.plan === "founding" ? adminText.lifetime : adminText.freeActive}</dd></div>
+                    </dl>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <button disabled={updatingId !== null} onClick={() => handleOpenAdjustAccess(profile)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[11px] font-bold text-gray-700"><CreditCard size={13} />{adminText.setPlan}</button>
+                      <button disabled={updatingId !== null} onClick={() => handleOpenBillingDetails(profile)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[11px] font-bold text-gray-700"><Clock size={13} />{adminText.history}</button>
+                      <button disabled={updatingId !== null} onClick={() => handleOpenEditStudent(profile)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[11px] font-bold text-gray-700"><Edit size={13} />{adminText.editProfile}</button>
+                      {isSuperAdmin && <button disabled={updatingId !== null} onClick={() => handleOpenEditUser(profile)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[11px] font-bold text-gray-700"><UserCog size={13} />{adminText.editRole}</button>}
+                      {profile.plan !== "free" && <button disabled={updatingId !== null} onClick={() => handleCancelUserSubscription(profile.id, profile.full_name || profile.email || "User")} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[11px] font-bold text-red-700"><X size={13} />{adminText.cancelSub}</button>}
+                      <button disabled={updatingId !== null} onClick={() => handleDeleteStudent(profile.id, profile.full_name)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50/40 px-3 py-2.5 text-[11px] font-bold text-red-600"><Trash2 size={13} />{adminText.deleteUser}</button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full min-w-[1120px] text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 text-xs font-semibold text-gray-500 border-b border-gray-100">
-                    <th className="px-6 py-4">Full Name</th>
-                    <th className="px-6 py-4">Grade Level</th>
-                    <th className="px-6 py-4">Subscription Plan</th>
-                    <th className="px-6 py-4">Expiration / Status</th>
-                    <th className="px-6 py-4">Admin Role</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                    <th className="px-5 py-4">{adminText.name}</th>
+                    <th className="px-5 py-4">{adminText.grade}</th>
+                    <th className="px-5 py-4">{adminText.subscription}</th>
+                    <th className="px-5 py-4">{adminText.expiration}</th>
+                    <th className="px-5 py-4">{adminText.role}</th>
+                    <th className="px-5 py-4 text-right">{adminText.actions}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {profiles.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-6 py-10 text-center text-gray-400">
-                        No users registered in the database yet.
+                        {adminText.emptyUsers}
                       </td>
                     </tr>
                   )}
@@ -2659,7 +2873,7 @@ export default function AdminPage() {
                       <tr key={profile.id} className="hover:bg-gray-50/50">
                         <td className="px-6 py-4">
                           <div className="font-semibold text-surface-dark">
-                            {profile.full_name || "Anonymous User"}
+                            {profile.full_name || adminText.anonymous}
                           </div>
                           {profile.email && (
                             <div className="text-[11px] text-gray-400 font-medium mt-0.5">
@@ -2668,7 +2882,7 @@ export default function AdminPage() {
                           )}
                         </td>
                         <td className="px-6 py-4 text-gray-600">
-                          {profile.grade_level || "Not specified"}
+                          {profile.grade_level || adminText.unspecified}
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${isTrialActive || (isUserPro && !isExpired) ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-600"}`}>
@@ -2682,7 +2896,7 @@ export default function AdminPage() {
                               </>
                             ) : profile.plan === "founding" ? (
                               <>
-                                <Sparkles size={12} className="text-purple-500 animate-pulse" /> Founding
+                                <Sparkles size={12} className="text-purple-500 animate-pulse" /> {adminText.founding}
                               </>
                             ) : (
                               promoCopy.freeTier
@@ -2704,28 +2918,28 @@ export default function AdminPage() {
                           ) : isUserPro && !isExpired ? (
                             profile.billing_cycle === "monthly" ? (
                               <div className="space-y-0.5">
-                                <span className="font-bold text-gray-700 flex items-center gap-1"><Clock size={11} className="text-brand" /> Monthly Plan</span>
-                                {profile.next_billing_date && <span className="block text-[10px] text-gray-400">Renews: {new Date(profile.next_billing_date).toLocaleDateString()}</span>}
+                                <span className="font-bold text-gray-700 flex items-center gap-1"><Clock size={11} className="text-brand" /> {adminText.monthly}</span>
+                                {profile.next_billing_date && <span className="block text-[10px] text-gray-400">{adminText.renews}: {new Date(profile.next_billing_date).toLocaleDateString(adminDateLocale)}</span>}
                               </div>
                             ) : profile.billing_cycle === "yearly" ? (
                               <div className="space-y-0.5">
-                                <span className="font-bold text-gray-700 flex items-center gap-1"><Clock size={11} className="text-brand" /> Yearly Plan</span>
-                                {profile.next_billing_date && <span className="block text-[10px] text-gray-400">Renews: {new Date(profile.next_billing_date).toLocaleDateString()}</span>}
+                                <span className="font-bold text-gray-700 flex items-center gap-1"><Clock size={11} className="text-brand" /> {adminText.yearly}</span>
+                                {profile.next_billing_date && <span className="block text-[10px] text-gray-400">{adminText.renews}: {new Date(profile.next_billing_date).toLocaleDateString(adminDateLocale)}</span>}
                               </div>
                             ) : profile.billing_cycle === "lifetime" || !profile.trial_ends_at ? (
-                              <span className="font-semibold text-purple-650">Lifetime Access</span>
+                              <span className="font-semibold text-purple-650">{adminText.lifetime}</span>
                             ) : (
                               <div className="space-y-0.5">
-                                <span className="text-brand font-semibold">Pro Trial</span>
-                                <span className="block text-[10px] text-gray-400">Expires: {new Date(profile.trial_ends_at).toLocaleDateString()}</span>
+                                <span className="text-brand font-semibold">{adminText.proTrial}</span>
+                                <span className="block text-[10px] text-gray-400">{promoCopy.expires}: {new Date(profile.trial_ends_at).toLocaleDateString(adminDateLocale)}</span>
                               </div>
                             )
                           ) : profile.plan === "founding" ? (
-                            <span className="font-semibold text-purple-650">Lifetime Access</span>
+                            <span className="font-semibold text-purple-650">{adminText.lifetime}</span>
                           ) : isExpired ? (
                             <span className="text-red-500 font-bold">{promoCopy.trialExpired}</span>
                           ) : (
-                            "Free Active"
+                            adminText.freeActive
                           )}
                         </td>
                         <td className="px-6 py-4">
@@ -2736,24 +2950,24 @@ export default function AdminPage() {
                               ? "bg-red-50 text-red-600 border-red-100" 
                               : "bg-gray-100 text-gray-500 border-transparent"
                           }`}>
-                            {profile.role === "super_admin" ? "Super Admin" : profile.role === "admin" ? "Sub-Admin" : "Student"}
+                            {profile.role === "super_admin" ? "Super Admin" : profile.role === "admin" ? adminText.subAdmin : adminText.student}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex flex-wrap justify-end gap-2">
                             <button
                               disabled={updatingId !== null}
                               onClick={() => handleOpenAdjustAccess(profile)}
                               className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                             >
-                              <CreditCard size={12} /> Set Plan
+                              <CreditCard size={12} /> {adminText.setPlan}
                             </button>
                             <button
                               disabled={updatingId !== null}
                               onClick={() => handleOpenBillingDetails(profile)}
                               className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                             >
-                              <Clock size={12} /> History
+                              <Clock size={12} /> {adminText.history}
                             </button>
                             {profile.plan !== "free" && (
                               <button
@@ -2762,7 +2976,7 @@ export default function AdminPage() {
                                 className="px-2.5 py-1.5 rounded-lg border border-red-200 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                                 title="Cancel subscription and set plan to Free"
                               >
-                                <X size={12} /> Cancel Sub
+                                <X size={12} /> {adminText.cancelSub}
                               </button>
                             )}
                             <button
@@ -2770,7 +2984,7 @@ export default function AdminPage() {
                               onClick={() => handleOpenEditStudent(profile)}
                               className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                             >
-                              <Edit size={12} /> Edit Profile
+                              <Edit size={12} /> {adminText.editProfile}
                             </button>
                             {isSuperAdmin && (
                               <button
@@ -2778,7 +2992,7 @@ export default function AdminPage() {
                                 onClick={() => handleOpenEditUser(profile)}
                                 className="px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                               >
-                                <UserCog size={12} /> Edit Role
+                                <UserCog size={12} /> {adminText.editRole}
                               </button>
                             )}
                             <button
@@ -2786,7 +3000,7 @@ export default function AdminPage() {
                               onClick={() => handleDeleteStudent(profile.id, profile.full_name)}
                               className="px-2.5 py-1.5 rounded-lg border border-red-100 text-xs font-bold text-red-600 bg-red-50/30 hover:bg-red-50 hover:border-red-200 active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                             >
-                              <Trash2 size={12} /> Delete
+                              <Trash2 size={12} /> {adminText.deleteUser}
                             </button>
                           </div>
                         </td>
@@ -2796,6 +3010,7 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+          </div>
           </div>
         )}
 
@@ -3977,6 +4192,7 @@ export default function AdminPage() {
                       {[
                         { key: "manage_users", label: "Registered Students & Subscriptions" },
                         { key: "manage_promocodes", label: "Promo Codes Campaign Manager" },
+                        { key: "manage_billing", label: "Payments, Subscriptions & Bulk Plan Operations" },
                         { key: "manage_settings", label: "AI & R2 Configurations" },
                         { key: "manage_communications", label: "Announcements, Email & Notifications" },
                         { key: "view_logs", label: "View System Execution Logs" }

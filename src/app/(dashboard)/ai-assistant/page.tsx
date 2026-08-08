@@ -9,7 +9,6 @@ import {
   Loader2,
   BrainCircuit,
   MessageSquare,
-  BookOpen,
   HelpCircle,
   Clock,
   Lock,
@@ -21,18 +20,48 @@ import { getTranslations } from "@/lib/translations";
 import { PersonalizedLearningStudio } from "@/components/dashboard/PersonalizedLearningStudio";
 import { StudyVisual } from "@/components/ai/StudyVisual";
 import type { StudyVisualSpec } from "@/lib/study-visual";
+import { MarkdownRenderer } from "@/components/content/MarkdownRenderer";
+
+function lastChatStorageKey(userId: string) {
+  return "onpace-ai-last-chat:" + userId;
+}
+
+type Profile = {
+  id: string;
+  language?: string | null;
+  plan?: string | null;
+  trial_ends_at?: string | null;
+};
+
+type Course = {
+  id: string;
+  name: string;
+};
+
+type ChatMessage = {
+  id: string;
+  sender: "user" | "ai";
+  text: string;
+};
+
+type ChatSession = {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export default function AiAssistantPage() {
   const router = useRouter();
   const supabase = createClient();
   const chatScrollRef = useRef<HTMLDivElement>(null);
   
-  const [profile, setProfile] = useState<any>(null);
-  const [courses, setCourses] = useState<any[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Chat state
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState("");
   const [sending, setSending] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState("");
@@ -45,9 +74,96 @@ export default function AiAssistantPage() {
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const chatCopy = {
+    en: {
+      newChat: "New chat",
+      history: "Chat history",
+      suggestions: "Suggested queries",
+      noHistory: "No saved conversations yet.",
+      delete: "Delete conversation",
+      deleteConfirm: "Delete this AI conversation?",
+      conversationCount: "conversations",
+      visualButton: "Visual diagram",
+      visualTitle: "Generate a structured visual study aid",
+      visualSourceRequired: "Enter a topic to visualize first.",
+      visualError: "Study visual could not be created.",
+      thinking: "Study Coach is thinking...",
+      coursePrompt: "Ask the study coach about {course}...",
+      closeHistory: "Close chat history",
+      serviceError: "The study coach could not answer right now. Please try again in a moment.",
+    },
+    tr: {
+      newChat: "Yeni sohbet",
+      history: "Sohbet geçmişi",
+      suggestions: "Önerilen başlangıçlar",
+      noHistory: "Henüz kayıtlı sohbet yok.",
+      delete: "Sohbeti sil",
+      deleteConfirm: "Bu AI sohbetini silmek istediğinize emin misiniz?",
+      conversationCount: "sohbet",
+      visualButton: "Görsel şema",
+      visualTitle: "Yapılandırılmış görsel çalışma desteği oluştur",
+      visualSourceRequired: "Önce görselleştirilecek bir konu yazın.",
+      visualError: "Görsel çalışma desteği oluşturulamadı.",
+      thinking: "Çalışma koçu düşünüyor...",
+      coursePrompt: "{course} hakkında çalışma koçuna sor...",
+      closeHistory: "Sohbet geçmişini kapat",
+      serviceError: "Çalışma koçu şu anda yanıt veremedi. Lütfen biraz sonra tekrar deneyin.",
+    },
+    es: {
+      newChat: "Nuevo chat",
+      history: "Historial de chats",
+      suggestions: "Consultas sugeridas",
+      noHistory: "Aún no hay conversaciones guardadas.",
+      delete: "Eliminar conversación",
+      deleteConfirm: "¿Eliminar esta conversación con la IA?",
+      conversationCount: "conversaciones",
+      visualButton: "Esquema visual",
+      visualTitle: "Generar una ayuda visual de estudio estructurada",
+      visualSourceRequired: "Escribe primero un tema para visualizar.",
+      visualError: "No se pudo crear la ayuda visual de estudio.",
+      thinking: "El asesor de estudio está pensando...",
+      coursePrompt: "Pregunta al asesor de estudio sobre {course}...",
+      closeHistory: "Cerrar historial de chats",
+      serviceError: "El asesor no pudo responder ahora. Inténtalo de nuevo en un momento.",
+    },
+    zh: {
+      newChat: "新对话",
+      history: "对话历史",
+      suggestions: "建议问题",
+      noHistory: "还没有保存的对话。",
+      delete: "删除对话",
+      deleteConfirm: "要删除这段 AI 对话吗？",
+      conversationCount: "个对话",
+      visualButton: "学习图示",
+      visualTitle: "生成结构化的学习图示",
+      visualSourceRequired: "请先输入要生成图示的主题。",
+      visualError: "无法生成学习图示。",
+      thinking: "学习教练正在思考...",
+      coursePrompt: "向学习教练询问 {course}...",
+      closeHistory: "关闭对话历史",
+      serviceError: "学习教练暂时无法回答，请稍后重试。",
+    },
+  }[lang as "en" | "tr" | "es" | "zh"] || {
+    newChat: "New chat",
+    history: "Chat history",
+    suggestions: "Suggested queries",
+    noHistory: "No saved conversations yet.",
+    delete: "Delete conversation",
+    deleteConfirm: "Delete this AI conversation?",
+    conversationCount: "conversations",
+    visualButton: "Visual diagram",
+    visualTitle: "Generate a structured visual study aid",
+    visualSourceRequired: "Enter a topic to visualize first.",
+    visualError: "Study visual could not be created.",
+    thinking: "Study Coach is thinking...",
+    coursePrompt: "Ask the study coach about {course}...",
+    closeHistory: "Close chat history",
+    serviceError: "The study coach could not answer right now. Please try again in a moment.",
+  };
 
   const [activeSessionId, setActiveSessionId] = useState<string>("");
-  const [chatSessions, setChatSessions] = useState<any[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [chatHydrated, setChatHydrated] = useState(false);
   const [showChatHistory, setShowChatHistory] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"chat" | "personalized">("chat");
 
@@ -69,34 +185,54 @@ export default function AiAssistantPage() {
         .eq("id", user.id)
         .single();
       
-      setProfile(profileData);
+      setProfile(profileData as Profile | null);
 
       // Load courses
       const { data: coursesData } = await supabase
         .from("courses")
         .select("*")
         .eq("user_id", user.id);
-      if (coursesData) setCourses(coursesData);
+      if (coursesData) setCourses(coursesData as Course[]);
 
-      // Sync active chat session & messages
+      // Restore the last selected chat first. If there is no stored choice,
+      // open the latest conversation that actually has messages instead of an
+      // empty background/widget session.
       try {
-        const { data: sessions } = await supabase
+        const { data: sessions, error: sessionsError } = await supabase
           .from("ai_chat_sessions")
           .select("id, title, created_at, updated_at")
           .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: false })
           .limit(30);
+        if (sessionsError) throw sessionsError;
 
         let sessId = "";
         if (sessions && sessions.length > 0) {
-          sessId = sessions[0].id;
           setChatSessions(sessions);
+          const storedSessionId = window.localStorage.getItem(lastChatStorageKey(user.id));
+          const storedSession = sessions.find((session) => session.id === storedSessionId);
+          if (storedSession) {
+            sessId = storedSession.id;
+          } else {
+            const { data: latestMessage, error: latestMessageError } = await supabase
+              .from("ai_chat_messages")
+              .select("session_id")
+              .in("session_id", sessions.map((session) => session.id))
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (latestMessageError) throw latestMessageError;
+            sessId = latestMessage?.session_id || sessions[0].id;
+          }
         } else {
-          const { data: newSess } = await supabase
+          const { data: newSess, error: newSessionError } = await supabase
             .from("ai_chat_sessions")
             .insert([{ user_id: user.id, title: "Study Assistant Chat" }])
             .select("id, title, created_at, updated_at")
             .single();
+          if (newSessionError) throw newSessionError;
           if (newSess) {
             sessId = newSess.id;
             setChatSessions([newSess]);
@@ -105,24 +241,30 @@ export default function AiAssistantPage() {
 
         if (sessId) {
           setActiveSessionId(sessId);
-          const { data: dbMsgs } = await supabase
+          const { data: dbMsgs, error: messagesError } = await supabase
             .from("ai_chat_messages")
-            .select("role, content")
+            .select("id, role, content")
             .eq("session_id", sessId)
-            .order("created_at", { ascending: true });
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true });
+          if (messagesError) throw messagesError;
 
           if (dbMsgs && dbMsgs.length > 0) {
             setMessages(
-              dbMsgs.map((m: { role: string; content: string }, idx: number) => ({
-                id: idx.toString(),
+              dbMsgs.map((m: { id: string; role: string; content: string }) => ({
+                id: m.id,
                 sender: m.role === "user" ? "user" : "ai",
                 text: m.content,
               }))
             );
           }
+          window.localStorage.setItem(lastChatStorageKey(user.id), sessId);
         }
       } catch (err) {
         console.error("Error loading chat history:", err);
+        setCustomAlert(err instanceof Error ? err.message : "Unable to load chat history.");
+      } finally {
+        setChatHydrated(true);
       }
 
       setLoading(false);
@@ -130,18 +272,20 @@ export default function AiAssistantPage() {
     loadProfileAndChat();
   }, [router, supabase]);
 
-  const openChatSession = async (session: any) => {
+  const openChatSession = async (session: ChatSession) => {
     if (!session?.id || session.id === activeSessionId) return;
     const { data: dbMsgs, error } = await supabase
       .from("ai_chat_messages")
       .select("id, role, content")
       .eq("session_id", session.id)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
     if (error) {
       setCustomAlert(error.message);
       return;
     }
     setActiveSessionId(session.id);
+    if (profile?.id) window.localStorage.setItem(lastChatStorageKey(profile.id), session.id);
     setShowChatHistory(false);
     setMessages(
       (dbMsgs || []).map((message: { id: string; role: string; content: string }) => ({
@@ -166,16 +310,15 @@ export default function AiAssistantPage() {
     }
     setChatSessions((current) => [data, ...current]);
     setActiveSessionId(data.id);
+    window.localStorage.setItem(lastChatStorageKey(userData.user.id), data.id);
     setMessages([]);
     setInputMsg("");
     setSelectedCourse("");
     setShowChatHistory(false);
   };
 
-  const deleteChatSession = async (session: any) => {
-    const confirmed = window.confirm(
-      lang === "tr" ? "Bu AI sohbetini silmek istediğinize emin misiniz?" : "Delete this AI conversation?"
-    );
+  const deleteChatSession = async (session: ChatSession) => {
+    const confirmed = window.confirm(chatCopy.deleteConfirm);
     if (!confirmed) return;
     const { error } = await supabase.from("ai_chat_sessions").delete().eq("id", session.id);
     if (error) {
@@ -195,7 +338,7 @@ export default function AiAssistantPage() {
 
   // Set localized welcome message once translation loader completes
   useEffect(() => {
-    if (!loading && messages.length === 0) {
+    if (chatHydrated && !loading && messages.length === 0) {
       setMessages([
         {
           id: "welcome",
@@ -204,7 +347,7 @@ export default function AiAssistantPage() {
         }
       ]);
     }
-  }, [loading, t, messages.length]);
+  }, [chatHydrated, loading, t, messages.length]);
 
   // Keep scrolling scoped to the message panel. scrollIntoView here would also
   // move the dashboard's parent scroller and hide the page header.
@@ -226,35 +369,51 @@ export default function AiAssistantPage() {
   const isTrialActive = trialEnds && trialEnds > now;
   const isPro = profile?.plan === "pro" || profile?.plan === "founding" || isTrialActive;
 
+  const touchChatSession = async (sessionId: string, title?: string) => {
+    const changes: { updated_at: string; title?: string } = {
+      updated_at: new Date().toISOString(),
+    };
+    if (title) changes.title = title;
+
+    const { data, error } = await supabase
+      .from("ai_chat_sessions")
+      .update(changes)
+      .eq("id", sessionId)
+      .select("id, title, created_at, updated_at")
+      .single();
+    if (error) throw error;
+    if (data) {
+      setChatSessions((current) => [
+        data,
+        ...current.filter((session) => session.id !== data.id),
+      ]);
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMsg.trim() || sending) return;
+    if (!inputMsg.trim() || sending || loading || !activeSessionId) return;
 
     const userText = inputMsg.trim();
     const contextPrefix = selectedCourse ? `[Context: ${selectedCourse}] ` : "";
     const fullMessageText = `${contextPrefix}${userText}`;
 
     // Add user message to UI
-    const userMessage = { id: Date.now().toString(), sender: "user", text: fullMessageText };
+    const userMessage: ChatMessage = { id: crypto.randomUUID(), sender: "user", text: fullMessageText };
     setMessages((prev) => [...prev, userMessage]);
     setInputMsg("");
     setSending(true);
 
     try {
       if (activeSessionId) {
-        await supabase.from("ai_chat_messages").insert([
+        const { error: userMessageError } = await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "user", content: fullMessageText }
         ]);
-        if (!messages.some((message) => message.sender === "user")) {
-          const sessionTitle = userText.length > 42 ? `${userText.slice(0, 42)}…` : userText;
-          await supabase
-            .from("ai_chat_sessions")
-            .update({ title: sessionTitle, updated_at: new Date().toISOString() })
-            .eq("id", activeSessionId);
-          setChatSessions((current) => current.map((session) =>
-            session.id === activeSessionId ? { ...session, title: sessionTitle } : session
-          ));
-        }
+        if (userMessageError) throw userMessageError;
+        const sessionTitle = !messages.some((message) => message.sender === "user")
+          ? userText.length > 42 ? `${userText.slice(0, 42)}…` : userText
+          : undefined;
+        await touchChatSession(activeSessionId, sessionTitle);
       }
 
       const response = await fetch("/api/chat", {
@@ -264,10 +423,7 @@ export default function AiAssistantPage() {
         },
         body: JSON.stringify({
           message: fullMessageText,
-          history: messages.map((m) => ({
-            sender: m.sender,
-            text: m.text
-          }))
+          sessionId: activeSessionId,
         }),
       });
 
@@ -277,7 +433,7 @@ export default function AiAssistantPage() {
           setCustomAlert(t.ai.limitError || data.error);
           setPremiumModalOpen(true);
         }
-        throw new Error(data.error || "AI assistant is unavailable.");
+        throw new Error(chatCopy.serviceError);
       }
       const reply = data.reply || data.text;
       if (!reply) {
@@ -286,13 +442,15 @@ export default function AiAssistantPage() {
 
       setMessages((prev) => [
         ...prev,
-        { id: Date.now().toString(), sender: "ai", text: reply }
+        { id: crypto.randomUUID(), sender: "ai", text: reply }
       ]);
 
       if (activeSessionId) {
-        await supabase.from("ai_chat_messages").insert([
+        const { error: assistantMessageError } = await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "assistant", content: reply }
         ]);
+        if (assistantMessageError) throw assistantMessageError;
+        await touchChatSession(activeSessionId);
       }
 
       const requestsVisual = /\b(diagram|visual|flowchart|flow chart|timeline|concept map|schema|scheme|diagrama|mapa visual|línea de tiempo)\b|şema|akış|zaman çizelgesi|kavram haritası|图示|流程图|时间线|概念图/i.test(userText);
@@ -320,9 +478,9 @@ export default function AiAssistantPage() {
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now().toString(),
+          id: crypto.randomUUID(),
           sender: "ai",
-          text: `⚠️ ${error instanceof Error ? error.message : t.common.errorOccurred}`,
+          text: `⚠️ ${error instanceof Error ? error.message : chatCopy.serviceError}`,
         }
       ]);
     }
@@ -360,6 +518,13 @@ export default function AiAssistantPage() {
         "帮我拆分一篇 10 页的历史论文任务",
         "为 SAT 数学创建 3 道练习题"
       ]
+    : lang === "tr"
+    ? [
+        "Fotosentezi 3 maddeyle açıkla",
+        "AP Kimya için 3 adımlı çalışma planı oluştur",
+        "10 sayfalık tarih ödevini küçük parçalara ayırmama yardım et",
+        "SAT matematik için 3 alıştırma sorusu hazırla"
+      ]
     : lang === "es"
     ? [
         "Explica la fotosíntesis en 3 puntos clave",
@@ -386,7 +551,7 @@ export default function AiAssistantPage() {
     const latestUserMessage = [...messages].reverse().find((message) => message.sender === "user")?.text || "";
     const source = inputMsg.trim() || latestUserMessage;
     if (!source) {
-      setCustomAlert(lang === "tr" ? "Önce görselleştirilecek bir konu yazın." : "Enter a topic to visualize first.");
+      setCustomAlert(chatCopy.visualSourceRequired);
       return;
     }
     setGeneratingVisual(true);
@@ -397,33 +562,40 @@ export default function AiAssistantPage() {
         body: JSON.stringify({ source, title: selectedCourse, language: lang }),
       });
       const data = await response.json();
-      if (!response.ok || !data.visual) throw new Error(data.error || "Study visual could not be created.");
+      if (!response.ok || !data.visual) throw new Error(data.error || chatCopy.visualError);
       setStudyVisual(data.visual);
     } catch (error) {
-      setCustomAlert(error instanceof Error ? error.message : "Study visual could not be created.");
+      setCustomAlert(error instanceof Error ? error.message : chatCopy.visualError);
     } finally {
       setGeneratingVisual(false);
     }
   };
 
-  const chatLabels = {
-    newChat: lang === "tr" ? "Yeni sohbet" : lang === "zh" ? "新对话" : lang === "es" ? "Nuevo chat" : "New chat",
-    history: lang === "tr" ? "Sohbet geçmişi" : lang === "zh" ? "对话历史" : lang === "es" ? "Historial de chats" : "Chat history",
-    suggestions: lang === "tr" ? "Önerilen başlangıçlar" : lang === "zh" ? "建议问题" : lang === "es" ? "Consultas sugeridas" : "Suggested queries",
-    noHistory: lang === "tr" ? "Henüz kayıtlı sohbet yok." : lang === "zh" ? "还没有保存的对话。" : lang === "es" ? "Aún no hay conversaciones guardadas." : "No saved conversations yet.",
-    delete: lang === "tr" ? "Sohbeti sil" : lang === "zh" ? "删除对话" : lang === "es" ? "Eliminar conversación" : "Delete conversation",
-  };
+  const chatLabels = chatCopy;
 
   return (
-    <main className="mx-auto flex h-[calc(100%_-_4rem)] min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden p-4 sm:p-6 lg:h-full lg:p-8">
+    <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-6xl flex-1 flex-col overflow-hidden p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6 lg:min-h-full lg:p-8">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-surface-dark flex items-center gap-2">
-            <BrainCircuit className="text-brand" /> {workspaceLabels.title}
-          </h1>
-          <p className="text-xs text-gray-500 mt-0.5">{workspaceLabels.subtitle}</p>
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-surface-dark">
+              <BrainCircuit className="shrink-0 text-brand" /> {workspaceLabels.title}
+            </h1>
+            <p className="mt-0.5 text-xs text-gray-500">{workspaceLabels.subtitle}</p>
+          </div>
+          {workspaceMode === "chat" && (
+            <button
+              type="button"
+              onClick={() => setShowChatHistory(true)}
+              className="inline-flex shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm transition-colors hover:border-brand/40 hover:text-brand sm:hidden"
+              aria-label={chatLabels.history}
+              title={chatLabels.history}
+            >
+              <Clock size={17} />
+            </button>
+          )}
         </div>
 
         {/* Course Context Selector */}
@@ -466,7 +638,7 @@ export default function AiAssistantPage() {
       </div>
 
       {workspaceMode === "chat" ? <>
-      <div className="mt-4 flex items-center gap-2 shrink-0">
+      <div className="mt-4 flex flex-wrap items-center gap-2 shrink-0">
         <button
           type="button"
           onClick={createChatSession}
@@ -485,7 +657,7 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Chat Messages Body */}
-      <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain border border-gray-150 rounded-3xl bg-white p-4 sm:p-6 my-4 space-y-4 shadow-sm">
+      <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain border border-gray-150 rounded-3xl bg-white p-4 sm:p-6 my-4 space-y-4 shadow-sm">
         {messages.map((msg) => {
           const isAi = msg.sender === "ai";
           return (
@@ -503,7 +675,7 @@ export default function AiAssistantPage() {
               <div className={`p-4 rounded-3xl text-sm leading-relaxed ${
                 isAi ? "bg-brand-light/30 text-surface-dark rounded-tl-sm" : "bg-brand text-white rounded-tr-sm"
               }`}>
-                <p className="whitespace-pre-line">{msg.text}</p>
+                {isAi ? <MarkdownRenderer content={msg.text} /> : <p className="content-break-anywhere whitespace-pre-line">{msg.text}</p>}
               </div>
             </div>
           );
@@ -536,7 +708,7 @@ export default function AiAssistantPage() {
               <Loader2 size={14} className="animate-spin" />
             </div>
             <div className="p-4 bg-brand-light/30 text-gray-400 rounded-3xl rounded-tl-sm text-sm flex items-center gap-1.5 font-medium">
-              {lang === "zh" ? "学习教练正在思考..." : lang === "es" ? "El asesor de estudio está pensando..." : "Study Coach is thinking..."}
+                {chatCopy.thinking}
             </div>
           </div>
         )}
@@ -544,27 +716,27 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Input Message Form */}
-      <form onSubmit={handleSend} className="flex gap-2 shrink-0 bg-white p-2 border border-gray-150 rounded-3xl shadow-sm">
+      <form onSubmit={handleSend} className="sticky bottom-0 z-20 flex shrink-0 gap-2 bg-white p-2 border border-gray-150 rounded-3xl shadow-sm">
         <input
           type="text"
           value={inputMsg}
           onChange={(e) => setInputMsg(e.target.value)}
-          placeholder={selectedCourse ? `Ask study coach about ${selectedCourse}...` : (t.ai.placeholderChat || "Ask study coach...")}
-          className="flex-1 px-4 py-3 bg-transparent text-sm outline-none text-surface-dark placeholder-gray-400"
+          placeholder={selectedCourse ? chatCopy.coursePrompt.replace("{course}", selectedCourse) : (t.ai.placeholderChat || "Ask study coach...")}
+          className="min-w-0 flex-1 px-4 py-3 bg-transparent text-sm outline-none text-surface-dark placeholder-gray-400"
         />
         <button
           type="button"
           onClick={handleGenerateStudyVisual}
           disabled={generatingVisual || (!inputMsg.trim() && !messages.some((message) => message.sender === "user"))}
           className="flex items-center gap-1.5 rounded-2xl border border-brand/20 bg-brand/5 px-3 text-xs font-bold text-brand transition-all hover:bg-brand/10 disabled:opacity-40"
-          title="Generate a structured visual study aid"
+          title={chatCopy.visualTitle}
         >
           {generatingVisual ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          <span className="hidden sm:inline">{lang === "tr" ? "Görsel şema" : lang === "es" ? "Esquema visual" : lang === "zh" ? "学习图示" : "Visual diagram"}</span>
+          <span className="hidden sm:inline">{chatCopy.visualButton}</span>
         </button>
         <button
           type="submit"
-          disabled={!inputMsg.trim() || sending}
+          disabled={!inputMsg.trim() || sending || loading || !activeSessionId}
           className="p-3 bg-brand text-white rounded-2xl hover:bg-brand-hover active:scale-95 disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center shrink-0"
         >
           <Send size={16} />
@@ -580,7 +752,7 @@ export default function AiAssistantPage() {
         <div className="fixed inset-0 z-50 flex justify-end">
           <button
             type="button"
-            aria-label="Close chat history"
+            aria-label={chatCopy.closeHistory}
             className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]"
             onClick={() => setShowChatHistory(false)}
           />
@@ -588,9 +760,9 @@ export default function AiAssistantPage() {
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-5">
               <div>
                 <p className="text-sm font-extrabold text-surface-dark">{chatLabels.history}</p>
-                <p className="mt-0.5 text-xs text-gray-400">{chatSessions.length} {lang === "tr" ? "sohbet" : "conversations"}</p>
+                <p className="mt-0.5 text-xs text-gray-400">{chatSessions.length} {chatCopy.conversationCount}</p>
               </div>
-              <button type="button" onClick={() => setShowChatHistory(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+              <button type="button" onClick={() => setShowChatHistory(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label={chatCopy.closeHistory}>
                 <X size={18} />
               </button>
             </div>

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Sparkles, X, Send, Loader2, MessageSquare, CalendarPlus, Check, Clock } from "lucide-react";
+import { MarkdownRenderer } from "@/components/content/MarkdownRenderer";
 
 interface CoachMessage {
   sender: "user" | "coach";
@@ -49,39 +50,119 @@ export function FloatingAICoach() {
   const lang = profile?.language || guestLanguage;
   const copy = {
     en: {
+      title: "OnPace AI Study Coach",
+      coachLabel: "AI Coach",
       status: "Online & ready to assist",
       empty: "Start a conversation with your AI Study Coach!",
       thinking: "Thinking...",
       placeholder: "Ask anything about your studies...",
       login: "Sign in first so I can safely use your real tasks, notes, and calendar.",
+      connectionError: "A connection issue occurred. Please try again.",
+      actionFailed: "The action could not be completed.",
+      taskWillBeAdded: "Will be added as a new task",
+      timeBooked: "This time is booked",
+      suggestedFreeTime: "Suggested free time",
+      useFreeTime: "Yes, use free time",
+      addIt: "Yes, add it",
+      addAnyway: "No, add anyway",
+      cancel: "No, cancel",
+      taskSaved: "Your new task was saved.",
+      calendarSaved: "The calendar event was saved and your schedule has been updated.",
+      calendarSyncPending: "The calendar event was saved; Google Calendar sync will be retried later.",
+      open: "Open AI Coach",
+      close: "Close AI Coach",
     },
     tr: {
+      title: "OnPace Yapay Zeka Çalışma Koçu",
+      coachLabel: "Yapay Zeka Koçu",
       status: "Çevrimiçi ve yardıma hazır",
       empty: "Yapay Zeka Çalışma Koçunuz ile konuşmaya başlayın!",
       thinking: "Düşünüyor...",
       placeholder: "Çalışmalarınızla ilgili bir şey sorun...",
       login: "Gerçek görevlerinizi, notlarınızı ve takviminizi güvenle kullanabilmem için önce giriş yapın.",
+      connectionError: "Bir bağlantı hatası oluştu. Lütfen tekrar deneyin.",
+      actionFailed: "İşlem tamamlanamadı.",
+      taskWillBeAdded: "Yeni görev olarak eklenecek",
+      timeBooked: "Bu saat dolu",
+      suggestedFreeTime: "Önerilen boş saat",
+      useFreeTime: "Evet, boş saati kullan",
+      addIt: "Evet, ekle",
+      addAnyway: "Hayır, yine de ekle",
+      cancel: "Hayır, vazgeç",
+      taskSaved: "Yeni görev kaydedildi.",
+      calendarSaved: "Takvim etkinliği kaydedildi ve görünüm güncellendi.",
+      calendarSyncPending: "Takvim etkinliği kaydedildi; Google Takvim senkronizasyonu daha sonra yeniden denenecek.",
+      open: "Yapay zeka koçunu aç",
+      close: "Yapay zeka koçunu kapat",
     },
     es: {
+      title: "Coach de Estudio con IA de OnPace",
+      coachLabel: "Coach de IA",
       status: "En línea y listo para ayudarte",
       empty: "¡Empieza una conversación con tu coach de estudio de IA!",
       thinking: "Pensando...",
       placeholder: "Pregunta sobre tus estudios...",
       login: "Inicia sesión para que pueda usar de forma segura tus tareas, notas y calendario reales.",
+      connectionError: "Se produjo un problema de conexión. Inténtalo de nuevo.",
+      actionFailed: "No se pudo completar la acción.",
+      taskWillBeAdded: "Se añadirá como una nueva tarea",
+      timeBooked: "Esta hora está ocupada",
+      suggestedFreeTime: "Horario libre sugerido",
+      useFreeTime: "Sí, usar horario libre",
+      addIt: "Sí, añadir",
+      addAnyway: "No, añadir de todos modos",
+      cancel: "No, cancelar",
+      taskSaved: "La nueva tarea se guardó.",
+      calendarSaved: "El evento se guardó y tu agenda se actualizó.",
+      calendarSyncPending: "El evento se guardó; la sincronización con Google Calendar se reintentará más tarde.",
+      open: "Abrir coach de IA",
+      close: "Cerrar coach de IA",
     },
     zh: {
+      title: "OnPace AI 学习教练",
+      coachLabel: "AI 学习教练",
       status: "在线并随时提供帮助",
       empty: "开始与您的 AI 学习教练对话！",
       thinking: "思考中...",
       placeholder: "询问任何学习相关问题...",
       login: "请先登录，以便我安全地使用您的真实任务、笔记和日历。",
+      connectionError: "连接出现问题，请重试。",
+      actionFailed: "无法完成此操作。",
+      taskWillBeAdded: "将作为新任务添加",
+      timeBooked: "这个时间已被占用",
+      suggestedFreeTime: "建议的空闲时间",
+      useFreeTime: "是，使用空闲时间",
+      addIt: "是，添加",
+      addAnyway: "否，仍然添加",
+      cancel: "否，取消",
+      taskSaved: "新任务已保存。",
+      calendarSaved: "日历活动已保存，日程已更新。",
+      calendarSyncPending: "日历活动已保存；稍后会重新尝试同步 Google 日历。",
+      open: "打开 AI 学习教练",
+      close: "关闭 AI 学习教练",
     },
   }[lang as "en" | "tr" | "es" | "zh"] || {
+    title: "OnPace AI Study Coach",
+    coachLabel: "AI Coach",
     status: "Online & ready to assist",
     empty: "Start a conversation with your AI Study Coach!",
     thinking: "Thinking...",
     placeholder: "Ask anything about your studies...",
     login: "Sign in first so I can safely use your real tasks, notes, and calendar.",
+    connectionError: "A connection issue occurred. Please try again.",
+    actionFailed: "The action could not be completed.",
+    taskWillBeAdded: "Will be added as a new task",
+    timeBooked: "This time is booked",
+    suggestedFreeTime: "Suggested free time",
+    useFreeTime: "Yes, use free time",
+    addIt: "Yes, add it",
+    addAnyway: "No, add anyway",
+    cancel: "No, cancel",
+    taskSaved: "Your new task was saved.",
+    calendarSaved: "The calendar event was saved and your schedule has been updated.",
+    calendarSyncPending: "The calendar event was saved; Google Calendar sync will be retried later.",
+    open: "Open AI Coach",
+    close: "Close AI Coach",
   };
 
   // Scroll to bottom when messages update
@@ -93,6 +174,7 @@ export function FloatingAICoach() {
 
   // Load Profile & Setup Session Sync
   useEffect(() => {
+    if (pathname.startsWith("/admin")) return;
     async function loadSessionAndHistory() {
       const { data: { session } } = await supabase.auth.getSession();
       setSessionChecked(true);
@@ -137,7 +219,8 @@ export function FloatingAICoach() {
             .from("ai_chat_sessions")
             .select("id")
             .eq("user_id", session.user.id)
-            .order("created_at", { ascending: false })
+            .order("updated_at", { ascending: false })
+            .order("id", { ascending: false })
             .limit(1);
 
           let sessId = "";
@@ -156,13 +239,14 @@ export function FloatingAICoach() {
             setActiveSessionId(sessId);
             const { data: dbMsgs } = await supabase
               .from("ai_chat_messages")
-              .select("role, content")
+              .select("id, role, content")
               .eq("session_id", sessId)
-              .order("created_at", { ascending: true });
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true });
 
             if (dbMsgs && dbMsgs.length > 0) {
               setMessages(
-                dbMsgs.map((m: { role: string; content: string }) => ({
+                dbMsgs.map((m: { id: string; role: string; content: string }) => ({
                   sender: m.role === "user" ? "user" : "coach",
                   text: m.content,
                 }))
@@ -261,11 +345,12 @@ export function FloatingAICoach() {
     }
 
     loadSessionAndHistory();
-  }, [supabase]);
+  }, [supabase, pathname]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
+    if (isAuthenticated && !activeSessionId) return;
 
     const userText = input.trim();
     setInput("");
@@ -287,9 +372,10 @@ export function FloatingAICoach() {
     try {
       // Save user message to persistent DB session
       if (activeSessionId) {
-        await supabase.from("ai_chat_messages").insert([
+        const { error: userMessageError } = await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "user", content: userText },
         ]);
+        if (userMessageError) throw userMessageError;
       }
 
       const actionKeywords = /\b(calendar|schedule|add|create|task|takvim|planla|ekle|oluştur|görev)\b/i.test(userText);
@@ -309,10 +395,9 @@ export function FloatingAICoach() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userText,
-          history: messages.map((m) => ({
-            sender: m.sender,
-            text: m.text,
-          })),
+          // The server loads this session from the database, so a reopened chat
+          // keeps its real context instead of relying on in-memory messages.
+          sessionId: activeSessionId,
         }),
       });
       const proposalRequest = actionKeywords
@@ -331,7 +416,7 @@ export function FloatingAICoach() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "AI service is unavailable.");
+        throw new Error(copy.connectionError);
       }
       const reply = data.reply || data.text;
       if (!reply) {
@@ -350,9 +435,10 @@ export function FloatingAICoach() {
 
       // Save assistant reply to persistent DB session
       if (activeSessionId) {
-        await supabase.from("ai_chat_messages").insert([
+        const { error: assistantMessageError } = await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "assistant", content: reply },
         ]);
+        if (assistantMessageError) throw assistantMessageError;
       }
     } catch (error) {
       setMessages((prev) => [
@@ -362,9 +448,7 @@ export function FloatingAICoach() {
           text:
             error instanceof Error
               ? error.message
-              : lang === "tr"
-                ? "Bir bağlantı hatası oluştu. Lütfen tekrar deneyin."
-                : "Connection issue occurred. Please try again.",
+              : copy.connectionError,
         },
       ]);
     }
@@ -391,7 +475,7 @@ export function FloatingAICoach() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "The action could not be saved.");
+        throw new Error(result.error || copy.actionFailed);
       }
 
       let syncWarning = false;
@@ -411,18 +495,11 @@ export function FloatingAICoach() {
         ...prev,
         {
           sender: "coach",
-          text:
-            result.type === "calendar"
-              ? lang === "tr"
-                ? syncWarning
-                  ? "Takvim etkinliği kaydedildi; Google Takvim senkronizasyonu daha sonra yeniden denenecek."
-                  : "Takvim etkinliği kaydedildi ve görünüm güncellendi."
-                : syncWarning
-                  ? "The calendar event was saved; Google Calendar sync will be retried later."
-                  : "The calendar event was saved and your schedule has been updated."
-              : lang === "tr"
-                ? "Yeni görev kaydedildi."
-                : "Your new task was saved.",
+          text: result.type === "calendar"
+            ? syncWarning
+              ? copy.calendarSyncPending
+              : copy.calendarSaved
+            : copy.taskSaved,
         },
       ]);
       setPendingAction(null);
@@ -434,7 +511,7 @@ export function FloatingAICoach() {
           text:
             error instanceof Error
               ? error.message
-              : "The action could not be completed.",
+              : copy.actionFailed,
         },
       ]);
     } finally {
@@ -442,12 +519,12 @@ export function FloatingAICoach() {
     }
   };
 
-  if (pathname === "/" || !sessionChecked || !isAuthenticated) {
+  if (pathname === "/" || pathname.startsWith("/admin") || pathname.startsWith("/updates") || !sessionChecked || !isAuthenticated) {
     return null;
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto">
+    <div className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-3 z-50 flex flex-col items-end pointer-events-auto sm:bottom-6 sm:right-6">
       {/* Proactive Speech Bubble */}
       {showBubble && !isOpen && proactiveMsg && (
         <div className="mb-3 max-w-xs bg-white rounded-2xl p-4 shadow-xl border border-gray-150 relative animate-in fade-in slide-in-from-bottom-3 duration-200">
@@ -463,7 +540,7 @@ export function FloatingAICoach() {
             </div>
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-brand mb-0.5">
-                AI COACH
+                {copy.coachLabel}
               </p>
               <p className="text-xs text-surface-dark leading-relaxed font-medium">
                 {proactiveMsg}
@@ -481,7 +558,7 @@ export function FloatingAICoach() {
             setShowBubble(false);
           }}
           className="h-14 w-14 rounded-full bg-gradient-to-tr from-brand to-brand-dark text-white shadow-xl shadow-brand/30 hover:scale-105 active:scale-95 transition-all flex items-center justify-center cursor-pointer group"
-          aria-label="Open AI Coach"
+          aria-label={copy.open}
         >
           <Sparkles className="h-6 w-6 group-hover:rotate-12 transition-transform" />
         </button>
@@ -489,7 +566,7 @@ export function FloatingAICoach() {
 
       {/* Floating Chat Modal Panel */}
       {isOpen && (
-        <div className="w-[360px] sm:w-[400px] h-[520px] bg-white rounded-3xl shadow-2xl border border-gray-150 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="h-[min(520px,calc(100dvh-1.5rem))] w-[calc(100vw-1.5rem)] max-w-[400px] rounded-3xl border border-gray-150 bg-white shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 sm:w-[400px]">
           {/* Header */}
           <div className="bg-gradient-to-r from-brand to-brand-dark p-4 text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
@@ -497,7 +574,7 @@ export function FloatingAICoach() {
                 <Sparkles size={18} />
               </div>
               <div>
-                <h3 className="text-sm font-bold leading-tight">OnPace AI Study Coach</h3>
+                <h3 className="text-sm font-bold leading-tight">{copy.title}</h3>
                 <p className="text-[10px] text-white/80 font-medium">
                   {copy.status}
                 </p>
@@ -506,6 +583,7 @@ export function FloatingAICoach() {
             <button
               onClick={() => setIsOpen(false)}
               className="p-1.5 hover:bg-white/20 rounded-xl transition-all cursor-pointer"
+              aria-label={copy.close}
             >
               <X size={16} />
             </button>
@@ -533,7 +611,7 @@ export function FloatingAICoach() {
                         : "bg-white border border-gray-150 text-surface-dark font-medium rounded-bl-none shadow-xs"
                     }`}
                   >
-                    {m.text}
+                    {m.sender === "coach" ? <MarkdownRenderer content={m.text} /> : <span className="content-break-anywhere whitespace-pre-wrap">{m.text}</span>}
                   </div>
                 </div>
               ))
@@ -557,9 +635,7 @@ export function FloatingAICoach() {
                     <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
                       {pendingAction.type === "calendar"
                         ? formatTimeRange(pendingAction.startTime, pendingAction.endTime)
-                        : lang === "tr"
-                          ? "Yeni görev olarak eklenecek"
-                          : "Will be added as a new task"}
+                        : copy.taskWillBeAdded}
                     </p>
                   </div>
                 </div>
@@ -568,7 +644,7 @@ export function FloatingAICoach() {
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 space-y-1.5">
                     <div className="flex items-center gap-1.5 font-bold">
                       <Clock size={13} />
-                      {lang === "tr" ? "Bu saat dolu" : "This time is booked"}
+                      {copy.timeBooked}
                     </div>
                     <p>
                       {pendingAction.conflict.events
@@ -577,7 +653,7 @@ export function FloatingAICoach() {
                     </p>
                     {pendingAction.conflict.alternativeStart && pendingAction.conflict.alternativeEnd && (
                       <p className="font-semibold text-emerald-700">
-                        {lang === "tr" ? "Önerilen boş saat" : "Suggested free time"}: {formatTimeRange(pendingAction.conflict.alternativeStart, pendingAction.conflict.alternativeEnd)}
+                        {copy.suggestedFreeTime}: {formatTimeRange(pendingAction.conflict.alternativeStart, pendingAction.conflict.alternativeEnd)}
                       </p>
                     )}
                   </div>
@@ -591,7 +667,7 @@ export function FloatingAICoach() {
                       disabled={savingAction}
                       className="rounded-xl bg-emerald-600 px-2 py-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                     >
-                      {lang === "tr" ? "Evet, boş saati kullan" : "Yes, use free time"}
+                      {copy.useFreeTime}
                     </button>
                   ) : (
                     <button
@@ -600,7 +676,7 @@ export function FloatingAICoach() {
                       disabled={savingAction}
                       className="rounded-xl bg-emerald-600 px-2 py-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                     >
-                      {lang === "tr" ? "Evet, ekle" : "Yes, add it"}
+                      {copy.addIt}
                     </button>
                   )}
                   <button
@@ -614,8 +690,8 @@ export function FloatingAICoach() {
                     className="rounded-xl bg-brand px-2 py-2.5 text-[11px] font-bold text-white hover:bg-brand-hover disabled:opacity-50"
                   >
                     {pendingAction.type === "calendar" && pendingAction.conflict
-                      ? lang === "tr" ? "Hayır, yine de ekle" : "No, add anyway"
-                      : lang === "tr" ? "Hayır, vazgeç" : "No, cancel"}
+                      ? copy.addAnyway
+                      : copy.cancel}
                   </button>
                 </div>
               </div>
@@ -633,11 +709,11 @@ export function FloatingAICoach() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={copy.placeholder}
-              className="flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
+              className="min-w-0 flex-1 px-3.5 py-2.5 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
             />
             <button
               type="submit"
-              disabled={loading || !input.trim()}
+              disabled={loading || !input.trim() || (isAuthenticated && !activeSessionId)}
               className="p-2.5 bg-brand text-white rounded-xl hover:bg-brand-hover active:scale-95 disabled:opacity-40 cursor-pointer transition-all shrink-0"
             >
               <Send size={14} />

@@ -14,6 +14,10 @@ export type CourseCatalogItem = {
 
 const courseDefinitions: CourseDefinition[] = [
   {
+    aliases: ["AP Mathematics", "AP Math"],
+    labels: { en: "AP Mathematics", tr: "AP Matematik", es: "Matemáticas AP", zh: "AP 数学" },
+  },
+  {
     aliases: ["AP Calculus"],
     labels: { en: "AP Calculus", tr: "AP Matematik", es: "Cálculo AP", zh: "AP 微积分" },
   },
@@ -121,6 +125,7 @@ export function getLocalizedCourseName(name: string, language: string) {
 
 export const suggestedCourseNames = [
   "Mathematics",
+  "AP Mathematics",
   "English",
   "Biology",
   "Chemistry",
@@ -137,9 +142,9 @@ const catalogColors = ["#4F46E5", "#06B6D4", "#10B981", "#EF4444", "#F59E0B", "#
 
 const countryExamSuggestions: Record<string, string[]> = {
   TR: ["YKS", "TYT", "AYT", "LGS"],
-  US: ["SAT", "ACT", "AP Calculus", "AP Biology", "AP Chemistry", "AP Physics", "AP US History"],
+  US: ["SAT", "ACT", "AP Mathematics", "AP Calculus", "AP Biology", "AP Chemistry", "AP Physics", "AP US History"],
   GB: ["GCSE", "A-Level"],
-  CA: ["SAT", "AP Biology", "AP Chemistry", "AP Physics"],
+  CA: ["SAT", "AP Mathematics", "AP Biology", "AP Chemistry", "AP Physics"],
   AU: ["ATAR"],
   DE: ["Abitur"],
   FR: ["Baccalauréat"],
@@ -161,7 +166,11 @@ function catalogKey(name: string) {
 export function getSuggestedCourseCatalog(country?: string | null): CourseCatalogItem[] {
   const examNames = country ? countryExamSuggestions[country.toUpperCase()] || [] : [];
   const generalNames = [...suggestedCourseNames, "IB Programme"];
-  return [...examNames, ...generalNames].map((name, index) => ({
+  const names = [...examNames, ...generalNames].filter(
+    (name, index, allNames) =>
+      allNames.findIndex((candidate) => normalizeCourseAlias(candidate) === normalizeCourseAlias(name)) === index
+  );
+  return names.map((name, index) => ({
     key: catalogKey(name),
     name,
     color: catalogColors[index % catalogColors.length],

@@ -67,7 +67,26 @@ const translations: Record<string, Record<string, string>> = {
     freeBadge: "Free Member",
     studyGroups: "Study Groups",
     billing: "Subscription & Billing",
-    profileSocial: "Profile & Social"
+    profileSocial: "Profile & Social",
+    emailAddress: "Email address",
+    googleCalendarSync: "Google Calendar Sync",
+    connected: "Connected",
+    notLinked: "Not linked",
+    googleSyncActive: "Google Sync Active",
+    disconnect: "Disconnect",
+    connectGoogle: "Connect Google Account",
+    planAndPromocode: "Plan & promo code",
+    activeCode: "Active code",
+    expires: "Expires:",
+    promoCodePlaceholder: "ENTER PROMO CODE",
+    redeem: "Redeem",
+    removePromocode: "Remove promo code",
+    promoRemoved: "Promo code removed.",
+    removePromoConfirm: "Do you want to remove this active promo code and its plan benefits?",
+    expandSidebar: "Expand navigation",
+    collapseSidebar: "Collapse navigation",
+    openNavigation: "Open navigation menu",
+    closeNavigation: "Close navigation menu"
   },
   es: {
     dashboard: "Tablero",
@@ -103,7 +122,26 @@ const translations: Record<string, Record<string, string>> = {
     freeBadge: "Miembro Gratis",
     studyGroups: "Grupos de Estudio",
     billing: "Suscripción y Facturación",
-    profileSocial: "Perfil y Espacio Social"
+    profileSocial: "Perfil y Espacio Social",
+    emailAddress: "Correo electrónico",
+    googleCalendarSync: "Sincronización con Google Calendar",
+    connected: "Conectado",
+    notLinked: "Sin vincular",
+    googleSyncActive: "Sincronización de Google activa",
+    disconnect: "Desconectar",
+    connectGoogle: "Conectar cuenta de Google",
+    planAndPromocode: "Plan y código promocional",
+    activeCode: "Código activo",
+    expires: "Vence:",
+    promoCodePlaceholder: "INTRODUCE EL CÓDIGO",
+    redeem: "Canjear",
+    removePromocode: "Eliminar código promocional",
+    promoRemoved: "Código promocional eliminado.",
+    removePromoConfirm: "¿Quieres eliminar este código promocional activo y sus ventajas del plan?",
+    expandSidebar: "Expandir navegación",
+    collapseSidebar: "Contraer navegación",
+    openNavigation: "Abrir menú de navegación",
+    closeNavigation: "Cerrar menú de navegación"
   },
   zh: {
     dashboard: "学习大厅",
@@ -139,7 +177,26 @@ const translations: Record<string, Record<string, string>> = {
     freeBadge: "免费版用户",
     studyGroups: "学习小组",
     billing: "订阅与账单",
-    profileSocial: "个人资料与社交"
+    profileSocial: "个人资料与社交",
+    emailAddress: "电子邮箱地址",
+    googleCalendarSync: "Google 日历同步",
+    connected: "已连接",
+    notLinked: "未关联",
+    googleSyncActive: "Google 同步已启用",
+    disconnect: "断开连接",
+    connectGoogle: "连接 Google 账户",
+    planAndPromocode: "套餐与优惠码",
+    activeCode: "已启用的代码",
+    expires: "到期：",
+    promoCodePlaceholder: "输入优惠码",
+    redeem: "兑换",
+    removePromocode: "移除优惠码",
+    promoRemoved: "优惠码已移除。",
+    removePromoConfirm: "要移除此优惠码及其套餐权益吗？",
+    expandSidebar: "展开导航",
+    collapseSidebar: "收起导航",
+    openNavigation: "打开导航菜单",
+    closeNavigation: "关闭导航菜单"
   },
   tr: {
     dashboard: "Çalışma Paneli",
@@ -175,7 +232,26 @@ const translations: Record<string, Record<string, string>> = {
     freeBadge: "Ücretsiz Üye",
     studyGroups: "Çalışma Grupları",
     billing: "Abonelik ve Faturalandırma",
-    profileSocial: "Profil ve Sosyal Alan"
+    profileSocial: "Profil ve Sosyal Alan",
+    emailAddress: "E-posta adresi",
+    googleCalendarSync: "Google Takvim senkronizasyonu",
+    connected: "Bağlı",
+    notLinked: "Bağlı değil",
+    googleSyncActive: "Google senkronizasyonu aktif",
+    disconnect: "Bağlantıyı kes",
+    connectGoogle: "Google hesabını bağla",
+    planAndPromocode: "Plan ve promosyon kodu",
+    activeCode: "Aktif kod",
+    expires: "Bitiş:",
+    promoCodePlaceholder: "PROMOSYON KODUNU GİR",
+    redeem: "Kullan",
+    removePromocode: "Promosyon kodunu kaldır",
+    promoRemoved: "Promosyon kodu kaldırıldı.",
+    removePromoConfirm: "Aktif promosyon kodunu ve buna bağlı plan avantajlarını kaldırmak istiyor musunuz?",
+    expandSidebar: "Menüyü genişlet",
+    collapseSidebar: "Menüyü daralt",
+    openNavigation: "Navigasyon menüsünü aç",
+    closeNavigation: "Navigasyon menüsünü kapat"
   }
 };
 
@@ -395,11 +471,7 @@ export function Sidebar() {
 
   const handleCancelPromoCode = async () => {
     if (!profile?.active_promocode || !user?.id) return;
-    const confirmed = window.confirm(
-      profile.language === "tr"
-        ? "Aktif promosyon kodunu ve buna bağlı plan avantajlarını kaldırmak istiyor musunuz?"
-        : "Do you want to remove this active promocode and its plan benefits?"
-    );
+    const confirmed = window.confirm(t.removePromoConfirm);
     if (!confirmed) return;
 
     const { error } = await supabase
@@ -411,7 +483,7 @@ export function Sidebar() {
       return;
     }
     setProfile((current: any) => ({ ...current, plan: "free", active_promocode: null, promocode_expires_at: null }));
-    setPromoMsg({ text: profile.language === "tr" ? "Promosyon kodu kaldırıldı." : "Promocode removed.", error: false });
+    setPromoMsg({ text: t.promoRemoved, error: false });
   };
 
   useEffect(() => {
@@ -703,7 +775,7 @@ export function Sidebar() {
         type="button"
         onClick={() => setMobileOpen(true)}
         className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white/95 text-surface-dark shadow-lg backdrop-blur lg:hidden"
-        aria-label="Open navigation menu"
+        aria-label={t.openNavigation}
       >
         <Menu size={20} />
       </button>
@@ -712,7 +784,7 @@ export function Sidebar() {
           type="button"
           onClick={() => setMobileOpen(false)}
           className="fixed inset-0 z-40 bg-surface-dark/40 backdrop-blur-[2px] lg:hidden"
-          aria-label="Close navigation menu"
+          aria-label={t.closeNavigation}
         />
       )}
       <aside 
@@ -741,7 +813,7 @@ export function Sidebar() {
                 className={`p-1.5 rounded-lg text-gray-400 hover:text-surface-dark hover:bg-gray-100 transition-all cursor-pointer ${
                   isCollapsed ? "mx-auto mt-2" : ""
                 }`}
-                title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+                title={isCollapsed ? t.expandSidebar : t.collapseSidebar}
               >
                 <Menu size={18} />
               </button>
@@ -893,7 +965,7 @@ export function Sidebar() {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Email Address</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.emailAddress}</label>
                 <input
                    type="email"
                    required
@@ -1029,16 +1101,16 @@ export function Sidebar() {
 
             <div className="border-t border-gray-100 pt-4 mt-2 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Google Calendar Sync</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.googleCalendarSync}</span>
                 <span className={`px-2 py-0.5 rounded-full text-[8px] uppercase font-extrabold ${googleConnected ? "bg-green-50 text-green-500 border border-green-100" : "bg-gray-100 text-gray-400"}`}>
-                  {googleConnected ? "Connected" : "Not Linked"}
+                  {googleConnected ? t.connected : t.notLinked}
                 </span>
               </div>
               
               {googleConnected ? (
                 <div className="flex items-center justify-between p-3 border border-emerald-100 bg-emerald-50/20 rounded-2xl text-xs gap-3">
                   <div className="truncate text-left flex-1">
-                    <p className="font-bold text-surface-dark truncate">Google Sync Active</p>
+                    <p className="font-bold text-surface-dark truncate">{t.googleSyncActive}</p>
                     <p className="text-[10px] text-gray-400 mt-0.5 truncate">{googleEmail}</p>
                   </div>
                   <button
@@ -1046,7 +1118,7 @@ export function Sidebar() {
                     disabled={isSyncingGoogle}
                     className="px-3 py-1.5 bg-white border border-gray-200 text-red-500 hover:bg-red-50 text-[10px] font-bold rounded-xl active:scale-95 transition-all cursor-pointer shadow-sm disabled:opacity-50"
                   >
-                    Disconnect
+                    {t.disconnect}
                   </button>
                 </div>
               ) : (
@@ -1063,7 +1135,7 @@ export function Sidebar() {
                       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
                       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                     </svg>
-                    Connect Google Account
+                    {t.connectGoogle}
                   </button>
                 </div>
               )}
@@ -1072,20 +1144,20 @@ export function Sidebar() {
             {/* Promocode & Subscription Plan Section */}
             <div className="border-t border-gray-100 pt-4 mt-2 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{profile?.language === "tr" ? "Plan ve promosyon kodu" : "Plan & promocode"}</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{t.planAndPromocode}</span>
                 <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-extrabold bg-brand/10 text-brand">
-                  {profile?.plan || "Free"}
+                  {profile?.plan || t.freeBadge}
                 </span>
               </div>
 
               {profile?.active_promocode && (
                 <div className="rounded-xl border border-brand/15 bg-brand/5 px-3 py-2 text-[10px] text-gray-600">
                   <div className="flex items-center justify-between gap-3">
-                    <span>{profile?.language === "tr" ? "Aktif kod" : "Active code"}</span>
+                    <span>{t.activeCode}</span>
                     <span className="font-extrabold text-brand">{profile.active_promocode}</span>
                   </div>
                   {profile.promocode_expires_at && (
-                    <p className="mt-1 text-gray-400">{profile?.language === "tr" ? "Bitiş:" : "Expires:"} {new Date(profile.promocode_expires_at).toLocaleDateString(profile?.language === "tr" ? "tr-TR" : "en-US")}</p>
+                    <p className="mt-1 text-gray-400">{t.expires} {new Date(profile.promocode_expires_at).toLocaleDateString(profile?.language === "tr" ? "tr-TR" : profile?.language === "es" ? "es-ES" : profile?.language === "zh" ? "zh-CN" : "en-US")}</p>
                   )}
                 </div>
               )}
@@ -1096,7 +1168,7 @@ export function Sidebar() {
                     type="text"
                     value={promoCodeInput}
                     onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
-                    placeholder="ENTER PROMOCODE"
+                    placeholder={t.promoCodePlaceholder}
                     className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand uppercase font-bold text-surface-dark bg-white"
                   />
                   <button
@@ -1104,7 +1176,7 @@ export function Sidebar() {
                     disabled={applyingPromo || !promoCodeInput.trim()}
                     className="px-3 py-2 bg-brand text-white rounded-xl text-xs font-bold hover:bg-brand-hover active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
                   >
-                    {applyingPromo ? <Loader2 className="h-3 w-3 animate-spin" /> : "Redeem"}
+                    {applyingPromo ? <Loader2 className="h-3 w-3 animate-spin" /> : t.redeem}
                   </button>
                 </div>
                 {promoMsg && (
@@ -1115,7 +1187,7 @@ export function Sidebar() {
               </form>
               {profile?.active_promocode && (
                 <button type="button" onClick={handleCancelPromoCode} className="w-full rounded-xl border border-red-200 py-2 text-[10px] font-bold text-red-500 transition-colors hover:bg-red-50">
-                  {profile?.language === "tr" ? "Promosyon kodunu kaldır" : "Remove promocode"}
+                  {t.removePromocode}
                 </button>
               )}
             </div>

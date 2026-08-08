@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.r2-upload]
 verify_jwt = true
+
+[functions.subscription-management]
+verify_jwt = true

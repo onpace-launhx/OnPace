@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
-  BookOpen,
   Plus,
   Save,
   Trash2,
@@ -15,34 +14,197 @@ import {
   ArrowLeft,
   BookMarked,
   HelpCircle,
-  CheckCircle2,
-  XCircle,
   Trophy,
   Upload,
   FileText,
   BrainCircuit,
   Search,
   Eye,
-  Check
+  Check,
+  X,
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import { StudyVisual } from "@/components/ai/StudyVisual";
 import type { StudyVisualSpec } from "@/lib/study-visual";
+import { MarkdownRenderer } from "@/components/content/MarkdownRenderer";
+import { RichTextEditor } from "@/components/content/RichTextEditor";
+import { localized } from "@/lib/i18n";
+
+type NotesProfile = {
+  id: string;
+  language?: string | null;
+  plan?: string | null;
+  trial_ends_at?: string | null;
+};
+
+type StudyNote = {
+  id: string;
+  title: string | null;
+  content: string | null;
+  file_url?: string | null;
+  created_at?: string;
+};
+
+type Flashcard = { id?: string; question: string; answer: string };
+type QuizQuestion = { question: string; options: string[]; correct_idx: number; explanation: string };
+type StudyQuiz = { id: string; questions: QuizQuestion[]; score: number | null };
 
 export default function NotesPage() {
   const router = useRouter();
   const supabase = createClient();
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<NotesProfile | null>(null);
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const noteCopy = localized(lang, {
+    en: {
+      editor: "Editor",
+      readingView: "Reading view",
+      enhance: "Enhance with AI",
+      enhanceTitle: "Enhance and structure this note with AI",
+      visual: "Visual diagram",
+      visualTitle: "Create a visual study aid",
+      studyCenter: "AI Study Center",
+      studyCenterSubtitle: "Practice the concepts in this notebook",
+      openStudyCenter: "Open study tools",
+      closeStudyCenter: "Close study tools",
+      attachedFile: "Attached study file",
+      viewOriginal: "View original upload",
+      upload: "Upload study note image",
+      uploading: "Uploading image…",
+      analyzing: "AI is extracting and organizing the note…",
+      newNote: "New note",
+      noteTooShort: "This note is too short to enhance.",
+      enhanceFailed: "The note could not be enhanced.",
+      networkError: "Connection error. Please try again.",
+      visualFailed: "The visual study aid could not be created.",
+      imageOnly: "Please choose an image file.",
+      imageSize: "The image must be smaller than 6 MB.",
+      analysisFailed: "The image could not be analyzed.",
+      processingFailed: "The note image could not be processed.",
+      cardsFailed: "The flashcards could not be created.",
+      quizFailed: "The quiz could not be created.",
+      flashcardSet: "Flashcard set",
+      flashcardSubtitle: "Test yourself and strengthen recall.",
+      practiceQuiz: "Practice quiz",
+      quizSubtitle: "Create a quiz from this note.",
+      count: "Count",
+      emptyNotebook: "Your notebook is empty. Select + to add a study note.",
+      noSearchResults: "No notes match your search.",
+    },
+    tr: {
+      editor: "Düzenle",
+      readingView: "Okuma görünümü",
+      enhance: "AI ile iyileştir",
+      enhanceTitle: "Notu yapay zekâyla düzenle ve geliştir",
+      visual: "Görsel şema",
+      visualTitle: "Görsel çalışma özeti oluştur",
+      studyCenter: "AI Çalışma Merkezi",
+      studyCenterSubtitle: "Bu defterdeki konuları pekiştir",
+      openStudyCenter: "Çalışma araçlarını aç",
+      closeStudyCenter: "Çalışma araçlarını kapat",
+      attachedFile: "Ekli çalışma dosyası",
+      viewOriginal: "Orijinal yüklemeyi görüntüle",
+      upload: "Çalışma notu görseli yükle",
+      uploading: "Görsel yükleniyor…",
+      analyzing: "AI notu çıkarıyor ve düzenliyor…",
+      newNote: "Yeni not",
+      noteTooShort: "Bu not iyileştirmek için çok kısa.",
+      enhanceFailed: "Not iyileştirilemedi.",
+      networkError: "Bağlantı hatası. Lütfen tekrar dene.",
+      visualFailed: "Görsel çalışma özeti oluşturulamadı.",
+      imageOnly: "Lütfen bir görsel dosyası seç.",
+      imageSize: "Görsel 6 MB'tan küçük olmalı.",
+      analysisFailed: "Görsel analiz edilemedi.",
+      processingFailed: "Not görseli işlenemedi.",
+      cardsFailed: "Kelime kartları oluşturulamadı.",
+      quizFailed: "Alıştırma sınavı oluşturulamadı.",
+      flashcardSet: "Kelime kartı seti",
+      flashcardSubtitle: "Kendini test et ve hatırlamayı güçlendir.",
+      practiceQuiz: "Alıştırma sınavı",
+      quizSubtitle: "Bu nottan bir sınav oluştur.",
+      count: "Adet",
+      emptyNotebook: "Defterin boş. Bir çalışma notu eklemek için + simgesini seç.",
+      noSearchResults: "Aramanla eşleşen not bulunamadı.",
+    },
+    es: {
+      editor: "Editar",
+      readingView: "Vista de lectura",
+      enhance: "Mejorar con IA",
+      enhanceTitle: "Mejorar y organizar la nota con IA",
+      visual: "Esquema visual",
+      visualTitle: "Crear una ayuda visual de estudio",
+      studyCenter: "Centro de Estudio con IA",
+      studyCenterSubtitle: "Practica los conceptos de este cuaderno",
+      openStudyCenter: "Abrir herramientas de estudio",
+      closeStudyCenter: "Cerrar herramientas de estudio",
+      attachedFile: "Archivo de estudio adjunto",
+      viewOriginal: "Ver archivo original",
+      upload: "Subir imagen de apuntes",
+      uploading: "Subiendo imagen…",
+      analyzing: "La IA está extrayendo y organizando la nota…",
+      newNote: "Nueva nota",
+      noteTooShort: "La nota es demasiado corta para mejorarla.",
+      enhanceFailed: "No se pudo mejorar la nota.",
+      networkError: "Error de conexión. Inténtalo de nuevo.",
+      visualFailed: "No se pudo crear la ayuda visual.",
+      imageOnly: "Selecciona un archivo de imagen.",
+      imageSize: "La imagen debe pesar menos de 6 MB.",
+      analysisFailed: "No se pudo analizar la imagen.",
+      processingFailed: "No se pudo procesar la imagen de la nota.",
+      cardsFailed: "No se pudieron crear las tarjetas.",
+      quizFailed: "No se pudo crear el cuestionario.",
+      flashcardSet: "Tarjetas de estudio",
+      flashcardSubtitle: "Ponte a prueba y refuerza la memoria.",
+      practiceQuiz: "Cuestionario de práctica",
+      quizSubtitle: "Crea un cuestionario a partir de esta nota.",
+      count: "Cantidad",
+      emptyNotebook: "Tu cuaderno está vacío. Selecciona + para añadir una nota.",
+      noSearchResults: "No hay notas que coincidan con tu búsqueda.",
+    },
+    zh: {
+      editor: "编辑器",
+      readingView: "阅读视图",
+      enhance: "使用 AI 优化",
+      enhanceTitle: "使用 AI 优化并整理笔记",
+      visual: "学习图示",
+      visualTitle: "创建可视化学习辅助",
+      studyCenter: "AI 学习中心",
+      studyCenterSubtitle: "练习本笔记中的知识点",
+      openStudyCenter: "打开学习工具",
+      closeStudyCenter: "关闭学习工具",
+      attachedFile: "已附学习文件",
+      viewOriginal: "查看原始文件",
+      upload: "上传学习笔记图片",
+      uploading: "正在上传图片…",
+      analyzing: "AI 正在提取并整理笔记…",
+      newNote: "新笔记",
+      noteTooShort: "笔记内容太短，无法优化。",
+      enhanceFailed: "无法优化笔记。",
+      networkError: "连接失败，请重试。",
+      visualFailed: "无法创建可视化学习辅助。",
+      imageOnly: "请选择图片文件。",
+      imageSize: "图片必须小于 6 MB。",
+      analysisFailed: "无法分析图片。",
+      processingFailed: "无法处理笔记图片。",
+      cardsFailed: "无法创建学习卡片。",
+      quizFailed: "无法创建练习测验。",
+      flashcardSet: "学习卡片组",
+      flashcardSubtitle: "通过自测强化记忆。",
+      practiceQuiz: "练习测验",
+      quizSubtitle: "根据这篇笔记创建测验。",
+      count: "数量",
+      emptyNotebook: "笔记本为空。选择 + 添加学习笔记。",
+      noSearchResults: "没有符合搜索条件的笔记。",
+    },
+  });
 
-  const [notes, setNotes] = useState<any[]>([]);
+  const [notes, setNotes] = useState<StudyNote[]>([]);
   const [noteSearch, setNoteSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   // Split-screen navigation states (mobile-responsive)
-  const [selectedNote, setSelectedNote] = useState<any | null>(null);
+  const [selectedNote, setSelectedNote] = useState<StudyNote | null>(null);
   const [isMobileViewingEditor, setIsMobileViewingEditor] = useState(false);
 
   // Editor inputs
@@ -50,19 +212,20 @@ export default function NotesPage() {
   const [content, setContent] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [editMode, setEditMode] = useState<"write" | "preview">("write");
+  const [isStudyCenterOpen, setIsStudyCenterOpen] = useState(false);
 
   // AI Practice Hub active tab: "flashcards" | "quiz"
   const [activeTab, setActiveTab] = useState<"flashcards" | "quiz">("flashcards");
 
   // Flashcards states
-  const [flashcards, setFlashcards] = useState<any[]>([]);
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [generatingCards, setGeneratingCards] = useState(false);
   const [practiceCount, setPracticeCount] = useState("6");
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 
   // Quiz states
-  const [activeQuiz, setActiveQuiz] = useState<any | null>(null);
+  const [activeQuiz, setActiveQuiz] = useState<StudyQuiz | null>(null);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [selectedOptionIdx, setSelectedOptionIdx] = useState<number | null>(null);
@@ -86,7 +249,7 @@ export default function NotesPage() {
 
   const handleEnhanceNoteWithAI = async () => {
     if (!content.trim() || content.trim().length < 5) {
-      alert(lang === "tr" ? "Not içeriği iyileştirilmeyecek kadar kısa." : "Note content is too short to enhance.");
+      alert(noteCopy.noteTooShort);
       return;
     }
     setEnhancingAI(true);
@@ -105,10 +268,10 @@ export default function NotesPage() {
       if (data.enhancedContent) {
         setEnhancedResult(data);
       } else {
-        alert(data.error || "Enhancement failed.");
+        alert(data.error || noteCopy.enhanceFailed);
       }
     } catch {
-      alert("Network error while enhancing note.");
+      alert(noteCopy.networkError);
     }
     setEnhancingAI(false);
   };
@@ -126,11 +289,59 @@ export default function NotesPage() {
       if (!response.ok || !data.visual) throw new Error(data.error || "Study visual could not be created.");
       setStudyVisual(data.visual);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Study visual could not be created.");
+      alert(error instanceof Error ? error.message : noteCopy.visualFailed);
     } finally {
       setGeneratingVisual(false);
     }
   };
+
+  const handleSelectNote = useCallback(async (note: StudyNote) => {
+    setSelectedNote(note);
+    setTitle(note.title || "");
+    setContent(note.content || "");
+    setIsMobileViewingEditor(true);
+    setIsFlipped(false);
+    setActiveCardIndex(0);
+    setActiveTab("flashcards");
+    setIsStudyCenterOpen(false);
+
+    const [{ data: cardData }, { data: quizData }] = await Promise.all([
+      supabase.from("flashcards").select("*").eq("note_id", note.id).order("created_at", { ascending: true }),
+      supabase.from("quizzes").select("*").eq("note_id", note.id).order("created_at", { ascending: false }),
+    ]);
+    setFlashcards((cardData || []) as Flashcard[]);
+
+    if (quizData && quizData.length > 0) {
+      const latestQuiz = quizData[0] as StudyQuiz;
+      setActiveQuiz(latestQuiz);
+      setIsQuizFinished(latestQuiz.score !== null);
+      setQuizScore(latestQuiz.score || 0);
+      setCurrentQuestionIdx(0);
+      setSelectedOptionIdx(null);
+      setIsQuestionAnswered(false);
+    } else {
+      setActiveQuiz(null);
+      setIsQuizFinished(false);
+      setQuizScore(0);
+    }
+  }, [
+    setActiveCardIndex,
+    setActiveQuiz,
+    setActiveTab,
+    setContent,
+    setCurrentQuestionIdx,
+    setFlashcards,
+    setIsFlipped,
+    setIsMobileViewingEditor,
+    setIsQuestionAnswered,
+    setIsQuizFinished,
+    setIsStudyCenterOpen,
+    setQuizScore,
+    setSelectedNote,
+    setSelectedOptionIdx,
+    setTitle,
+    supabase,
+  ]);
 
   useEffect(() => {
     async function loadData() {
@@ -172,49 +383,11 @@ export default function NotesPage() {
       setLoading(false);
     }
     loadData();
-  }, [router, supabase]);
-
-  const handleSelectNote = async (note: any) => {
-    setSelectedNote(note);
-    setTitle(note.title);
-    setContent(note.content);
-    setIsMobileViewingEditor(true);
-    setIsFlipped(false);
-    setActiveCardIndex(0);
-    setActiveTab("flashcards");
-
-    // Fetch related flashcards
-    const { data: cardData } = await supabase
-      .from("flashcards")
-      .select("*")
-      .eq("note_id", note.id)
-      .order("created_at", { ascending: true });
-    setFlashcards(cardData || []);
-
-    // Fetch related quizzes
-    const { data: quizData } = await supabase
-      .from("quizzes")
-      .select("*")
-      .eq("note_id", note.id)
-      .order("created_at", { ascending: false });
-    
-    if (quizData && quizData.length > 0) {
-      setActiveQuiz(quizData[0]);
-      setIsQuizFinished(quizData[0].score !== null);
-      setQuizScore(quizData[0].score || 0);
-      setCurrentQuestionIdx(0);
-      setSelectedOptionIdx(null);
-      setIsQuestionAnswered(false);
-    } else {
-      setActiveQuiz(null);
-      setIsQuizFinished(false);
-      setQuizScore(0);
-    }
-  };
+  }, [handleSelectNote, router, supabase]);
 
   const handleCreateNewNote = () => {
     setSelectedNote(null);
-    setTitle("New Note");
+    setTitle(noteCopy.newNote);
     setContent("");
     setFlashcards([]);
     setActiveQuiz(null);
@@ -240,11 +413,11 @@ export default function NotesPage() {
 
   const processNoteImage = async (file: File) => {
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file.");
+      alert(noteCopy.imageOnly);
       return;
     }
     if (file.size > 6 * 1024 * 1024) {
-      alert("The image must be smaller than 6 MB.");
+      alert(noteCopy.imageSize);
       return;
     }
     if (uploading || analyzing) return;
@@ -286,7 +459,7 @@ export default function NotesPage() {
 
       const analyzeData = await analyzeRes.json();
       if (!analyzeRes.ok || analyzeData.error) {
-        alert(analyzeData.error || "Image analysis failed.");
+        alert(analyzeData.error || noteCopy.analysisFailed);
       } else if (analyzeData.note) {
         setNotes((currentNotes) => [analyzeData.note, ...currentNotes]);
         handleSelectNote(analyzeData.note);
@@ -295,7 +468,7 @@ export default function NotesPage() {
       }
     } catch (error) {
       alert(
-        "Error processing note file: " +
+        `${noteCopy.processingFailed} ` +
           (error instanceof Error ? error.message : String(error))
       );
     } finally {
@@ -310,18 +483,8 @@ export default function NotesPage() {
     event.target.value = "";
   };
 
-  const handleEditorPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const imageItem = Array.from(event.clipboardData.items).find((item) =>
-      item.type.startsWith("image/")
-    );
-    const imageFile = imageItem?.getAsFile();
-    if (!imageFile) return;
-    event.preventDefault();
-    void processNoteImage(imageFile);
-  };
-
   const handleSaveNote = async () => {
-    if (!title.trim()) return;
+    if (!profile || !title.trim()) return;
     setSavingNote(true);
 
     const notePayload = {
@@ -398,10 +561,10 @@ export default function NotesPage() {
         setActiveCardIndex(0);
         setIsFlipped(false);
       } else {
-        alert(data.error || "Card generation failed.");
+        alert(data.error || noteCopy.cardsFailed);
       }
     } catch {
-      alert("Network error.");
+      alert(noteCopy.networkError);
     }
     setGeneratingCards(false);
   };
@@ -433,16 +596,16 @@ export default function NotesPage() {
         setSelectedOptionIdx(null);
         setIsQuestionAnswered(false);
       } else {
-        alert(data.error || "Quiz generation failed.");
+        alert(data.error || noteCopy.quizFailed);
       }
     } catch {
-      alert("Network error.");
+      alert(noteCopy.networkError);
     }
     setGeneratingQuiz(false);
   };
 
   const handleSelectOption = (idx: number) => {
-    if (isQuestionAnswered) return;
+    if (isQuestionAnswered || !activeQuiz) return;
     setSelectedOptionIdx(idx);
     setIsQuestionAnswered(true);
 
@@ -453,6 +616,7 @@ export default function NotesPage() {
   };
 
   const handleNextQuestion = async () => {
+    if (!activeQuiz) return;
     const nextIdx = currentQuestionIdx + 1;
     if (nextIdx < activeQuiz.questions.length) {
       setCurrentQuestionIdx(nextIdx);
@@ -479,7 +643,7 @@ export default function NotesPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FC]">
+      <div className="flex h-full min-h-80 w-full items-center justify-center bg-[#F8F9FC]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-10 w-10 animate-spin text-brand" />
           <p className="text-sm font-semibold text-gray-500">{t.common.loading}</p>
@@ -488,10 +652,12 @@ export default function NotesPage() {
     );
   }
 
+  if (!profile) return null;
+
   const currentQuestion = activeQuiz?.questions?.[currentQuestionIdx];
 
   return (
-    <main className="flex-1 flex h-screen min-w-0 flex-col overflow-hidden bg-[#F8F9FC] md:flex-row">
+    <main className="flex h-full max-h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#F8F9FC] md:flex-row">
       
       {/* 1. Left Sidebar: Notebook list */}
       <aside className={`w-full md:w-72 xl:w-80 border-r border-gray-150 bg-white p-5 flex flex-col justify-between shrink-0 overflow-y-auto ${
@@ -505,7 +671,7 @@ export default function NotesPage() {
             <div className="flex items-center gap-1.5">
               <label
                 className="p-2 hover:bg-brand-light hover:text-brand text-gray-500 rounded-xl transition-all cursor-pointer flex items-center justify-center"
-                title="Upload Study Note Image"
+                title={noteCopy.upload}
               >
                 <input
                   type="file"
@@ -539,21 +705,21 @@ export default function NotesPage() {
             {uploading && (
               <div className="p-3.5 rounded-2xl border border-dashed border-brand/20 bg-brand-light/10 text-brand text-xs font-semibold flex items-center gap-2">
                 <Loader2 className="animate-spin h-4 w-4" />
-                <span>Uploading to R2...</span>
+                 <span>{noteCopy.uploading}</span>
               </div>
             )}
             {analyzing && (
               <div className="p-3.5 rounded-2xl border border-dashed border-brand/20 bg-brand-light/10 text-brand text-xs font-semibold flex items-center gap-2 animate-pulse">
                 <Sparkles className="animate-bounce h-4 w-4 text-brand" />
-                <span>AI extracting & summarizing...</span>
+                 <span>{noteCopy.analyzing}</span>
               </div>
             )}
             {notes.length === 0 ? (
               <p className="text-xs text-gray-400 py-6 text-center">
-                {lang === "zh" ? "您的笔记本是空的。点击 + 添加学习笔记。" : lang === "es" ? "Tu cuaderno está vacío. Haz clic en + para agregar notas de estudio." : "Your notebook is empty. Click + to add study notes."}
+                 {noteCopy.emptyNotebook}
               </p>
             ) : filteredNotes.length === 0 ? (
-              <p className="py-6 text-center text-xs text-gray-400">{lang === "tr" ? "Aramanızla eşleşen not yok." : "No notes match your search."}</p>
+              <p className="py-6 text-center text-xs text-gray-400">{noteCopy.noSearchResults}</p>
             ) : (
               filteredNotes.map((n) => {
                 const isActive = selectedNote?.id === n.id;
@@ -588,12 +754,12 @@ export default function NotesPage() {
       </aside>
 
       {/* 2. Center Column: Sleek Note Editor */}
-      <section className={`min-w-0 flex-1 flex flex-col bg-white border-r border-gray-100 overflow-y-auto p-5 sm:p-6 lg:p-7 ${
+      <section className={`min-w-0 flex-1 flex-col overflow-y-auto border-r border-gray-100 bg-white p-4 sm:p-6 lg:p-7 ${
         isMobileViewingEditor ? "flex" : "hidden md:flex"
       }`}>
       
         {/* Editor controls header */}
-        <div className="mb-6 flex shrink-0 flex-col gap-3 border-b border-gray-100 pb-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+        <div className="mb-5 flex shrink-0 flex-col gap-4 border-b border-gray-100 pb-5">
           <div className="flex min-w-0 items-center gap-3 w-full max-w-xl">
             <button
               onClick={() => setIsMobileViewingEditor(false)}
@@ -610,7 +776,7 @@ export default function NotesPage() {
             />
           </div>
 
-          <div className="flex min-w-0 flex-wrap items-center gap-2 2xl:shrink-0 2xl:justify-end">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div className="flex p-0.5 bg-gray-100 rounded-xl border border-gray-200">
               <button
                 onClick={() => setEditMode("write")}
@@ -618,7 +784,7 @@ export default function NotesPage() {
                   editMode === "write" ? "bg-white text-brand shadow-sm" : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                Write
+                {noteCopy.editor}
               </button>
               <button
                 onClick={() => setEditMode("preview")}
@@ -626,7 +792,7 @@ export default function NotesPage() {
                   editMode === "preview" ? "bg-white text-brand shadow-sm" : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                Preview
+                {noteCopy.readingView}
               </button>
             </div>
 
@@ -634,20 +800,30 @@ export default function NotesPage() {
               onClick={handleEnhanceNoteWithAI}
               disabled={enhancingAI || !content.trim()}
               className="px-3.5 py-2.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold hover:bg-purple-100 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
-              title="Enhance & structure note with AI"
+              title={noteCopy.enhanceTitle}
             >
               {enhancingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles size={14} className="text-purple-600 animate-pulse" />}
-              {lang === "tr" ? "✨ AI ile İyileştir" : "✨ Enhance with AI"}
+              <span>{noteCopy.enhance}</span>
             </button>
 
             <button
               onClick={handleGenerateStudyVisual}
               disabled={generatingVisual || !content.trim()}
               className="rounded-xl border border-brand/20 bg-brand/5 px-3.5 py-2.5 text-xs font-bold text-brand transition-all hover:bg-brand/10 disabled:opacity-40 flex items-center gap-1.5 shrink-0"
-              title="Generate a structured visual study aid"
+              title={noteCopy.visualTitle}
             >
               {generatingVisual ? <Loader2 className="h-4 w-4 animate-spin" /> : <BrainCircuit size={14} />}
-              <span>{lang === "tr" ? "Görsel şema" : lang === "es" ? "Esquema visual" : lang === "zh" ? "学习图示" : "Visual diagram"}</span>
+              <span>{noteCopy.visual}</span>
+            </button>
+
+            <button
+              onClick={() => setIsStudyCenterOpen(true)}
+              disabled={!selectedNote}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-40 2xl:hidden"
+              title={noteCopy.openStudyCenter}
+            >
+              <BrainCircuit size={14} />
+              <span>{noteCopy.studyCenter}</span>
             </button>
 
             <button
@@ -670,37 +846,39 @@ export default function NotesPage() {
                   <FileText size={20} />
                 </div>
                 <div className="min-w-0">
-                  <span className="text-[10px] font-bold text-brand uppercase tracking-wider block">Attached Study File</span>
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-brand">{noteCopy.attachedFile}</span>
                   <a
                     href={selectedNote.file_url}
                     target="_blank"
                     rel="noreferrer"
                     className="text-xs font-bold text-gray-700 hover:text-brand hover:underline truncate max-w-xs sm:max-w-md flex items-center gap-1 mt-0.5"
                   >
-                    View Original Upload <Eye size={12} />
+                    {noteCopy.viewOriginal} <Eye size={12} />
                   </a>
                 </div>
               </div>
               {selectedNote.file_url.match(/\.(jpeg|jpg|gif|png|webp)$/i) && (
                 <img
                   src={selectedNote.file_url}
-                  alt="Attachment Preview"
+                  alt={noteCopy.attachedFile}
                   className="h-16 w-16 object-cover rounded-xl border border-gray-200/60 shadow-sm"
                 />
               )}
             </div>
           )}
           {editMode === "write" ? (
-            <textarea
+            <RichTextEditor
               value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onPaste={handleEditorPaste}
+              onChange={setContent}
+              language={lang}
+              onImagePaste={processNoteImage}
               placeholder={t.notes.placeholderText}
-              className="w-full flex-1 outline-none text-sm text-surface-dark bg-transparent resize-none leading-relaxed placeholder-gray-400 font-medium font-sans"
+              minHeightClass="min-h-[420px]"
+              ariaLabel={t.notes.placeholderText}
             />
           ) : (
-            <div className="flex-1 overflow-y-auto min-h-[300px]">
-              <MarkdownPreview content={content} />
+            <div className="min-h-[420px] flex-1 overflow-y-auto rounded-2xl border border-gray-100 bg-slate-50/60 p-5 sm:p-7">
+              <MarkdownRenderer content={content} className="text-sm leading-7 text-surface-dark" />
             </div>
           )}
         </div>
@@ -708,7 +886,16 @@ export default function NotesPage() {
 
       {/* 3. Right Column: Premium AI Practice Hub */}
       {selectedNote && (
-        <aside className="w-full md:w-[360px] 2xl:w-[420px] bg-[#F8F9FC] p-5 sm:p-6 flex flex-col shrink-0 overflow-y-auto border-l border-gray-100">
+        <>
+        {isStudyCenterOpen && (
+          <button
+            type="button"
+            aria-label={noteCopy.closeStudyCenter}
+            className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] 2xl:hidden"
+            onClick={() => setIsStudyCenterOpen(false)}
+          />
+        )}
+        <aside className={`${isStudyCenterOpen ? "fixed inset-y-3 right-3 z-50 flex w-[min(92vw,410px)] rounded-3xl shadow-2xl" : "hidden"} shrink-0 flex-col overflow-y-auto border border-gray-100 bg-[#F8F9FC] p-5 sm:p-6 2xl:static 2xl:flex 2xl:w-[390px] 2xl:rounded-none 2xl:border-y-0 2xl:border-r-0 2xl:shadow-none`}>
           <div className="space-y-6">
             
             {/* Header */}
@@ -716,10 +903,18 @@ export default function NotesPage() {
               <div className="h-9 w-9 rounded-xl bg-brand/10 flex items-center justify-center text-brand">
                 <BrainCircuit size={18} className="animate-pulse" />
               </div>
-              <div>
-                <h2 className="text-sm font-bold text-surface-dark">AI Study Center</h2>
-                <p className="text-[10px] text-gray-400 font-medium">Practice concepts from this notebook</p>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-bold text-surface-dark">{noteCopy.studyCenter}</h2>
+                <p className="text-[10px] font-medium leading-relaxed text-gray-400">{noteCopy.studyCenterSubtitle}</p>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsStudyCenterOpen(false)}
+                className="rounded-xl p-2 text-gray-500 transition hover:bg-white hover:text-surface-dark 2xl:hidden"
+                aria-label={noteCopy.closeStudyCenter}
+              >
+                <X size={17} />
+              </button>
             </div>
 
             {/* Navigation Tabs */}
@@ -753,14 +948,14 @@ export default function NotesPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="text-xs font-extrabold text-surface-dark flex items-center gap-1.5">
-                        <Sparkles className="text-brand" size={14} /> Flashcard Set
+                        <Sparkles className="text-brand" size={14} /> {noteCopy.flashcardSet}
                       </h3>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Quiz yourself to check retention.</p>
+                      <p className="mt-0.5 text-[10px] text-gray-400">{noteCopy.flashcardSubtitle}</p>
                     </div>
 
                     <div className="flex items-center gap-2">
                     <label className="flex items-center gap-1 text-[10px] text-gray-500">
-                      <span className="hidden sm:inline">{lang === "tr" ? "Adet" : "Count"}</span>
+                      <span className="hidden sm:inline">{noteCopy.count}</span>
                       <select value={practiceCount} onChange={(event) => setPracticeCount(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-[10px] text-surface-dark">
                         {[3, 6, 10, 15, 20].map((count) => <option key={count} value={count}>{count}</option>)}
                       </select>
@@ -852,14 +1047,14 @@ export default function NotesPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="text-xs font-extrabold text-surface-dark flex items-center gap-1.5">
-                          <HelpCircle className="text-brand" size={14} /> Practice Quiz
+                          <HelpCircle className="text-brand" size={14} /> {noteCopy.practiceQuiz}
                         </h3>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Generate a quiz from these notes.</p>
+                        <p className="mt-0.5 text-[10px] text-gray-400">{noteCopy.quizSubtitle}</p>
                       </div>
 
                       <div className="flex items-center gap-2">
                       <label className="flex items-center gap-1 text-[10px] text-gray-500">
-                        <span className="hidden sm:inline">{lang === "tr" ? "Adet" : "Count"}</span>
+                        <span className="hidden sm:inline">{noteCopy.count}</span>
                         <select value={practiceCount} onChange={(event) => setPracticeCount(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-[10px] text-surface-dark">
                           {[3, 6, 10, 15, 20].map((count) => <option key={count} value={count}>{count}</option>)}
                         </select>
@@ -976,6 +1171,7 @@ export default function NotesPage() {
             )}
           </div>
         </aside>
+        </>
       )}
 
       {studyVisual && (
@@ -1021,8 +1217,8 @@ export default function NotesPage() {
                   </span>
                 </div>
                 <h4 className="font-bold text-sm text-surface-dark">{title || "Untitled"}</h4>
-                <div className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-sans">
-                  {content}
+                <div className="text-xs text-gray-600 leading-relaxed font-sans">
+                  <MarkdownRenderer content={content} />
                 </div>
               </div>
 
@@ -1035,7 +1231,7 @@ export default function NotesPage() {
                 </div>
                 <h4 className="font-bold text-sm text-purple-950">{enhancedResult.title || title}</h4>
                 <div className="text-xs text-gray-700 leading-relaxed font-sans">
-                  <MarkdownPreview content={enhancedResult.enhancedContent} />
+                  <MarkdownRenderer content={enhancedResult.enhancedContent} />
                 </div>
                 {enhancedResult.visual && (
                   <div className="pt-3">
@@ -1072,104 +1268,4 @@ export default function NotesPage() {
 
     </main>
   );
-}
-
-function MarkdownPreview({ content }: { content: string }) {
-  if (!content) return null;
-
-  const lines = content.split("\n");
-
-  return (
-    <div className="text-surface-dark leading-relaxed space-y-4 font-sans max-w-none">
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
-
-        // 1. Headings
-        if (trimmed.startsWith("# ")) {
-          return (
-            <h1 key={idx} className="text-2xl font-extrabold text-surface-dark border-b border-gray-100 pb-2 mt-6 mb-3">
-              {parseFormatting(trimmed.slice(2))}
-            </h1>
-          );
-        }
-        if (trimmed.startsWith("## ")) {
-          return (
-            <h2 key={idx} className="text-xl font-bold text-surface-dark mt-5 mb-2">
-              {parseFormatting(trimmed.slice(3))}
-            </h2>
-          );
-        }
-        if (trimmed.startsWith("### ")) {
-          return (
-            <h3 key={idx} className="text-base font-bold text-surface-dark mt-4 mb-2">
-              {parseFormatting(trimmed.slice(4))}
-            </h3>
-          );
-        }
-
-        // 2. List Items
-        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-          return (
-            <div key={idx} className="flex items-start gap-2 ml-4">
-              <span className="text-brand font-bold text-sm mt-0.5">•</span>
-              <p className="text-sm text-gray-700 leading-relaxed">
-                {parseFormatting(trimmed.slice(2))}
-              </p>
-            </div>
-          );
-        }
-
-        // 3. Spacers
-        if (!trimmed) {
-          return <div key={idx} className="h-3" />;
-        }
-
-        // 4. Paragraph
-        return (
-          <p key={idx} className="text-sm text-gray-600 leading-relaxed">
-            {parseFormatting(line)}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
-function parseFormatting(text: string) {
-  const parts = [];
-  const formatRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3/g;
-  let match;
-  let lastIndex = 0;
-
-  while ((match = formatRegex.exec(text)) !== null) {
-    const matchIndex = match.index;
-
-    if (matchIndex > lastIndex) {
-      parts.push(text.substring(lastIndex, matchIndex));
-    }
-
-    if (match[1]) {
-      // Bold
-      parts.push(
-        <strong key={matchIndex} className="font-extrabold text-surface-dark">
-          {match[2]}
-        </strong>
-      );
-    } else if (match[3]) {
-      // Italic
-      parts.push(
-        <em key={matchIndex} className="italic text-gray-750">
-          {match[4]}
-        </em>
-      );
-    }
-
-    lastIndex = formatRegex.lastIndex;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex));
-  }
-
-  return parts.length > 0 ? parts : text;
 }

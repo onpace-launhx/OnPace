@@ -124,14 +124,15 @@ Deno.serve(async (request) => {
           file_data: `data:${body.document.mimeType || "application/pdf"};base64,${cleanBase64(body.document.base64)}`,
         })
       }
+      const hasRichUserContent = Boolean(body.image?.base64 || body.document?.base64)
 
       const requestBody = useResponses
         ? {
             model,
+            ...(body.systemInstruction
+              ? { instructions: body.systemInstruction }
+              : {}),
             input: [
-              ...(body.systemInstruction
-                ? [{ role: "developer", content: [{ type: "input_text", text: body.systemInstruction }] }]
-                : []),
               ...history.map((message) => ({
                 role: message.role,
                 content: [{
@@ -139,7 +140,7 @@ Deno.serve(async (request) => {
                   text: message.content,
                 }],
               })),
-              { role: "user", content: userContent },
+              { role: "user", content: hasRichUserContent ? userContent : body.prompt },
             ],
             ...(model.startsWith("gpt-5.6")
               ? { reasoning: { effort: workload === "reasoning" ? "low" : "none" } }

@@ -7,6 +7,13 @@ import { CheckCircle2, ChevronRight, ChevronLeft, Clock, Award, Sparkles, BookOp
 import { countryOptions, getCountryName } from "@/lib/countries";
 import { getLocalizedCourseName, getSuggestedCourseCatalog } from "@/lib/course-labels";
 
+const REQUIRED_PROFILE_COPY = {
+  en: { title: "Complete required information", body: "Your country and time zone are required so package end times are shown correctly in your local time.", country: "Country", choose: "Select your country", timezone: "Detected time zone", save: "Save and continue", saving: "Saving…", error: "This information could not be saved. Please try again." },
+  tr: { title: "Eksik zorunlu bilgileri tamamlayın", body: "Paket bitiş saatlerini bulunduğunuz yere göre doğru gösterebilmemiz için ülke ve saat dilimi bilgisi zorunludur.", country: "Ülke", choose: "Ülkenizi seçin", timezone: "Algılanan saat dilimi", save: "Kaydet ve devam et", saving: "Kaydediliyor…", error: "Bilgiler kaydedilemedi. Lütfen tekrar deneyin." },
+  es: { title: "Completa la información obligatoria", body: "Necesitamos tu país y zona horaria para mostrar correctamente la hora de finalización de los planes en tu horario local.", country: "País", choose: "Selecciona tu país", timezone: "Zona horaria detectada", save: "Guardar y continuar", saving: "Guardando…", error: "No se pudo guardar la información. Inténtalo de nuevo." },
+  zh: { title: "请补充必填信息", body: "我们需要您的国家/地区和时区，以便按当地时间准确显示套餐结束时间。", country: "国家/地区", choose: "选择国家/地区", timezone: "检测到的时区", save: "保存并继续", saving: "正在保存…", error: "无法保存这些信息，请重试。" },
+} as const;
+
 export default function OnboardingPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -14,6 +21,9 @@ export default function OnboardingPage() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [requiredProfileOnly, setRequiredProfileOnly] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [timezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
 
   // Step 1 Form Data
   const [learningStyles, setLearningStyles] = useState<string[]>(["visual"]);
@@ -40,12 +50,13 @@ export default function OnboardingPage() {
         .eq("id", user.id)
         .single();
       
-      if (data?.has_onboarded) {
+      if (data?.has_onboarded && data?.country && data?.timezone) {
         router.push("/dashboard");
         return;
       }
       setProfile(data);
       setCountry(data?.country || "");
+      setRequiredProfileOnly(Boolean(data?.has_onboarded && (!data?.country || !data?.timezone)));
       setLoading(false);
     }
     loadProfile();
@@ -96,6 +107,7 @@ export default function OnboardingPage() {
       .update({
         has_onboarded: true,
         country,
+        timezone,
         daily_study_goal_minutes: parseInt(dailyGoal),
         learning_styles: learningStyles
       })
@@ -108,6 +120,21 @@ export default function OnboardingPage() {
     }
   };
 
+  const handleRequiredProfileSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!profile?.id || !country) return;
+    setSaving(true);
+    setProfileError("");
+    const { error } = await supabase.from("profiles").update({ country, timezone }).eq("id", profile.id);
+    if (error) {
+      setProfileError(REQUIRED_PROFILE_COPY[(profile?.language || "en") as keyof typeof REQUIRED_PROFILE_COPY]?.error || REQUIRED_PROFILE_COPY.en.error);
+      setSaving(false);
+      return;
+    }
+    router.replace("/dashboard");
+    router.refresh();
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-surface-secondary">
@@ -116,6 +143,29 @@ export default function OnboardingPage() {
           <p className="text-sm font-medium text-gray-500">Personalizing your profile...</p>
         </div>
       </div>
+    );
+  }
+
+  if (requiredProfileOnly) {
+    const language = (["en", "tr", "es", "zh"].includes(profile?.language) ? profile.language : "en") as keyof typeof REQUIRED_PROFILE_COPY;
+    const requiredCopy = REQUIRED_PROFILE_COPY[language];
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-surface-secondary px-4 py-10">
+        <form onSubmit={handleRequiredProfileSave} className="w-full max-w-lg rounded-3xl border border-gray-150 bg-white p-6 shadow-sm sm:p-9">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand"><MapPin size={26} /></div>
+          <h1 className="mt-5 text-center text-2xl font-extrabold text-surface-dark">{requiredCopy.title}</h1>
+          <p className="mx-auto mt-2 max-w-md text-center text-sm leading-6 text-gray-500">{requiredCopy.body}</p>
+          {profileError && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{profileError}</p>}
+          <label className="mt-6 block text-sm font-bold text-gray-700">{requiredCopy.country}
+            <select required value={country} onChange={(event) => setCountry(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-surface-dark outline-none focus:border-brand">
+              <option value="" disabled>{requiredCopy.choose}</option>
+              {countryOptions.map((countryCode) => <option key={countryCode} value={countryCode}>{getCountryName(countryCode, language)}</option>)}
+            </select>
+          </label>
+          <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3"><p className="text-xs font-bold uppercase tracking-wide text-gray-400">{requiredCopy.timezone}</p><p className="mt-1 break-all text-sm font-semibold text-surface-dark">{timezone}</p></div>
+          <button disabled={saving || !country} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-extrabold text-white disabled:opacity-50">{saving && <Loader2 size={16} className="animate-spin" />}{saving ? requiredCopy.saving : requiredCopy.save}</button>
+        </form>
+      </main>
     );
   }
 

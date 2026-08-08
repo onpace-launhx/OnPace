@@ -370,21 +370,30 @@ export default function StudyPartnerProfileForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className={`space-y-5 rounded-3xl border border-gray-100 bg-white shadow-sm ${
-        compact ? "p-5" : "p-6 sm:p-7"
-      }`}
+      className="overflow-hidden rounded-[1.75rem] border border-indigo-100 bg-white shadow-[0_18px_60px_rgba(54,47,130,0.08)]"
     >
-      <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-brand">
-          <UserRoundSearch size={21} />
-        </div>
-        <div>
-          <h2 className="text-base font-extrabold text-surface-dark">{copy.title}</h2>
-          <p className="mt-1 text-xs leading-relaxed text-gray-500">{copy.subtitle}</p>
+      <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-brand to-violet-500 px-5 py-6 text-white sm:px-6">
+        <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full border border-white/15 bg-white/5" />
+        <div className="absolute -bottom-14 -left-10 h-28 w-28 rounded-full bg-white/5" />
+        <div className="relative flex items-start gap-4">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-white/15 text-xl font-black shadow-inner backdrop-blur-sm">
+            {fullName.trim().charAt(0).toUpperCase() || <UserRoundSearch size={24} />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-extrabold leading-tight">{copy.title}</h2>
+            <p className="mt-1.5 text-xs leading-relaxed text-white/80">{copy.subtitle}</p>
+            <div className="mt-4 flex items-center gap-2" aria-hidden="true">
+              {[fullName.trim().length >= 2, learningStyles.length > 0, subjects.length > 0, availability.days.length > 0, goals.trim().length >= 5].map((complete, index) => (
+                <span key={index} className={`h-1.5 flex-1 rounded-full ${complete ? "bg-white" : "bg-white/25"}`} />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={`space-y-5 ${compact ? "p-4 sm:p-5" : "p-5 sm:p-7"}`}>
+
+      <div className={`grid gap-4 rounded-2xl bg-slate-50/80 p-4 ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}>
         <label className="space-y-1.5 text-xs font-bold text-gray-500">
           <span className="uppercase tracking-wide">{copy.fullName}</span>
           <input
@@ -432,11 +441,11 @@ export default function StudyPartnerProfileForm({
         </label>
       </div>
 
-      <fieldset className="space-y-2">
+      <fieldset className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
         <legend className="text-xs font-bold uppercase tracking-wide text-gray-500">
           {copy.learningStyles}
         </legend>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className={`grid grid-cols-2 gap-2 ${compact ? "" : "sm:grid-cols-4"}`}>
           {learningStyleOptions.map((option) => {
             const selected = learningStyles.includes(option.value);
             return (
@@ -444,7 +453,7 @@ export default function StudyPartnerProfileForm({
                 key={option.value}
                 type="button"
                 onClick={() => toggleValue(option.value, setLearningStyles)}
-                className={`flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors ${
+                className={`flex min-h-12 items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-center text-xs font-bold leading-snug transition-all ${
                   selected
                     ? "border-brand bg-brand text-white"
                     : "border-gray-200 bg-white text-gray-600 hover:border-brand/40"
@@ -458,7 +467,7 @@ export default function StudyPartnerProfileForm({
         </div>
       </fieldset>
 
-      <fieldset className="space-y-2">
+      <fieldset className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
         <legend className="text-xs font-bold uppercase tracking-wide text-gray-500">
           {copy.subjects}
         </legend>
@@ -490,7 +499,7 @@ export default function StudyPartnerProfileForm({
         )}
       </fieldset>
 
-      <label className="block space-y-1.5 text-xs font-bold text-gray-500">
+      <label className="block space-y-2 rounded-2xl bg-slate-50/80 p-4 text-xs font-bold text-gray-500">
         <span className="uppercase tracking-wide">{copy.goals}</span>
         <textarea
           required
@@ -500,11 +509,11 @@ export default function StudyPartnerProfileForm({
           value={goals}
           onChange={(event) => setGoals(event.target.value)}
           placeholder={copy.goalsPlaceholder}
-          className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-surface-dark outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+          className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm font-medium leading-relaxed text-surface-dark outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
         />
       </label>
 
-      <fieldset className="space-y-3">
+      <fieldset className="space-y-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
         <legend className="text-xs font-bold uppercase tracking-wide text-gray-500">
           {copy.availability}
         </legend>
@@ -534,7 +543,7 @@ export default function StudyPartnerProfileForm({
             );
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-gray-500">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-3 py-3 text-xs font-bold text-gray-500">
           <Clock3 size={14} className="text-brand" />
           <span>{copy.timeWindow}</span>
           <input
@@ -570,7 +579,7 @@ export default function StudyPartnerProfileForm({
         </p>
       )}
 
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <div className="flex flex-col-reverse gap-2 border-t border-gray-100 pt-1 sm:flex-row sm:justify-end">
         {onCancel && (
           <button
             type="button"
@@ -583,11 +592,12 @@ export default function StudyPartnerProfileForm({
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-60"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-brand/15 transition hover:bg-brand-hover disabled:opacity-60"
         >
           {saving ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
           {saving ? copy.saving : copy.save}
         </button>
+      </div>
       </div>
     </form>
   );

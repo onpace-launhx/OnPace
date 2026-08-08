@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { REMEMBER_SESSION_COOKIE } from '@/lib/auth/remember-session'
+import { hasActiveFocusEntitlement } from '@/lib/entitlements'
 
 function redirectWithSessionCookies(
   url: URL,
@@ -100,7 +101,7 @@ export async function updateSession(request: NextRequest) {
       await Promise.all([
         supabase
           .from('profiles')
-          .select('role, maintenance_access')
+          .select('role, maintenance_access, plan, trial_ends_at, pro_expires_at, subscription_status, country, timezone')
           .eq('id', user.id)
           .maybeSingle(),
         supabase.rpc('get_public_system_settings'),
@@ -121,6 +122,15 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.searchParams.get('preview') === '1' &&
       (profile?.role === 'admin' || profile?.role === 'super_admin')
 
+    const needsRequiredProfile =
+      profile?.role === 'student' && (!profile?.country || !profile?.timezone)
+    if (needsRequiredProfile && request.nextUrl.pathname !== '/onboarding') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/onboarding'
+      url.search = 'required=profile'
+      return redirectWithSessionCookies(url, supabaseResponse)
+    }
+
     if (maintenanceEnabled && !hasBypass && !isMaintenancePage) {
       const url = request.nextUrl.clone()
       url.pathname = '/maintenance'
@@ -132,6 +142,13 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
       url.search = ''
+      return redirectWithSessionCookies(url, supabaseResponse)
+    }
+
+    if (request.nextUrl.pathname === '/focus' && !hasActiveFocusEntitlement(profile)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/billing'
+      url.search = 'feature=focus&reason=subscription-required'
       return redirectWithSessionCookies(url, supabaseResponse)
     }
   }

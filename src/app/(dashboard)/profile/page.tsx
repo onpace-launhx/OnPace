@@ -12,17 +12,28 @@ import {
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import StudyPartnerProfileForm from "@/components/dashboard/StudyPartnerProfileForm";
+import type { StudyPartnerProfile } from "@/components/dashboard/StudyPartnerProfileForm";
+import { MarkdownRenderer } from "@/components/content/MarkdownRenderer";
+import { RichTextEditor } from "@/components/content/RichTextEditor";
 import { localeForLanguage, localized } from "@/lib/i18n";
+import { richTextToPlainText } from "@/lib/rich-text";
+
+type SocialPost = {
+  id: string;
+  content: string;
+  created_at: string;
+  profiles?: { full_name?: string | null; learning_styles?: string[] | null } | null;
+};
 
 export default function ProfilePage() {
   const router = useRouter();
   const supabase = createClient();
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<StudyPartnerProfile | null>(null);
   const [courses, setCourses] = useState<Array<{ name: string }>>([]);
   const [loading, setLoading] = useState(true);
 
   // Social Sharing Hub states
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<SocialPost[]>([]);
   const [newPostText, setNewPostText] = useState("");
   const [sharingPost, setSharingPost] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
@@ -39,6 +50,7 @@ export default function ProfilePage() {
       checking: "Checking…",
       share: "Share",
       maxCharacters: "Maximum 400 characters",
+      formattingHint: "Use the toolbar to format your post—no special symbols needed.",
       emptyPosts: "No academy posts yet. Be the first to share a study goal.",
       anonymous: "Anonymous peer",
       postRejected: "The post could not be shared.",
@@ -53,6 +65,7 @@ export default function ProfilePage() {
       checking: "Kontrol ediliyor…",
       share: "Paylaş",
       maxCharacters: "En fazla 400 karakter",
+      formattingHint: "Gönderini araç çubuğuyla biçimlendir; özel işaretleri bilmen gerekmez.",
       emptyPosts: "Henüz akademi gönderisi yok. İlk çalışma hedefini sen paylaş.",
       anonymous: "Anonim öğrenci",
       postRejected: "Gönderi paylaşılamadı.",
@@ -67,6 +80,7 @@ export default function ProfilePage() {
       checking: "Comprobando…",
       share: "Compartir",
       maxCharacters: "Máximo 400 caracteres",
+      formattingHint: "Da formato con la barra de herramientas; no necesitas símbolos especiales.",
       emptyPosts: "Todavía no hay publicaciones. Comparte el primer objetivo de estudio.",
       anonymous: "Compañero anónimo",
       postRejected: "No se pudo compartir la publicación.",
@@ -81,11 +95,19 @@ export default function ProfilePage() {
       checking: "正在检查…",
       share: "发布",
       maxCharacters: "最多 400 个字符",
+      formattingHint: "使用工具栏设置格式，无需输入任何特殊符号。",
       emptyPosts: "社区中还没有帖子，分享第一个学习目标吧。",
       anonymous: "匿名同学",
       postRejected: "无法发布帖子。",
       connectionError: "连接失败，请重试。",
     },
+  });
+  const postCharacterCount = richTextToPlainText(newPostText).length;
+  const learningStyleLabels = localized(lang, {
+    en: { visual: "Visual", auditory: "Auditory", reading: "Reading & writing", kinesthetic: "Hands-on" },
+    tr: { visual: "Görsel", auditory: "İşitsel", reading: "Okuma ve yazma", kinesthetic: "Uygulamalı" },
+    es: { visual: "Visual", auditory: "Auditivo", reading: "Lectura y escritura", kinesthetic: "Práctico" },
+    zh: { visual: "视觉", auditory: "听觉", reading: "读写", kinesthetic: "实践" },
   });
 
   useEffect(() => {
@@ -111,7 +133,7 @@ export default function ProfilePage() {
         const res = await fetch("/api/posts");
         if (res.ok) {
           const data = await res.json();
-          setPosts(data);
+          setPosts(data as SocialPost[]);
         }
       } catch (err) {
         console.error("Failed to load posts:", err);
@@ -124,7 +146,7 @@ export default function ProfilePage() {
 
   const handleSharePost = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPostText.trim()) return;
+    if (postCharacterCount < 5 || postCharacterCount > 400) return;
     setSharingPost(true);
     setPostError(null);
 
@@ -132,7 +154,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: newPostText.trim() })
+        body: JSON.stringify({ content: newPostText.trim(), language: lang })
       });
       const data = await res.json();
 
@@ -151,7 +173,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-gray-50">
+      <div className="flex h-full min-h-80 w-full items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-2">
           <Loader2 className="h-8 w-8 animate-spin text-brand" />
           <p className="text-sm font-medium text-gray-500">{t.common.loading}</p>
@@ -160,8 +182,10 @@ export default function ProfilePage() {
     );
   }
 
+  if (!profile) return null;
+
   return (
-    <main className="flex-1 p-6 lg:p-10 overflow-y-auto space-y-8 max-w-6xl mx-auto w-full">
+    <main className="mx-auto w-full max-w-7xl flex-1 space-y-8 overflow-y-auto p-4 sm:p-6 lg:p-10">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight text-surface-dark flex items-center gap-2">
@@ -170,8 +194,8 @@ export default function ProfilePage() {
         <p className="text-sm text-gray-500 mt-1">{copy.subtitle}</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(330px,0.92fr)_minmax(0,1.55fr)] xl:gap-8">
+        <div className="min-w-0">
           <StudyPartnerProfileForm
             profile={profile}
             courses={courses}
@@ -180,8 +204,8 @@ export default function ProfilePage() {
           />
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white border border-gray-100 p-6 sm:p-8 rounded-3xl shadow-sm space-y-6">
+        <div className="min-w-0 space-y-6">
+          <div className="space-y-6 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8">
             <div>
               <h3 className="text-lg font-extrabold text-surface-dark flex items-center gap-1.5">
                 <BookOpen className="text-brand" size={18} />
@@ -192,21 +216,26 @@ export default function ProfilePage() {
 
             {/* Post Creation Form */}
             <form onSubmit={handleSharePost} className="space-y-3">
-              <textarea
-                required
-                rows={3}
-                maxLength={400}
+              <RichTextEditor
                 value={newPostText}
-                onChange={(e) => setNewPostText(e.target.value)}
+                onChange={setNewPostText}
+                language={lang}
                 placeholder={copy.postPlaceholder}
-                className="w-full px-4 py-3 border border-gray-150 bg-gray-50/50 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-brand text-surface-dark resize-none placeholder-gray-400"
+                maxPlainTextLength={400}
+                minHeightClass="min-h-32"
+                ariaLabel={copy.postPlaceholder}
               />
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-gray-400 font-semibold">{copy.maxCharacters}</span>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium leading-relaxed text-gray-400">{copy.formattingHint}</p>
+                  <span className={`text-[10px] font-bold ${postCharacterCount > 380 ? "text-amber-600" : "text-gray-400"}`}>
+                    {postCharacterCount}/400 · {copy.maxCharacters}
+                  </span>
+                </div>
                 <button
                   type="submit"
-                  disabled={sharingPost}
-                  className="px-5 py-2.5 bg-brand text-white text-xs font-bold rounded-xl hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                  disabled={sharingPost || postCharacterCount < 5 || postCharacterCount > 400}
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-xs font-bold text-white shadow-xs transition-all hover:bg-brand-hover active:scale-95 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {sharingPost ? (
                     <>
@@ -237,7 +266,7 @@ export default function ProfilePage() {
               ) : (
                 posts.map(post => (
                   <div key={post.id} className="p-4 border border-gray-100 rounded-2xl space-y-2 hover:border-gray-200 transition-all text-left">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <div className="h-7 w-7 rounded-lg bg-brand/10 text-brand font-bold text-[10px] flex items-center justify-center border border-brand/20 uppercase">
                           {post.profiles?.full_name?.charAt(0) || "S"}
@@ -252,15 +281,16 @@ export default function ProfilePage() {
                       <div className="flex gap-1.5 flex-wrap">
                         {post.profiles?.learning_styles?.map((style: string) => (
                           <span key={style} className="px-2 py-0.5 rounded text-[8px] bg-brand-light/30 text-brand border border-brand/10 uppercase font-extrabold">
-                            {style}
+                            {learningStyleLabels[style as keyof typeof learningStyleLabels] || style}
                           </span>
                         ))}
                       </div>
                     </div>
                     
-                    <p className="text-xs text-gray-600 leading-relaxed font-semibold pl-9">
-                      {post.content}
-                    </p>
+                    <MarkdownRenderer
+                      content={post.content}
+                      className="content-break-anywhere pl-0 text-sm font-medium leading-7 text-gray-650 sm:pl-9"
+                    />
                   </div>
                 ))
               )}

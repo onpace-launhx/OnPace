@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -8,6 +8,84 @@ import { setRememberSessionIntent } from "@/lib/auth/remember-session";
 import { getBrowserSiteOrigin } from "@/lib/site-url";
 import { CheckCircle2, Lock, Mail, User, GraduationCap, Loader2, AlertCircle, MapPin } from "lucide-react";
 import { countryOptions, getCountryName } from "@/lib/countries";
+
+const registrationErrors = {
+  en: {
+    password: "Choose a stronger password that meets the password requirements.",
+    registered: "An account already exists for this email. Sign in or reset your password.",
+    fallback: "We could not create your account. Please review your details and try again.",
+  },
+  tr: {
+    password: "Parola gereksinimlerini karşılayan daha güçlü bir parola seçin.",
+    registered: "Bu e-posta için zaten bir hesap var. Giriş yapın veya parolanızı sıfırlayın.",
+    fallback: "Hesabınız oluşturulamadı. Bilgilerinizi kontrol edip tekrar deneyin.",
+  },
+  es: {
+    password: "Elige una contraseña más segura que cumpla los requisitos.",
+    registered: "Ya existe una cuenta con este correo. Inicia sesión o restablece la contraseña.",
+    fallback: "No pudimos crear tu cuenta. Revisa tus datos e inténtalo de nuevo.",
+  },
+  zh: {
+    password: "请选择符合密码要求的更安全密码。",
+    registered: "此邮箱已有账户。请登录或重置密码。",
+    fallback: "无法创建账户，请检查填写的信息后重试。",
+  },
+};
+
+function friendlyRegistrationError(message: string, language: string) {
+  const copy = registrationErrors[language as keyof typeof registrationErrors] || registrationErrors.en;
+  const normalized = message.toLowerCase();
+  if (normalized.includes("password")) return copy.password;
+  if (normalized.includes("already registered") || normalized.includes("already exists")) return copy.registered;
+  return copy.fallback;
+}
+
+const registerCopy = {
+  en: {
+    title: "Create your account", already: "Already have an account?", signIn: "Sign in",
+    google: "Sign up with Google", redirecting: "Redirecting...", divider: "or register with email",
+    fullName: "Full name", namePlaceholder: "Alex Smith", grade: "Grade / Goal level",
+    chooseGrade: "Select your grade/study path", language: "Account and email language",
+    languageHelp: "Verification and security emails will use this language.", country: "Country",
+    chooseCountry: "Select your country", countryHelp: "We use this only to suggest relevant exams and study paths.",
+    email: "Email address", password: "Password", promo: "Do you have a Promo Code?",
+    promoPlaceholder: "e.g. TRIAL30", promoVerify: "Verify", creating: "Creating account...", create: "Create free account",
+  },
+  tr: {
+    title: "Hesabını oluştur", already: "Zaten hesabın var mı?", signIn: "Giriş yap",
+    google: "Google ile kayıt ol", redirecting: "Yönlendiriliyor...", divider: "veya e-posta ile kayıt ol",
+    fullName: "Ad soyad", namePlaceholder: "Ata Yılmaz", grade: "Sınıf / Hedef düzeyi",
+    chooseGrade: "Sınıfını veya çalışma yolunu seç", language: "Hesap ve e-posta dili",
+    languageHelp: "Doğrulama ve güvenlik e-postaları bu dili kullanır.", country: "Ülke",
+    chooseCountry: "Ülkeni seç", countryHelp: "Bunu yalnızca ilgili sınavları ve çalışma yollarını önermek için kullanırız.",
+    email: "E-posta adresi", password: "Parola", promo: "Promosyon kodun var mı?",
+    promoPlaceholder: "Örn. TRIAL30", promoVerify: "Doğrula", creating: "Hesap oluşturuluyor...", create: "Ücretsiz hesap oluştur",
+  },
+  es: {
+    title: "Crea tu cuenta", already: "¿Ya tienes una cuenta?", signIn: "Inicia sesión",
+    google: "Registrarse con Google", redirecting: "Redirigiendo...", divider: "o regístrate con correo",
+    fullName: "Nombre completo", namePlaceholder: "Alex García", grade: "Curso / Objetivo",
+    chooseGrade: "Selecciona tu curso o ruta de estudio", language: "Idioma de la cuenta y los correos",
+    languageHelp: "Los correos de verificación y seguridad usarán este idioma.", country: "País",
+    chooseCountry: "Selecciona tu país", countryHelp: "Lo usamos solo para sugerir exámenes y rutas de estudio relevantes.",
+    email: "Correo electrónico", password: "Contraseña", promo: "¿Tienes un código promocional?",
+    promoPlaceholder: "p. ej. TRIAL30", promoVerify: "Verificar", creating: "Creando cuenta...", create: "Crear cuenta gratuita",
+  },
+  zh: {
+    title: "创建您的账户", already: "已有账户？", signIn: "登录",
+    google: "使用 Google 注册", redirecting: "正在跳转...", divider: "或使用邮箱注册",
+    fullName: "姓名", namePlaceholder: "王小明", grade: "年级 / 目标",
+    chooseGrade: "选择年级或学习路径", language: "账户和邮件语言",
+    languageHelp: "验证和安全邮件将使用此语言。", country: "国家/地区",
+    chooseCountry: "选择国家/地区", countryHelp: "仅用于推荐相关考试和学习路径。",
+    email: "邮箱地址", password: "密码", promo: "有优惠码吗？",
+    promoPlaceholder: "例如 TRIAL30", promoVerify: "验证", creating: "正在创建账户...", create: "创建免费账户",
+  },
+};
+
+function subscribeToHydration() {
+  return () => {};
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -29,6 +107,15 @@ export default function RegisterPage() {
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoSuccessMsg, setPromoSuccessMsg] = useState<string | null>(null);
   const [verifyingPromo, setVerifyingPromo] = useState(false);
+  const countryNamesReady = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false
+  );
+  const t = registerCopy[language as keyof typeof registerCopy] || registerCopy.en;
+
+  // Locale display names can differ between server and browser runtimes; the
+  // server snapshot uses country codes, then translated names appear after hydration.
 
   const handleVerifyPromo = async () => {
     if (!promoCode.trim()) return;
@@ -79,6 +166,7 @@ export default function RegisterPage() {
           full_name: fullName,
           grade_level: gradeLevel,
           country,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
           language,
           promocode: promoVerified ? promoCode.trim() : null,
         },
@@ -86,7 +174,7 @@ export default function RegisterPage() {
     });
 
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg(friendlyRegistrationError(error.message, language));
       setLoading(false);
     } else {
       // Check if user is auto-confirmed or needs email confirmation
@@ -117,7 +205,7 @@ export default function RegisterPage() {
       },
     });
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg(friendlyRegistrationError(error.message, language));
       setGoogleLoading(false);
     }
   };
@@ -132,12 +220,12 @@ export default function RegisterPage() {
           <span className="text-2xl font-bold tracking-tight text-surface-dark">OnPace</span>
         </Link>
         <h2 className="mt-6 text-center text-3xl font-extrabold tracking-tight text-surface-dark">
-          Create your account
+          {t.title}
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          Already have an account?{" "}
+          {t.already}{" "}
           <Link href="/login" className="font-medium text-brand hover:text-brand-hover transition-colors">
-            Sign in
+            {t.signIn}
           </Link>
         </p>
       </div>
@@ -147,7 +235,7 @@ export default function RegisterPage() {
           {errorMsg && (
             <div className="rounded-xl bg-red-50 p-4 border border-red-100 flex items-start gap-3 mb-6">
               <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-              <span className="text-sm font-medium text-red-700">{errorMsg}</span>
+              <span className="content-break-anywhere min-w-0 text-sm font-medium text-red-700">{errorMsg}</span>
             </div>
           )}
 
@@ -181,7 +269,7 @@ export default function RegisterPage() {
                 />
               </svg>
             )}
-            {googleLoading ? "Redirecting..." : "Sign up with Google"}
+            {googleLoading ? t.redirecting : t.google}
           </button>
 
           {/* Divider */}
@@ -190,7 +278,7 @@ export default function RegisterPage() {
               <div className="w-full border-t border-gray-200" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-3 bg-white text-gray-500 font-medium">or register with email</span>
+              <span className="px-3 bg-white text-gray-500 font-medium">{t.divider}</span>
             </div>
           </div>
 
@@ -204,7 +292,7 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
-                Full name
+                {t.fullName}
               </label>
               <div className="mt-1 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -218,7 +306,7 @@ export default function RegisterPage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand focus:border-brand sm:text-sm bg-white text-surface-dark placeholder-gray-400 transition-all outline-none"
-                  placeholder="Alex Smith"
+                  placeholder={t.namePlaceholder}
                 />
               </div>
             </div>
@@ -243,7 +331,7 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="gradeLevel" className="block text-sm font-medium text-gray-700">
-                Grade / Goal level
+                {t.grade}
               </label>
               <div className="mt-1 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -257,7 +345,7 @@ export default function RegisterPage() {
                   onChange={(e) => setGradeLevel(e.target.value)}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand focus:border-brand sm:text-sm bg-white text-surface-dark transition-all outline-none cursor-pointer"
                 >
-                  <option value="" disabled>Select your grade/study path</option>
+                  <option value="" disabled>{t.chooseGrade}</option>
                   <option value="Grade 9">Grade 9 (Freshman)</option>
                   <option value="Grade 10">Grade 10 (Sophomore)</option>
                   <option value="Grade 11">Grade 11 (Junior)</option>
@@ -273,7 +361,7 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="language" className="block text-sm font-medium text-gray-700">
-                Account and email language
+                {t.language}
               </label>
               <select
                 id="language"
@@ -288,13 +376,13 @@ export default function RegisterPage() {
                 <option value="zh">中文</option>
               </select>
               <p className="mt-1.5 text-xs text-gray-500">
-                Verification and security emails will use this language.
+                {t.languageHelp}
               </p>
             </div>
 
             <div>
               <label htmlFor="country" className="block text-sm font-medium text-gray-700">
-                Country
+                {t.country}
               </label>
               <div className="mt-1 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -308,22 +396,24 @@ export default function RegisterPage() {
                   onChange={(event) => setCountry(event.target.value)}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand focus:border-brand sm:text-sm bg-white text-surface-dark transition-all outline-none cursor-pointer"
                 >
-                  <option value="" disabled>Select your country</option>
-                  {countryOptions.map((countryCode) => (
-                    <option key={countryCode} value={countryCode}>
-                      {getCountryName(countryCode, language)}
-                    </option>
-                  ))}
+                  <option value="" disabled>{t.chooseCountry}</option>
+                      {countryOptions.map((countryCode) => (
+                        <option key={countryCode} value={countryCode}>
+                          {countryNamesReady
+                            ? getCountryName(countryCode, language)
+                            : countryCode}
+                        </option>
+                      ))}
                 </select>
               </div>
               <p className="mt-1.5 text-xs text-gray-500">
-                We use this only to suggest relevant exams and study paths.
+                {t.countryHelp}
               </p>
             </div>
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
+                {t.email}
               </label>
               <div className="mt-1 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -345,7 +435,7 @@ export default function RegisterPage() {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
+                {t.password}
               </label>
               <div className="mt-1 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -367,7 +457,7 @@ export default function RegisterPage() {
             {/* Do you have a Promocode? Section */}
             <div className="border-t border-gray-100 pt-4 space-y-2">
               <label htmlFor="promoCode" className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Do you have a Promo Code?
+                {t.promo}
               </label>
               <div className="flex gap-2">
                 <input
@@ -382,7 +472,7 @@ export default function RegisterPage() {
                   }}
                   disabled={promoVerified}
                   className="block flex-1 px-3 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand focus:border-brand text-xs bg-white text-surface-dark placeholder-gray-400 transition-all outline-none"
-                  placeholder="e.g. TRIAL30"
+                  placeholder={t.promoPlaceholder}
                 />
                 <button
                   type="button"
@@ -390,11 +480,11 @@ export default function RegisterPage() {
                   disabled={verifyingPromo || !promoCode.trim() || promoVerified}
                   className="px-4 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 text-gray-700 font-bold rounded-xl text-xs active:scale-95 transition-all cursor-pointer flex items-center justify-center min-w-[70px]"
                 >
-                  {verifyingPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Verify"}
+                  {verifyingPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t.promoVerify}
                 </button>
               </div>
               {promoError && (
-                <p className="text-[10px] text-red-500 font-semibold">{promoError}</p>
+                <p className="content-break-anywhere text-[10px] text-red-500 font-semibold">{promoError}</p>
               )}
               {promoSuccessMsg && (
                 <p className="text-[10px] text-green-500 font-bold flex items-center gap-1">
@@ -411,10 +501,10 @@ export default function RegisterPage() {
               >
                 {loading ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Creating account...
+                    <Loader2 className="h-4 w-4 animate-spin" /> {t.creating}
                   </>
                 ) : (
-                  "Create free account"
+                  t.create
                 )}
               </button>
             </div>

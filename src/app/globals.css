@@ -22,20 +22,173 @@
 }
 
 :root {
+  color-scheme: light;
   --background: var(--color-surface-secondary);
   --foreground: var(--color-surface-dark);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: var(--color-surface-dark);
-    --foreground: var(--color-surface-secondary);
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/*
+ * OnPace currently ships a light interface. Respecting an operating-system
+ * dark preference here made inherited form text light while many inputs keep
+ * a white background, leaving typed values invisible on mobile. Keep native
+ * controls and unstyled inputs on the same light colour system as the UI.
+ */
+input,
+textarea,
+select {
+  color: var(--color-surface-dark);
+  color-scheme: light;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af;
+  opacity: 1;
+}
+
+.content-break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-content {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-content > * + * {
+  margin-top: 0.8rem;
+}
+
+.markdown-content p {
+  white-space: pre-wrap;
+}
+
+.rich-text-editor:empty::before {
+  color: #9ca3af;
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.rich-text-editor {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rich-text-editor p + p,
+.rich-text-editor ul + p,
+.rich-text-editor ol + p {
+  margin-top: 0.7rem;
+}
+
+.rich-text-editor h2 {
+  margin: 0.35rem 0 0.65rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.rich-text-editor ul {
+  list-style: disc;
+  padding-left: 1.35rem;
+}
+
+.rich-text-editor ol {
+  list-style: decimal;
+  padding-left: 1.35rem;
+}
+
+.rich-text-editor a {
+  color: var(--color-brand);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-code-inline {
+  overflow-wrap: normal;
+  border-radius: 0.35rem;
+  background: rgba(79, 70, 229, 0.1);
+  padding: 0.1rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.markdown-code-block {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 0.9rem;
+  background: #111827;
+  padding: 0.85rem 1rem;
+  color: #f9fafb;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.markdown-math {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
+  border-radius: 0.35rem;
+  background: rgba(79, 70, 229, 0.08);
+  padding: 0.05rem 0.32rem;
+  font-family: Cambria, "Times New Roman", serif;
+  font-size: 1.02em;
+  white-space: nowrap;
+}
+
+.markdown-math-block {
+  display: block;
+  margin: 0.9rem 0;
+  padding: 0.8rem 1rem;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+.markdown-math-fraction {
+  display: inline-grid;
+  grid-template-rows: auto auto;
+  margin: 0 0.18em;
+  vertical-align: middle;
+  text-align: center;
+  line-height: 1.12;
+}
+
+.markdown-math-fraction > span:first-child {
+  border-bottom: 1px solid currentColor;
+  padding: 0 0.18em 0.08em;
+}
+
+.markdown-math-fraction > span:last-child {
+  padding: 0.08em 0.18em 0;
+}
+
+.markdown-math-root {
+  display: inline-flex;
+  align-items: stretch;
+  vertical-align: middle;
+}
+
+.markdown-math-root > span:last-child {
+  border-top: 1px solid currentColor;
+  padding: 0 0.12em;
+}
+
+.markdown-math-text {
+  font-family: var(--font-sans), Arial, sans-serif;
+  font-size: 0.94em;
+}
+
+.markdown-math-operator {
+  margin-right: 0.14em;
+  font-style: normal;
 }
 
 html {

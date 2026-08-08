@@ -7,27 +7,73 @@ import {
   CreditCard,
   Check,
   ShieldCheck,
-  Sparkles,
-  Trophy,
   Loader2,
-  Lock,
   Calendar,
-  DollarSign,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  ExternalLink,
+  Mail,
+  Clock3,
+  CheckCircle2,
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
+
+type PaymentClaim = {
+  id: string;
+  plan_type: string;
+  billing_cycle: string;
+  payer_email: string;
+  quoted_amount: number;
+  currency: string;
+  status: string;
+  provider_reference?: string | null;
+  submitted_at: string;
+  reviewed_at?: string | null;
+};
+type BillingProfile = {
+  id: string;
+  email?: string | null;
+  language?: string | null;
+  plan?: string | null;
+  billing_cycle?: string | null;
+  subscription_status?: string | null;
+  trial_ends_at?: string | null;
+  timezone?: string | null;
+  discount_percent?: number | null;
+};
+type Invoice = {
+  id: string; created_at: string; plan_type: string; billing_cycle: string;
+  amount: number; provider_reference?: string | null; stripe_payment_intent_id?: string | null;
+};
+type BillingPlan = {
+  title: string; type: string; cycle: string; price: number; period: string;
+  description: string; features: string[]; badge: string; badgeStyle: string;
+  cta: string; disabled: boolean; highlight?: boolean;
+};
+type BillingSettings = {
+  payment_gateway_enabled?: boolean;
+  payment_disabled_message?: Record<string, string>;
+  plan_prices?: Record<string, number>;
+  payment_checkout_urls?: Record<string, string>;
+  plan_names?: Record<string, Partial<Record<"en" | "tr" | "es" | "zh", string>>>;
+};
 
 export default function BillingPage() {
   const router = useRouter();
   const supabase = createClient();
-  const [profile, setProfile] = useState<any>(null);
-  const [invoices, setInvoices] = useState<any[]>([]);
+  const [profile, setProfile] = useState<BillingProfile | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Provider-hosted checkout state
-  const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<BillingPlan | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [paymentClaims, setPaymentClaims] = useState<PaymentClaim[]>([]);
+  const [payerEmail, setPayerEmail] = useState("");
+  const [checkoutOpened, setCheckoutOpened] = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [submittingClaim, setSubmittingClaim] = useState(false);
+  const [claimSuccess, setClaimSuccess] = useState(false);
 
   // Custom Alert Popups
   const [customAlert, setCustomAlert] = useState<string | null>(null);
@@ -72,7 +118,7 @@ export default function BillingPage() {
     setApplyingPromo(false);
   };
 
-  const [systemSettings, setSystemSettings] = useState<any>(null);
+  const [systemSettings, setSystemSettings] = useState<BillingSettings | null>(null);
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
@@ -114,12 +160,24 @@ export default function BillingPage() {
         setInvoices(historyData);
       }
 
+      try {
+        const claimsResponse = await fetch("/api/billing/manage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "my_payment_claims" }),
+        });
+        const claimsData = await claimsResponse.json().catch(() => ({}));
+        if (claimsResponse.ok) setPaymentClaims(claimsData.claims || []);
+      } catch {
+        // Billing history remains usable if claim status is temporarily unavailable.
+      }
+
       setLoading(false);
     }
     loadBillingData();
   }, [router, supabase]);
 
-  const handleOpenCheckout = (plan: any) => {
+  const handleOpenCheckout = (plan: BillingPlan) => {
     if (!systemSettings?.payment_gateway_enabled) {
       const disabledMsg =
         systemSettings?.payment_disabled_message?.[lang] ||
@@ -128,11 +186,20 @@ export default function BillingPage() {
           ? "Plan değişikliği yalnızca size verilen promocode üzerinden veya sistem yöneticiniz tarafından yapılabilir."
           : "Plan changes can only be made using a promo code issued to you or by your system administrator.");
       setCustomAlert(disabledMsg);
-    } else if (!systemSettings?.payment_provider_configured) {
-      setCustomAlert(t.billing.providerNotConfigured);
+    } else if (
+      plan.type !== "free" &&
+      !(systemSettings?.payment_checkout_urls
+        ? systemSettings.payment_checkout_urls[plan.type]
+        : plan.type === "pro_monthly")
+    ) {
+      setCustomAlert(claimCopy.checkoutUnavailable);
     } else {
       const dynamicPrice = systemSettings?.plan_prices?.[plan.type] ?? plan.price;
       setSelectedPlan({ ...plan, price: dynamicPrice });
+      setPayerEmail("");
+      setCheckoutOpened(false);
+      setPaymentConfirmed(false);
+      setClaimSuccess(false);
     }
   };
 
@@ -141,6 +208,8 @@ export default function BillingPage() {
     if (!selectedPlan) return;
     setCheckingOut(true);
 
+    const paymentWindow = window.open("about:blank", "_blank");
+    if (paymentWindow) paymentWindow.opener = null;
     try {
       const response = await fetch("/api/billing/checkout", {
         method: "POST",
@@ -154,14 +223,39 @@ export default function BillingPage() {
       const data = await response.json();
 
       if (response.ok && data.checkoutUrl) {
-        window.location.assign(data.checkoutUrl);
+        if (paymentWindow) paymentWindow.location.href = data.checkoutUrl;
+        else window.location.href = data.checkoutUrl;
+        setCheckoutOpened(true);
       } else {
-        setCustomAlert(data.error || "Checkout error.");
+        paymentWindow?.close();
+        setCustomAlert(response.status === 503 ? claimCopy.checkoutUnavailable : claimCopy.noticeError);
       }
     } catch {
-      setCustomAlert("Network error.");
+      paymentWindow?.close();
+      setCustomAlert(claimCopy.networkError);
     }
     setCheckingOut(false);
+  };
+
+  const handleSubmitPaymentClaim = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedPlan || !paymentConfirmed || !payerEmail.trim()) return;
+    setSubmittingClaim(true);
+    try {
+      const response = await fetch("/api/billing/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "submit_payment_claim", planType: selectedPlan.type, payerEmail }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.error) throw new Error(response.status === 409 ? claimCopy.alreadyPending : claimCopy.noticeError);
+      setClaimSuccess(true);
+      setPaymentClaims((current) => [data.claim, ...current]);
+    } catch (error) {
+      setCustomAlert(error instanceof Error ? error.message : claimCopy.noticeError);
+    } finally {
+      setSubmittingClaim(false);
+    }
   };
 
   if (loading) {
@@ -179,8 +273,7 @@ export default function BillingPage() {
   const now = new Date();
   const trialEnds = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
   const isTrialActive = trialEnds && trialEnds > now;
-  const isPro = profile?.plan === "pro" || profile?.plan === "founding" || isTrialActive;
-
+  const discountPercent = Math.max(0, Math.min(100, Number(profile?.discount_percent) || 0));
   let trialDaysRemaining = 0;
   if (trialEnds && isTrialActive) {
     const diffTime = Math.abs(trialEnds.getTime() - now.getTime());
@@ -201,28 +294,175 @@ export default function BillingPage() {
       description: "Checkout is completed on the configured payment provider’s PCI-compliant page. Available card networks and debit-card support are confirmed there before payment.",
       networks: "Credit cards · Debit cards · Supported networks shown at checkout",
       expires: "Expires",
+      trialRecurring: "Full Pro access is active for {days} more days. Your selected recurring plan begins when the free period ends unless it is canceled.",
+      trialComplimentary: "You have {days} more days of complimentary Pro access. No payment will be collected for this access period.",
     },
     tr: {
       title: "Güvenli kredi ve banka kartı ödemeleri",
       description: "Ödeme, yapılandırılmış ödeme sağlayıcısının PCI uyumlu sayfasında tamamlanır. Desteklenen kart ağları ve banka kartları ödeme öncesinde orada gösterilir.",
       networks: "Kredi kartları · Banka kartları · Desteklenen ağlar ödeme ekranında",
       expires: "Bitiş",
+      trialRecurring: "Tam Pro erişiminiz {days} gün daha aktif. İptal edilmezse seçtiğiniz yinelenen paket ücretsiz süre bittiğinde başlar.",
+      trialComplimentary: "Ücretsiz Pro erişiminizin bitmesine {days} gün kaldı. Bu erişim süresi için ödeme alınmaz.",
     },
     es: {
       title: "Pagos seguros con tarjeta de crédito y débito",
       description: "El pago se completa en la página PCI del proveedor configurado. Allí se muestran las redes y tarjetas de débito compatibles antes de pagar.",
       networks: "Crédito · Débito · Redes compatibles visibles al pagar",
       expires: "Caduca",
+      trialRecurring: "Tu acceso Pro completo seguirá activo {days} días. El plan recurrente elegido comenzará al terminar el periodo gratuito, salvo que se cancele.",
+      trialComplimentary: "Te quedan {days} días de acceso Pro gratuito. No se realizará ningún cobro por este periodo.",
     },
     zh: {
       title: "安全的信用卡与借记卡支付",
       description: "付款将在已配置服务商的 PCI 合规页面完成，支持的卡组织和借记卡会在付款前显示。",
       networks: "信用卡 · 借记卡 · 支持的卡组织将在结账页显示",
       expires: "到期",
+      trialRecurring: "完整 Pro 权限还剩 {days} 天。若未取消，所选周期套餐将在免费期结束后开始。",
+      trialComplimentary: "免费 Pro 权限还剩 {days} 天，此期间不会收取费用。",
+    },
+  });
+  const claimCopy = localized({
+    en: {
+      secureTitle: "Pay securely on EshipX",
+      secureDescription: "OnPace never receives your card details. Payment is completed on the EshipX page and access is activated after manual verification.",
+      stepPlan: "1. Check your plan",
+      stepPay: "2. Complete payment on EshipX",
+      stepReturn: "3. Return here and send the payment notice",
+      openPayment: "Open EshipX payment page",
+      opened: "Payment page opened",
+      payerEmail: "Email used for your EshipX payment",
+      payerEmailHelp: "It may differ from your OnPace email. We use it only to match the payment.",
+      confirm: "I completed the payment on EshipX and the email above is correct.",
+      submit: "I completed the payment",
+      submitting: "Sending for review…",
+      successTitle: "Payment notice received",
+      successText: "Your access will remain unchanged until an administrator matches the payment reference. We will email you when the plan is activated.",
+      close: "Done",
+      pendingTitle: "Payment review status",
+      pendingText: "These notices are matched manually with EshipX transactions.",
+      submitted: "Awaiting review",
+      reviewing: "Being reviewed",
+      approved: "Activated",
+      rejected: "Could not be matched",
+      canceled: "Canceled",
+      paymentReference: "Payment reference",
+      checkoutUnavailable: "This plan's EshipX link is not configured yet.",
+      promo: "Promo code",
+      apply: "Apply",
+      discountApplied: "discount applied",
+      providerAmountFinal: "The final charge is the amount shown on EshipX. Any promo benefit is checked by the administrator while matching your payment.",
+      noticeError: "The payment notice could not be submitted. Please try again.",
+      alreadyPending: "You already have a payment notice awaiting review.",
+      networkError: "The payment service could not be reached. Please check your connection and try again.",
+    },
+    tr: {
+      secureTitle: "eShipX üzerinden güvenli ödeme",
+      secureDescription: "OnPace kart bilgilerinizi hiçbir zaman almaz. Ödeme eShipX sayfasında tamamlanır ve erişim manuel doğrulamadan sonra açılır.",
+      stepPlan: "1. Paketini kontrol et",
+      stepPay: "2. eShipX üzerinden ödemeyi tamamla",
+      stepReturn: "3. Bu ekrana dönüp ödeme bildirimini gönder",
+      openPayment: "eShipX ödeme sayfasını aç",
+      opened: "Ödeme sayfası açıldı",
+      payerEmail: "eShipX ödemesinde kullandığın e-posta",
+      payerEmailHelp: "OnPace e-postandan farklı olabilir. Bu bilgi yalnızca ödemeyi eşleştirmek için kullanılır.",
+      confirm: "eShipX ödemesini tamamladım ve yukarıdaki e-posta doğru.",
+      submit: "Ödemeyi tamamladım",
+      submitting: "Kontrole gönderiliyor…",
+      successTitle: "Ödeme bildirimin alındı",
+      successText: "Yönetici ödeme referansını eşleştirene kadar erişimin değişmez. Paket açıldığında sana e-posta göndereceğiz.",
+      close: "Tamam",
+      pendingTitle: "Ödeme kontrol durumu",
+      pendingText: "Bu bildirimler eShipX işlemleriyle manuel olarak eşleştirilir.",
+      submitted: "Kontrol bekliyor",
+      reviewing: "İnceleniyor",
+      approved: "Aktif edildi",
+      rejected: "Eşleştirilemedi",
+      canceled: "İptal edildi",
+      paymentReference: "Ödeme referansı",
+      checkoutUnavailable: "Bu paketin eShipX bağlantısı henüz tanımlanmadı.",
+      promo: "Promosyon kodu",
+      apply: "Uygula",
+      discountApplied: "indirim uygulandı",
+      providerAmountFinal: "Tahsil edilecek kesin tutar eShipX ekranında gösterilen tutardır. Promosyon avantajı, ödemen eşleştirilirken yönetici tarafından kontrol edilir.",
+      noticeError: "Ödeme bildirimi gönderilemedi. Lütfen yeniden deneyin.",
+      alreadyPending: "Zaten kontrol bekleyen bir ödeme bildirimin var.",
+      networkError: "Ödeme hizmetine ulaşılamadı. Bağlantını kontrol edip yeniden dene.",
+    },
+    es: {
+      secureTitle: "Pago seguro mediante EshipX",
+      secureDescription: "OnPace nunca recibe los datos de tu tarjeta. El pago se completa en EshipX y el acceso se activa tras una verificación manual.",
+      stepPlan: "1. Comprueba tu plan",
+      stepPay: "2. Completa el pago en EshipX",
+      stepReturn: "3. Vuelve aquí y envía el aviso de pago",
+      openPayment: "Abrir la página de pago de EshipX",
+      opened: "Página de pago abierta",
+      payerEmail: "Correo usado para pagar en EshipX",
+      payerEmailHelp: "Puede ser distinto de tu correo de OnPace. Solo se utiliza para vincular el pago.",
+      confirm: "He completado el pago en EshipX y el correo anterior es correcto.",
+      submit: "He completado el pago",
+      submitting: "Enviando para revisión…",
+      successTitle: "Aviso de pago recibido",
+      successText: "Tu acceso no cambiará hasta que un administrador vincule la referencia. Te enviaremos un correo cuando se active.",
+      close: "Listo",
+      pendingTitle: "Estado de revisión del pago",
+      pendingText: "Estos avisos se vinculan manualmente con las transacciones de EshipX.",
+      submitted: "Pendiente de revisión",
+      reviewing: "En revisión",
+      approved: "Activado",
+      rejected: "No se pudo vincular",
+      canceled: "Cancelado",
+      paymentReference: "Referencia de pago",
+      checkoutUnavailable: "El enlace de EshipX para este plan aún no está configurado.",
+      promo: "Código promocional",
+      apply: "Aplicar",
+      discountApplied: "descuento aplicado",
+      providerAmountFinal: "El cargo definitivo es el importe mostrado en EshipX. El administrador comprobará cualquier ventaja promocional al vincular tu pago.",
+      noticeError: "No se pudo enviar el aviso de pago. Inténtalo de nuevo.",
+      alreadyPending: "Ya tienes un aviso de pago pendiente de revisión.",
+      networkError: "No se pudo conectar con el servicio de pago. Comprueba tu conexión e inténtalo de nuevo.",
+    },
+    zh: {
+      secureTitle: "通过 EshipX 安全付款",
+      secureDescription: "OnPace 不会接收您的银行卡信息。付款在 EshipX 页面完成，人工核验后才会开通访问权限。",
+      stepPlan: "1. 确认套餐",
+      stepPay: "2. 在 EshipX 完成付款",
+      stepReturn: "3. 返回此页面并提交付款通知",
+      openPayment: "打开 EshipX 付款页面",
+      opened: "付款页面已打开",
+      payerEmail: "EshipX 付款所用邮箱",
+      payerEmailHelp: "该邮箱可以与 OnPace 邮箱不同，仅用于匹配付款。",
+      confirm: "我已在 EshipX 完成付款，并确认上方邮箱正确。",
+      submit: "我已完成付款",
+      submitting: "正在提交审核…",
+      successTitle: "已收到付款通知",
+      successText: "管理员匹配付款参考号前，您的访问权限不会改变。套餐开通后我们会发送邮件。",
+      close: "完成",
+      pendingTitle: "付款审核状态",
+      pendingText: "这些通知将与 EshipX 交易进行人工匹配。",
+      submitted: "等待审核",
+      reviewing: "正在审核",
+      approved: "已激活",
+      rejected: "无法匹配",
+      canceled: "已取消",
+      paymentReference: "付款参考号",
+      checkoutUnavailable: "该套餐的 EshipX 链接尚未配置。",
+      promo: "优惠码",
+      apply: "应用",
+      discountApplied: "已应用折扣",
+      providerAmountFinal: "最终扣款金额以 EshipX 页面显示为准。管理员会在匹配付款时核对任何优惠权益。",
+      noticeError: "付款通知提交失败，请重试。",
+      alreadyPending: "您已有一条等待审核的付款通知。",
+      networkError: "无法连接付款服务，请检查网络后重试。",
     },
   });
 
-  const plans = [
+  const configuredPlanName = (plan: string, fallback: string) => {
+    const value = systemSettings?.plan_names?.[plan]?.[lang as "en" | "tr" | "es" | "zh"];
+    return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  };
+
+  const plans: BillingPlan[] = [
     {
       title: localized({ en: "Free Plan", tr: "Ücretsiz Plan", es: "Gratis", zh: "免费版" }),
       type: "free",
@@ -247,7 +487,7 @@ export default function BillingPage() {
       disabled: true,
     },
     {
-      title: localized({ en: "Pro Monthly", tr: "Pro Aylık", es: "Pro Mensual", zh: "Pro 月订阅" }),
+      title: configuredPlanName("pro_monthly", localized({ en: "Pro Monthly", tr: "Pro Aylık", es: "Pro Mensual", zh: "Pro 月订阅" })),
       type: "pro_monthly",
       cycle: "monthly",
       price: Number(systemSettings?.plan_prices?.pro_monthly ?? systemSettings?.plan_prices?.pro ?? 6.99),
@@ -266,11 +506,11 @@ export default function BillingPage() {
       }),
       badge: localized({ en: "Popular", tr: "Popüler", es: "Popular", zh: "最受欢迎" }),
       badgeStyle: "bg-brand/10 text-brand border border-brand/20",
-      cta: localized({ en: "Upgrade to Pro Monthly", tr: "Pro Aylık'a Geç", es: "Mejorar a Pro Mensual", zh: "升级至 Pro 月度版" }),
+      cta: configuredPlanName("pro_monthly", localized({ en: "Upgrade to Pro Monthly", tr: "Pro Aylık'a Geç", es: "Mejorar a Pro Mensual", zh: "升级至 Pro 月度版" })),
       disabled: profile?.plan === "pro" && profile?.billing_cycle === "monthly",
     },
     {
-      title: localized({ en: "Pro Yearly", tr: "Pro Yıllık", es: "Pro Anual", zh: "Pro 年订阅" }),
+      title: configuredPlanName("pro_yearly", localized({ en: "Pro Yearly", tr: "Pro Yıllık", es: "Pro Anual", zh: "Pro 年订阅" })),
       type: "pro_yearly",
       cycle: "yearly",
       price: Number(systemSettings?.plan_prices?.pro_yearly ?? 59.99),
@@ -289,12 +529,12 @@ export default function BillingPage() {
       }),
       badge: localized({ en: "Best Value", tr: "En Avantajlı", es: "Mejor valor", zh: "最佳性价比" }),
       badgeStyle: "bg-accent/15 text-accent border border-accent/20",
-      cta: localized({ en: "Upgrade to Pro Yearly", tr: "Pro Yıllık'a Geç", es: "Mejorar a Pro Anual", zh: "升级至 Pro 年度版" }),
+      cta: configuredPlanName("pro_yearly", localized({ en: "Upgrade to Pro Yearly", tr: "Pro Yıllık'a Geç", es: "Mejorar a Pro Anual", zh: "升级至 Pro 年度版" })),
       disabled: profile?.plan === "pro" && profile?.billing_cycle === "yearly",
       highlight: true,
     },
     {
-      title: localized({ en: "Founding Member", tr: "Kurucu Üye", es: "Miembro Fundador", zh: "创始会员" }),
+      title: configuredPlanName("founding_member", localized({ en: "Founding Member", tr: "Kurucu Üye", es: "Miembro Fundador", zh: "创始会员" })),
       type: "founding_member",
       cycle: "lifetime",
       price: Number(systemSettings?.plan_prices?.founding_member ?? systemSettings?.plan_prices?.founding ?? 99),
@@ -313,7 +553,7 @@ export default function BillingPage() {
       }),
       badge: localized({ en: "Limited Time", tr: "Sınırlı Süre", es: "Tiempo limitado", zh: "限时优惠" }),
       badgeStyle: "bg-purple-50 text-purple-600 border border-purple-100",
-      cta: localized({ en: "Become a Founding Member", tr: "Kurucu Üye Ol", es: "Ser Miembro Fundador", zh: "加入创始会员" }),
+      cta: configuredPlanName("founding_member", localized({ en: "Become a Founding Member", tr: "Kurucu Üye Ol", es: "Ser Miembro Fundador", zh: "加入创始会员" })),
       disabled: profile?.plan === "founding",
     },
   ];
@@ -346,16 +586,49 @@ export default function BillingPage() {
           <div>
             <h3 className="font-extrabold text-lg">{t.billing.trialActive || "You are on Pro Free Trial!"}</h3>
             <p className="text-sm opacity-90 mt-1">
-              {(t.billing.trialDaysLeft || "You have {days} days remaining of full Pro tier access. No charge will be made unless you subscribe.").replace("{days}", String(trialDaysRemaining))}
+              {(profile?.billing_cycle === "monthly" || profile?.billing_cycle === "yearly" ? paymentCopy.trialRecurring : paymentCopy.trialComplimentary).replace("{days}", String(trialDaysRemaining))}
             </p>
           </div>
           <span className="px-4 py-2 bg-white/20 backdrop-blur-md rounded-xl text-xs font-bold shrink-0">
-            {paymentCopy.expires}: {trialEnds?.toLocaleDateString(dateLocale)}
+            {paymentCopy.expires}: {trialEnds?.toLocaleString(dateLocale, { timeZone: profile?.timezone || undefined, timeZoneName: "short", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
       )}
 
-      {/* Locked message if expired */}
+      {paymentClaims.length > 0 && (
+        <section className="rounded-3xl border border-amber-150 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="rounded-2xl bg-amber-50 p-2.5 text-amber-700"><Clock3 size={20} /></span>
+            <div className="min-w-0">
+              <h2 className="text-base font-extrabold text-surface-dark">{claimCopy.pendingTitle}</h2>
+              <p className="mt-1 text-xs leading-5 text-gray-500">{claimCopy.pendingText}</p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {paymentClaims.slice(0, 4).map((claim) => {
+              const statusText = claimCopy[claim.status as keyof typeof claimCopy] || claim.status;
+              const statusClass = claim.status === "approved" ? "bg-emerald-50 text-emerald-700" : claim.status === "rejected" || claim.status === "canceled" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700";
+              return (
+                <article key={claim.id} className="rounded-2xl border border-gray-150 bg-slate-50/60 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-extrabold text-surface-dark">{claim.plan_type === "pro_monthly" ? plans[1].title : claim.plan_type === "pro_yearly" ? plans[2].title : plans[3].title}</p>
+                      <p className="mt-0.5 truncate text-xs text-gray-500">{claim.payer_email}</p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${statusClass}`}>{statusText}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-gray-700">{claim.quoted_amount} {claim.currency}</span>
+                    <span className="text-gray-400">{new Date(claim.submitted_at).toLocaleDateString(dateLocale)}</span>
+                  </div>
+                  {claim.provider_reference && <p className="mt-2 break-all text-[10px] text-gray-500">{claimCopy.paymentReference}: <span className="font-mono font-bold">{claim.provider_reference}</span></p>}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {profile?.plan === "free" && profile?.subscription_status === "expired" && (
         <div className="bg-red-50 border border-red-100 p-5 rounded-2xl flex items-start gap-3">
           <AlertCircle className="text-red-500 shrink-0 mt-0.5" />
@@ -428,96 +701,85 @@ export default function BillingPage() {
         })}
       </div>
 
-      {/* PCI-compliant provider-hosted checkout handoff */}
+      {/* EshipX hosted payment and manual matching handoff */}
       {selectedPlan && (
-        <div className="fixed inset-0 bg-surface-dark/45 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-lg border border-gray-100 overflow-hidden flex flex-col">
-            
-            {/* Header */}
-            <div className="bg-surface-dark text-white p-6 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-extrabold tracking-widest uppercase text-brand">{t.billing.checkoutHeader}</span>
-                <button
-                  onClick={() => setSelectedPlan(null)}
-                  className="text-gray-400 hover:text-white transition-all cursor-pointer text-sm font-bold"
-                >
-                  {t.common.close}
-                </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-dark/55 p-3 backdrop-blur-sm sm:p-5">
+          <div className="flex max-h-[94dvh] w-full max-w-xl flex-col overflow-hidden rounded-[1.75rem] border border-gray-100 bg-white shadow-2xl">
+            <div className="bg-gradient-to-br from-slate-950 to-indigo-950 p-5 text-white sm:p-7">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-indigo-300">EshipX · OnPace</span>
+                  <h3 className="mt-2 text-xl font-extrabold">{claimCopy.secureTitle}</h3>
+                  <p className="mt-1.5 text-xs leading-5 text-slate-300">{claimCopy.secureDescription}</p>
+                </div>
+                <button type="button" onClick={() => setSelectedPlan(null)} className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/20">{t.common.close}</button>
               </div>
-              <h3 className="text-lg font-bold">OnPace Premium</h3>
-              <p className="text-xs text-gray-300">{t.billing.checkoutSub}</p>
             </div>
 
-            {/* Form */}
-            <form onSubmit={handleCheckout} className="p-6 space-y-4">
-              <div className="bg-gray-50 p-4 rounded-2xl flex justify-between items-center border border-gray-100">
-                <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase">{t.billing.selectedPlan}</p>
-                  <p className="text-sm font-bold text-surface-dark mt-0.5">{selectedPlan.title}</p>
-                </div>
-                <div className="text-right">
-                  {profile?.discount_percent > 0 ? (
-                    <>
-                      <p className="text-xs text-gray-400 line-through">${selectedPlan.price}</p>
-                      <p className="text-xl font-extrabold text-brand">
-                        ${parseFloat((selectedPlan.price * (1 - profile.discount_percent / 100)).toFixed(2))}
-                      </p>
-                      <span className="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-200">
-                        {profile.discount_percent}% Off Applied
-                      </span>
-                    </>
-                  ) : (
-                    <p className="text-xl font-extrabold text-surface-dark">${selectedPlan.price}</p>
-                  )}
-                </div>
+            {claimSuccess ? (
+              <div className="overflow-y-auto p-6 text-center sm:p-8">
+                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><CheckCircle2 size={28} /></span>
+                <h4 className="mt-4 text-lg font-extrabold text-surface-dark">{claimCopy.successTitle}</h4>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">{claimCopy.successText}</p>
+                <button type="button" onClick={() => setSelectedPlan(null)} className="mt-6 w-full rounded-xl bg-brand px-5 py-3 text-sm font-bold text-white sm:w-auto">{claimCopy.close}</button>
               </div>
-
-                  <div className="space-y-3">
-                    <div className="rounded-2xl border border-brand/10 bg-brand/5 p-4 text-xs leading-relaxed text-gray-600">
-                      {t.billing.hostedCheckoutNotice}
+            ) : (
+              <div className="overflow-y-auto p-4 sm:p-6">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[claimCopy.stepPlan, claimCopy.stepPay, claimCopy.stepReturn].map((step, index) => (
+                    <div key={step} className={`rounded-2xl border p-3 text-xs font-bold leading-5 ${index === 1 && checkoutOpened ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-gray-150 bg-slate-50 text-gray-600"}`}>
+                      {step}
                     </div>
-                    <div className="border-t border-gray-100 pt-3">
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">Promo Code</label>
-                      <div className="flex gap-2 mt-1.5">
-                        <input
-                          type="text"
-                          value={promoCode}
-                          onChange={(e) => {
-                            setPromoCode(e.target.value);
-                            setPromoError(null);
-                            setPromoSuccessMsg(null);
-                          }}
-                          placeholder="TRIAL30"
-                          className="block flex-1 px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand text-surface-dark bg-white"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleApplyPromo}
-                          disabled={applyingPromo || !promoCode.trim()}
-                          className="px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-40 text-gray-700 font-bold rounded-xl text-xs active:scale-95 transition-all cursor-pointer flex items-center justify-center min-w-[60px]"
-                        >
-                          {applyingPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
-                        </button>
-                      </div>
-                      {promoError && (
-                        <p className="text-[9px] text-red-500 font-semibold mt-1">{promoError}</p>
-                      )}
-                      {promoSuccessMsg && (
-                        <p className="text-[9px] text-green-500 font-bold mt-1">{promoSuccessMsg}</p>
-                      )}
-                    </div>
+                  ))}
+                </div>
 
+                <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">{t.billing.selectedPlan}</p>
+                    <p className="mt-1 text-sm font-extrabold text-surface-dark">{selectedPlan.title}</p>
                   </div>
+                  <div className="sm:text-right">
+                    {discountPercent > 0 && <p className="text-xs text-gray-400 line-through">${selectedPlan.price}</p>}
+                    <p className="text-2xl font-extrabold text-brand">${discountPercent > 0 ? parseFloat((selectedPlan.price * (1 - discountPercent / 100)).toFixed(2)) : selectedPlan.price}</p>
+                    {discountPercent > 0 && <span className="text-[10px] font-bold text-emerald-700">%{discountPercent} {claimCopy.discountApplied}</span>}
+                  </div>
+                </div>
 
-                  <button
-                    type="submit"
-                    disabled={checkingOut}
-                    className="w-full py-3.5 mt-4 rounded-xl bg-brand text-white text-xs font-bold hover:bg-brand-hover active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    {checkingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck size={14} />}
-                    {checkingOut ? t.billing.processing : `${t.billing.continueToPayment} $${selectedPlan.price}`}
+                <div className="mt-4 rounded-2xl border border-gray-150 p-4">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{claimCopy.promo}</label>
+                  <div className="mt-1.5 flex gap-2">
+                    <input value={promoCode} onChange={(event) => { setPromoCode(event.target.value); setPromoError(null); setPromoSuccessMsg(null); }} placeholder="TRIAL30" className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-brand" />
+                    <button type="button" onClick={handleApplyPromo} disabled={applyingPromo || !promoCode.trim()} className="inline-flex min-w-20 items-center justify-center rounded-xl bg-gray-100 px-3 py-2.5 text-xs font-bold text-gray-700 disabled:opacity-40">{applyingPromo ? <Loader2 className="h-4 w-4 animate-spin" /> : claimCopy.apply}</button>
+                  </div>
+                  {promoError && <p className="mt-1.5 text-[10px] font-semibold text-red-600">{promoError}</p>}
+                  {promoSuccessMsg && <p className="mt-1.5 text-[10px] font-bold text-emerald-600">{promoSuccessMsg}</p>}
+                </div>
+
+                <form onSubmit={handleCheckout} className="mt-4">
+                  <button disabled={checkingOut} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-brand/15 transition hover:bg-brand-hover disabled:opacity-50">
+                    {checkingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink size={16} />}
+                    {checkingOut ? t.billing.processing : checkoutOpened ? claimCopy.opened : claimCopy.openPayment}
                   </button>
-            </form>
+                  <p className="mt-2 text-center text-[10px] font-medium leading-4 text-gray-500">{claimCopy.providerAmountFinal}</p>
+                </form>
+
+                <form onSubmit={handleSubmitPaymentClaim} className="mt-5 space-y-4 border-t border-gray-100 pt-5">
+                  <label className="block text-xs font-bold text-gray-700">
+                    <span className="flex items-center gap-1.5"><Mail size={14} className="text-brand" />{claimCopy.payerEmail}</span>
+                    <input required type="email" autoComplete="email" value={payerEmail} onChange={(event) => setPayerEmail(event.target.value)} placeholder="name@example.com" className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/10" />
+                    <span className="mt-1.5 block text-[10px] font-medium leading-4 text-gray-400">{claimCopy.payerEmailHelp}</span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-slate-50 p-3 text-xs font-semibold leading-5 text-gray-600">
+                    <input type="checkbox" checked={paymentConfirmed} onChange={(event) => setPaymentConfirmed(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-brand" />
+                    <span>{claimCopy.confirm}</span>
+                  </label>
+                  <button disabled={submittingClaim || !paymentConfirmed || !payerEmail.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40">
+                    {submittingClaim ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 size={16} />}
+                    {submittingClaim ? claimCopy.submitting : claimCopy.submit}
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}

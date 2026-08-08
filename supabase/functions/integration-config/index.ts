@@ -1,6 +1,48 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { corsPreflight, json } from "../_shared/http.ts"
 
+const PAYMENT_PLAN_KEYS = ["pro_monthly", "pro_yearly", "founding_member"] as const
+const PAYMENT_LANGUAGES = ["en", "tr", "es", "zh"] as const
+
+function normalizeEshipxUrls(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  const result: Record<string, string> = {}
+  for (const key of PAYMENT_PLAN_KEYS) {
+    const raw = String(source[key] || "").trim()
+    if (!raw) {
+      result[key] = ""
+      continue
+    }
+    try {
+      const parsed = new URL(raw)
+      const validHost = parsed.hostname === "eshipx.com" || parsed.hostname.endsWith(".eshipx.com")
+      if (parsed.protocol !== "https:" || !validHost || raw.length > 1000) return null
+      result[key] = parsed.toString()
+    } catch {
+      return null
+    }
+  }
+  return result
+}
+
+function normalizePlanNames(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  const result: Record<string, Record<string, string>> = {}
+  for (const key of PAYMENT_PLAN_KEYS) {
+    const localized = source[key]
+    if (!localized || typeof localized !== "object" || Array.isArray(localized)) return null
+    result[key] = {}
+    for (const language of PAYMENT_LANGUAGES) {
+      const label = String((localized as Record<string, unknown>)[language] || "").trim()
+      if (!label || label.length > 80) return null
+      result[key][language] = label
+    }
+  }
+  return result
+}
+
 Deno.serve(async (request) => {
   const preflight = corsPreflight(request)
   if (preflight) return preflight
@@ -110,27 +152,34 @@ Deno.serve(async (request) => {
     if (typeof body.r2PublicUrl === "string" && body.r2PublicUrl.trim()) {
       updates.r2_public_url = body.r2PublicUrl.trim().replace(/\/+$/, "")
     }
+    const checkoutUrls = body.paymentCheckoutUrls === undefined
+      ? null
+      : normalizeEshipxUrls(body.paymentCheckoutUrls)
+    if (body.paymentCheckoutUrls !== undefined && !checkoutUrls) {
+      return json({ error: "Payment links must be valid HTTPS EshipX URLs." }, 400)
+    }
+    if (checkoutUrls) updates.payment_checkout_urls = checkoutUrls
+
+    const planNames = body.planNames === undefined ? null : normalizePlanNames(body.planNames)
+    if (body.planNames !== undefined && !planNames) {
+      return json({ error: "Every package name is required in all four languages." }, 400)
+    }
+    if (planNames) updates.plan_names = planNames
+
     if (typeof body.paymentGatewayEnabled === "boolean") {
-      if (body.paymentGatewayEnabled) {
-        const { data: currentSettings } = await admin
-          .from("system_settings")
-          .select("payment_provider_configured")
-          .limit(1)
-          .maybeSingle()
-        const providerReady =
-          body.paymentProviderConfigured === true ||
-          currentSettings?.payment_provider_configured === true
-        if (!providerReady) {
-          return json(
-            {
-              error:
-                "Configure and verify a payment provider before enabling real payments.",
-            },
-            400
-          )
-        }
+      const { data: currentSettings } = await admin
+        .from("system_settings")
+        .select("payment_checkout_urls")
+        .limit(1)
+        .maybeSingle()
+      const effectiveUrls = checkoutUrls || normalizeEshipxUrls(currentSettings?.payment_checkout_urls) || {}
+      const providerReady = Object.values(effectiveUrls).some(Boolean)
+      if (body.paymentGatewayEnabled && !providerReady) {
+        return json({ error: "Add at least one valid EshipX payment link before enabling payments." }, 400)
       }
       updates.payment_gateway_enabled = body.paymentGatewayEnabled
+      updates.payment_provider = "eshipx"
+      updates.payment_provider_configured = providerReady
     }
     if (typeof body.maintenanceMode === "boolean") {
       updates.maintenance_mode = body.maintenanceMode
@@ -155,11 +204,8 @@ Deno.serve(async (request) => {
     ) {
       updates.payment_disabled_message = body.paymentDisabledMessage
     }
-    if (typeof body.paymentProvider === "string") {
-      updates.payment_provider = body.paymentProvider.trim() || "unconfigured"
-    }
-    if (typeof body.paymentProviderConfigured === "boolean") {
-      updates.payment_provider_configured = body.paymentProviderConfigured
+    if (typeof body.paymentProvider === "string" && body.paymentProvider.trim().toLowerCase() === "eshipx") {
+      updates.payment_provider = "eshipx"
     }
     if (Number.isFinite(Number(body.maxFailedPaymentAttempts))) {
       updates.max_failed_payment_attempts = Math.max(

@@ -67,6 +67,8 @@ Important rules:
 - Answer exclusively in ${outputLanguage}, even if the source material uses another language.
 - Be accurate and distinguish source facts from a clearly labelled illustrative example.
 - Never invent citations, statistics, formulas, or source content.
+- Use clean Markdown inside text fields. Put mathematical expressions only in balanced \\( ... \\) or \\[ ... \\] LaTeX delimiters; never expose template syntax or raw escape instructions.
+- Verify calculations, units, and the direct answer before returning the JSON.
 - Keep the direct answer concise; give each selected tool its own useful section.
 - Return ONLY valid JSON in exactly this shape:
 {"title":"short topic title","sourceSummary":"2-5 sentence summary","directAnswer":"direct answer or core study note","toolSections":[{"id":"one selected id","title":"localized section title","content":"helpful study content"}],"nextQuestion":"one short interactive question"}`

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js"
 
 type SupabaseLike = SupabaseClient
 
@@ -83,10 +83,35 @@ export async function getAIConfig(
 
   const { data, error } = await supabase.rpc("get_active_ai_config")
   if (error) {
-    throw new AIServiceError(
-      error.message || "AI configuration could not be loaded.",
-      503
-    )
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (serviceKey && supabaseUrl) {
+      const admin = createSupabaseClient(supabaseUrl, serviceKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+      const [{ data: configRows, error: configError }, { data: modelRows }] = await Promise.all([
+        admin.rpc("get_edge_integration_config"),
+        admin.rpc("get_ai_model_settings"),
+      ])
+      if (!configError) {
+        const config = Array.isArray(configRows) ? configRows[0] : configRows
+        const modelSettings = Array.isArray(modelRows) ? modelRows[0] : modelRows
+        const provider = normalizeProvider(config?.active_provider)
+        const apiKey = String(provider === "openai" ? config?.openai_api_key || "" : config?.gemini_api_key || "").trim()
+        if (apiKey) {
+          const routingMode = modelSettings?.openai_routing_mode === "single" ? "single" : "smart"
+          const configuredModel = modelSettings?.openai_default_model === DEFAULT_OPENAI_FAST_MODEL ? DEFAULT_OPENAI_FAST_MODEL : DEFAULT_OPENAI_REASONING_MODEL
+          return {
+            provider,
+            apiKey,
+            model: provider === "openai"
+              ? routingMode === "smart" ? defaultOpenAIModel(workload) : configuredModel
+              : process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+          }
+        }
+      }
+    }
+    throw new AIServiceError(error.message || "AI configuration could not be loaded.", 503)
   }
 
   const raw = Array.isArray(data) ? data[0] : data
@@ -137,6 +162,14 @@ function cleanBase64(value: string) {
     : value
 }
 
+function isUnavailableGateway(message: string, status?: number) {
+  return status === 404 || /requested function was not found|function not found|ai-gateway.*not found/i.test(message)
+}
+
+function isLegacyResponsesHistoryError(message: string) {
+  return /invalid value:\s*['"]?input_text|supported values are:\s*['"]?output_text/i.test(message)
+}
+
 export async function generateAIText(
   supabase: SupabaseLike,
   options: GenerateAIOptions
@@ -154,7 +187,7 @@ export async function generateAIText(
       return result.text.trim()
     }
 
-    if (error && response?.status !== 404) {
+    if (error) {
       let message = error.message || "AI Edge Function request failed."
       try {
         const payload = await response?.clone().json()
@@ -162,14 +195,16 @@ export async function generateAIText(
       } catch {
         // Keep the invocation error when the response is not JSON.
       }
-      throw new AIServiceError(message, response?.status || 502)
+      if (!isUnavailableGateway(message, response?.status) && !isLegacyResponsesHistoryError(message)) {
+        throw new AIServiceError(message, response?.status || 502)
+      }
     }
     if (!error && typeof result?.error === "string") {
       throw new AIServiceError(result.error, response?.status || 502)
     }
 
-    // A 404 is the only allowed migration fallback while the Edge Function is
-    // being deployed. Provider and quota errors must never bypass the gateway.
+    // Missing or legacy gateway versions may fall back during a staged release.
+    // Provider and quota errors still never bypass the gateway.
   }
 
   const workload = options.workload === "fast" ? "fast" : "reasoning"
@@ -195,6 +230,7 @@ export async function generateAIText(
           file_data: `data:${options.document.mimeType};base64,${cleanBase64(options.document.base64)}`,
         })
       }
+      const hasRichUserContent = Boolean(options.image || options.document)
 
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -204,13 +240,10 @@ export async function generateAIText(
         },
         body: JSON.stringify({
           model: config.model,
+          ...(options.systemInstruction
+            ? { instructions: options.systemInstruction }
+            : {}),
           input: [
-            ...(options.systemInstruction
-              ? [{
-                  role: "developer",
-                  content: [{ type: "input_text", text: options.systemInstruction }],
-                }]
-              : []),
             ...(options.history || []).map((message) => ({
               role: message.role,
               content: [{
@@ -220,7 +253,7 @@ export async function generateAIText(
             })),
             {
               role: "user",
-              content: userContent,
+              content: hasRichUserContent ? userContent : options.prompt,
             },
           ],
           ...(config.model.startsWith("gpt-5.6")
