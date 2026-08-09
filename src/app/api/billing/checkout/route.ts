@@ -15,11 +15,15 @@ const ESHIPX_URLS: Record<string, string | undefined> = {
   founding_member: process.env.ESHIPX_FOUNDING_MEMBER_URL,
 };
 
-function safeEshipxUrl(value: string | undefined) {
+function safeEshipxCheckoutUrl(value: string | undefined) {
   if (!value) return null;
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "eshipx.com" || url.hostname.endsWith(".eshipx.com"))
+    const validHost =
+      url.hostname === "eshipx.com" ||
+      url.hostname.endsWith(".eshipx.com") ||
+      url.hostname === "buy.stripe.com";
+    return url.protocol === "https:" && validHost
       ? url.toString()
       : null;
   } catch {
@@ -78,7 +82,7 @@ export async function POST(request: Request) {
     const discount = Math.max(0, Math.min(100, Number(profile?.discount_percent) || 0));
     const amount = Number((basePrice * (1 - discount / 100)).toFixed(2));
     const checkoutCatalog = settings.payment_checkout_urls;
-    const checkoutUrl = safeEshipxUrl(
+    const checkoutUrl = safeEshipxCheckoutUrl(
       checkoutCatalog && typeof checkoutCatalog === "object"
         ? checkoutCatalog[plan_type]
         : ESHIPX_URLS[plan_type]

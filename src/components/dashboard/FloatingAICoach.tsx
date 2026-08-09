@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Sparkles, X, Send, Loader2, MessageSquare, CalendarPlus, Check, Clock } from "lucide-react";
-import { MarkdownRenderer } from "@/components/content/MarkdownRenderer";
+import { AIResponseCard } from "@/components/ai/AIResponseCard";
 
 interface CoachMessage {
   sender: "user" | "coach";
@@ -30,7 +30,7 @@ interface PendingAction {
 }
 
 export function FloatingAICoach() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
@@ -71,6 +71,7 @@ export function FloatingAICoach() {
       calendarSyncPending: "The calendar event was saved; Google Calendar sync will be retried later.",
       open: "Open AI Coach",
       close: "Close AI Coach",
+      answerLabel: "OnPace Coach",
     },
     tr: {
       title: "OnPace Yapay Zeka Çalışma Koçu",
@@ -94,6 +95,7 @@ export function FloatingAICoach() {
       calendarSyncPending: "Takvim etkinliği kaydedildi; Google Takvim senkronizasyonu daha sonra yeniden denenecek.",
       open: "Yapay zeka koçunu aç",
       close: "Yapay zeka koçunu kapat",
+      answerLabel: "OnPace Çalışma Koçu",
     },
     es: {
       title: "Coach de Estudio con IA de OnPace",
@@ -117,6 +119,7 @@ export function FloatingAICoach() {
       calendarSyncPending: "El evento se guardó; la sincronización con Google Calendar se reintentará más tarde.",
       open: "Abrir coach de IA",
       close: "Cerrar coach de IA",
+      answerLabel: "Coach OnPace",
     },
     zh: {
       title: "OnPace AI 学习教练",
@@ -140,6 +143,7 @@ export function FloatingAICoach() {
       calendarSyncPending: "日历活动已保存；稍后会重新尝试同步 Google 日历。",
       open: "打开 AI 学习教练",
       close: "关闭 AI 学习教练",
+      answerLabel: "OnPace AI 学习教练",
     },
   }[lang as "en" | "tr" | "es" | "zh"] || {
     title: "OnPace AI Study Coach",
@@ -163,6 +167,7 @@ export function FloatingAICoach() {
     calendarSyncPending: "The calendar event was saved; Google Calendar sync will be retried later.",
     open: "Open AI Coach",
     close: "Close AI Coach",
+    answerLabel: "OnPace Coach",
   };
 
   // Scroll to bottom when messages update
@@ -212,50 +217,6 @@ export function FloatingAICoach() {
 
       if (prof) {
         setProfile(prof);
-
-        // Fetch or create active persistent AI chat session
-        try {
-          const { data: sessions } = await supabase
-            .from("ai_chat_sessions")
-            .select("id")
-            .eq("user_id", session.user.id)
-            .order("updated_at", { ascending: false })
-            .order("id", { ascending: false })
-            .limit(1);
-
-          let sessId = "";
-          if (sessions && sessions.length > 0) {
-            sessId = sessions[0].id;
-          } else {
-            const { data: newSess } = await supabase
-              .from("ai_chat_sessions")
-              .insert([{ user_id: session.user.id, title: "Study Assistant Chat" }])
-              .select("id")
-              .single();
-            if (newSess) sessId = newSess.id;
-          }
-
-          if (sessId) {
-            setActiveSessionId(sessId);
-            const { data: dbMsgs } = await supabase
-              .from("ai_chat_messages")
-              .select("id, role, content")
-              .eq("session_id", sessId)
-              .order("created_at", { ascending: true })
-              .order("id", { ascending: true });
-
-            if (dbMsgs && dbMsgs.length > 0) {
-              setMessages(
-                dbMsgs.map((m: { id: string; role: string; content: string }) => ({
-                  sender: m.role === "user" ? "user" : "coach",
-                  text: m.content,
-                }))
-              );
-            }
-          }
-        } catch (err) {
-          console.error("Failed to sync AI chat history:", err);
-        }
 
         // Fetch real DB tasks & study sessions to construct personalized proactive advice
         const { data: userTasks } = await supabase
@@ -347,6 +308,29 @@ export function FloatingAICoach() {
     loadSessionAndHistory();
   }, [supabase, pathname]);
 
+  const openNewCoachChat = async () => {
+    setIsOpen(true);
+    setShowBubble(false);
+    setMessages([]);
+    setPendingAction(null);
+    if (!isAuthenticated) return;
+
+    try {
+      const response = await fetch("/api/chat/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New study chat" }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.session?.id) {
+        throw new Error(data.error || "Unable to create a new chat.");
+      }
+      setActiveSessionId(data.session.id);
+    } catch (error) {
+      setMessages([{ sender: "coach", text: error instanceof Error ? error.message : copy.connectionError }]);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
@@ -370,14 +354,6 @@ export function FloatingAICoach() {
     setLoading(true);
 
     try {
-      // Save user message to persistent DB session
-      if (activeSessionId) {
-        const { error: userMessageError } = await supabase.from("ai_chat_messages").insert([
-          { session_id: activeSessionId, role: "user", content: userText },
-        ]);
-        if (userMessageError) throw userMessageError;
-      }
-
       const actionKeywords = /\b(calendar|schedule|add|create|task|takvim|planla|ekle|oluştur|görev)\b/i.test(userText);
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const dateParts = new Intl.DateTimeFormat("en-US", {
@@ -395,8 +371,8 @@ export function FloatingAICoach() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userText,
-          // The server loads this session from the database, so a reopened chat
-          // keeps its real context instead of relying on in-memory messages.
+          // The server loads and records this session, keeping both coach
+          // surfaces on one durable conversation rather than browser memory.
           sessionId: activeSessionId,
         }),
       });
@@ -414,11 +390,26 @@ export function FloatingAICoach() {
         proposalRequest,
       ]);
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(copy.connectionError);
+      const responseBody = await response.text();
+      let data: { reply?: unknown; text?: unknown; error?: unknown; message?: unknown } = {};
+      try {
+        data = responseBody ? JSON.parse(responseBody) : {};
+      } catch {
+        // Preserve a safe non-JSON response from a proxy or stale Function.
       }
-      const reply = data.reply || data.text;
+      if (!response.ok) {
+        // Do not discard the API's explanation. The compact coach shares the
+        // same backend as the main assistant, so both surfaces must expose an
+        // actionable error instead of a misleading connection-only message.
+        throw new Error(
+          typeof data.error === "string" && data.error.trim()
+            ? data.error
+            : typeof data.message === "string" && data.message.trim()
+              ? data.message
+              : responseBody.trim().slice(0, 300) || `${copy.connectionError} (HTTP ${response.status})`
+        );
+      }
+      const reply = typeof data.reply === "string" ? data.reply : typeof data.text === "string" ? data.text : "";
       if (!reply) {
         throw new Error("AI returned an empty response.");
       }
@@ -433,13 +424,6 @@ export function FloatingAICoach() {
         ]);
       }
 
-      // Save assistant reply to persistent DB session
-      if (activeSessionId) {
-        const { error: assistantMessageError } = await supabase.from("ai_chat_messages").insert([
-          { session_id: activeSessionId, role: "assistant", content: reply },
-        ]);
-        if (assistantMessageError) throw assistantMessageError;
-      }
     } catch (error) {
       setMessages((prev) => [
         ...prev,
@@ -519,7 +503,7 @@ export function FloatingAICoach() {
     }
   };
 
-  if (pathname === "/" || pathname.startsWith("/admin") || pathname.startsWith("/updates") || !sessionChecked || !isAuthenticated) {
+  if (pathname === "/" || pathname.startsWith("/admin") || pathname.startsWith("/updates") || pathname.startsWith("/ai-assistant") || !sessionChecked || !isAuthenticated) {
     return null;
   }
 
@@ -553,10 +537,7 @@ export function FloatingAICoach() {
       {/* Floating Trigger Button */}
       {!isOpen && (
         <button
-          onClick={() => {
-            setIsOpen(true);
-            setShowBubble(false);
-          }}
+          onClick={() => void openNewCoachChat()}
           className="h-14 w-14 rounded-full bg-gradient-to-tr from-brand to-brand-dark text-white shadow-xl shadow-brand/30 hover:scale-105 active:scale-95 transition-all flex items-center justify-center cursor-pointer group"
           aria-label={copy.open}
         >
@@ -604,15 +585,15 @@ export function FloatingAICoach() {
                   key={idx}
                   className={`flex ${m.sender === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <div
-                    className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
-                      m.sender === "user"
-                        ? "bg-brand text-white font-medium rounded-br-none shadow-sm"
-                        : "bg-white border border-gray-150 text-surface-dark font-medium rounded-bl-none shadow-xs"
-                    }`}
-                  >
-                    {m.sender === "coach" ? <MarkdownRenderer content={m.text} /> : <span className="content-break-anywhere whitespace-pre-wrap">{m.text}</span>}
-                  </div>
+                  {m.sender === "coach" ? (
+                    <div className="max-w-[92%] min-w-0">
+                      <AIResponseCard content={m.text} label={copy.answerLabel} compact />
+                    </div>
+                  ) : (
+                    <div className="max-w-[82%] rounded-2xl rounded-br-none bg-brand px-3.5 py-2.5 text-xs font-medium leading-relaxed text-white shadow-sm">
+                      <span className="content-break-anywhere whitespace-pre-wrap">{m.text}</span>
+                    </div>
+                  )}
                 </div>
               ))
             )}

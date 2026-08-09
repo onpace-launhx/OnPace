@@ -92,7 +92,7 @@ function billingCopy(
   const copies = {
     en: {
       code: ["Your OnPace activation code", "Complete your OnPace activation", `We recorded your ${amount} payment. Enter the activation code below on the Billing page.\n\nActivation code: ${code}\nValid until: ${date}`],
-      claimReceived: ["We received your OnPace payment notice", "Payment is awaiting review", `We received the payment notice for your ${plan} selection. EshipX account email: ${values.payerEmail}. Our team will match the payment and notify you when access is activated.`],
+      claimReceived: ["We received your OnPace payment notice", "Your payment notice was sent to our team", `Thank you. We received the payment notice for your ${plan} selection. EshipX account email: ${values.payerEmail}. Our team will verify the payment as soon as possible, activate your subscription, and email you immediately when activation is complete.`],
       claimRejected: ["Your OnPace payment notice needs attention", "Payment could not be matched", `We could not match the payment notice for ${plan}. No subscription was activated. Please check the EshipX account email and contact support if you completed the payment.`],
       activated: ["Your OnPace plan is active", "Subscription activated", values.cycle === "one_time" ? `Thank you. Your lifetime ${plan} access is active. Amount: ${amount}. EshipX reference: ${values.reference}.` : `Thank you. Your OnPace ${plan} plan is active. Your next renewal date is ${date}. Billing frequency: ${cycle}. Amount: ${amount}. EshipX reference: ${values.reference}.`],
       trial: ["Your OnPace trial has started", "Your trial is active", `Your ${values.days}-day Pro trial has started and will continue until ${date}. Unless you cancel before then, your ${cycle} subscription will begin on that date for ${amount}.`],
@@ -103,7 +103,7 @@ function billingCopy(
     },
     tr: {
       code: ["OnPace aktivasyon kodunuz", "OnPace aktivasyonunuzu tamamlayın", `${amount} tutarındaki ödemeniz kaydedildi. Aşağıdaki aktivasyon kodunu Faturalandırma sayfasına girin.\n\nAktivasyon kodu: ${code}\nSon kullanım: ${date}`],
-      claimReceived: ["OnPace ödeme bildiriminizi aldık", "Ödemeniz kontrol bekliyor", `${plan} paketine ait ödeme bildiriminizi aldık. EshipX hesap e-postası: ${values.payerEmail}. Ekibimiz ödemeyi eşleştirecek ve erişiminiz açıldığında sizi bilgilendirecek.`],
+      claimReceived: ["OnPace ödeme bildiriminizi aldık", "Ödeme bildiriminiz ekibimize iletildi", `Teşekkür ederiz. ${plan} paketine ait ödeme bildiriminizi aldık. EshipX hesap e-postası: ${values.payerEmail}. Ekibimiz ödemenizi en kısa sürede doğrulayıp aboneliğinizi aktifleştirecek; aktivasyon tamamlanır tamamlanmaz size e-posta göndereceğiz.`],
       claimRejected: ["OnPace ödeme bildiriminiz kontrol edilmeli", "Ödeme eşleştirilemedi", `${plan} paketi için gönderdiğiniz ödeme bildirimi eşleştirilemedi ve abonelik başlatılmadı. Ödeme yaptıysanız EshipX hesap e-postanızı kontrol edip destek ekibiyle iletişime geçin.`],
       activated: ["OnPace paketiniz aktif", "Aboneliğiniz etkinleştirildi", values.cycle === "one_time" ? `Teşekkürler. Ömür boyu ${plan} erişiminiz aktif edildi. Tutar: ${amount}. EshipX referansı: ${values.reference}.` : `Teşekkürler. OnPace ${plan} paketiniz aktif edildi. Sonraki yenileme tarihi: ${date}. Ödeme sıklığı: ${cycle}. Tutar: ${amount}. EshipX referansı: ${values.reference}.`],
       trial: ["OnPace deneme süreniz başladı", "Deneme paketiniz aktif", `${values.days} günlük Pro denemeniz başladı ve ${date} tarihine kadar devam edecek. Bu tarihten önce iptal etmezseniz ${cycle} aboneliğiniz aynı tarihte ${amount} tutarla başlayacak.`],
@@ -114,7 +114,7 @@ function billingCopy(
     },
     es: {
       code: ["Tu código de activación de OnPace", "Completa tu activación de OnPace", `Registramos tu pago de ${amount}. Introduce el código en la página de Facturación.\n\nCódigo de activación: ${code}\nVálido hasta: ${date}`],
-      claimReceived: ["Recibimos tu aviso de pago de OnPace", "El pago está pendiente de revisión", `Recibimos el aviso de pago para ${plan}. Correo de la cuenta EshipX: ${values.payerEmail}. Nuestro equipo verificará el pago y te avisará cuando se active el acceso.`],
+      claimReceived: ["Recibimos tu aviso de pago de OnPace", "Tu aviso de pago fue enviado a nuestro equipo", `Gracias. Recibimos el aviso de pago para ${plan}. Correo de la cuenta EshipX: ${values.payerEmail}. Nuestro equipo verificará el pago lo antes posible, activará tu suscripción y te enviará un correo inmediatamente al completarse la activación.`],
       claimRejected: ["Tu aviso de pago de OnPace requiere atención", "No se pudo vincular el pago", `No pudimos vincular el aviso de pago de ${plan} y no se activó ninguna suscripción. Comprueba el correo de EshipX y contacta con soporte si realizaste el pago.`],
       activated: ["Tu plan de OnPace está activo", "Suscripción activada", values.cycle === "one_time" ? `Gracias. Tu acceso de por vida a ${plan} está activo. Importe: ${amount}. Referencia EshipX: ${values.reference}.` : `Gracias. Tu plan ${plan} está activo. Próxima renovación: ${date}. Frecuencia: ${cycle}. Importe: ${amount}. Referencia EshipX: ${values.reference}.`],
       trial: ["Tu prueba de OnPace ha comenzado", "Tu prueba está activa", `Tu prueba Pro de ${values.days} días estará activa hasta ${date}. Si no cancelas antes, tu suscripción ${cycle} comenzará ese día por ${amount}.`],
@@ -125,7 +125,7 @@ function billingCopy(
     },
     zh: {
       code: ["您的 OnPace 激活码", "完成 OnPace 激活", `我们已记录您的 ${amount} 付款。请在账单页面输入以下激活码。\n\n激活码：${code}\n有效期至：${date}`],
-      claimReceived: ["我们已收到您的 OnPace 付款通知", "付款正在等待审核", `我们已收到 ${plan} 套餐的付款通知。EshipX 账户邮箱：${values.payerEmail}。团队完成付款匹配后会通知您开通结果。`],
+      claimReceived: ["我们已收到您的 OnPace 付款通知", "您的付款通知已转交给我们的团队", `感谢您。我们已收到 ${plan} 套餐的付款通知。EshipX 账户邮箱：${values.payerEmail}。我们的团队会尽快核对付款并开通您的订阅，开通完成后将立即发送邮件。`],
       claimRejected: ["您的 OnPace 付款通知需要处理", "无法匹配付款", `我们无法匹配 ${plan} 套餐的付款通知，因此尚未开通订阅。如果您已付款，请检查 EshipX 账户邮箱并联系支持团队。`],
       activated: ["您的 OnPace 套餐已激活", "订阅已激活", values.cycle === "one_time" ? `感谢您。您的 ${plan} 终身访问权限已激活。金额：${amount}。EshipX 参考号：${values.reference}。` : `感谢您。您的 ${plan} 套餐已激活。下次续费日期：${date}。计费周期：${cycle}。金额：${amount}。EshipX 参考号：${values.reference}。`],
       trial: ["您的 OnPace 试用已开始", "试用已激活", `您的 ${values.days} 天 Pro 试用已开始，将持续到 ${date}。如果您未在此前取消，${cycle} 订阅将在该日按 ${amount} 开始计费。`],
@@ -140,12 +140,90 @@ function billingCopy(
 }
 
 async function getEmailConfig(admin: ReturnType<typeof createClient>) {
-  const { data } = await admin.rpc("get_edge_integration_config")
+  const [{ data }, { data: notificationSettings }] = await Promise.all([
+    admin.rpc("get_edge_integration_config"),
+    admin.from("system_settings").select("billing_notification_bcc").limit(1).maybeSingle(),
+  ])
   const config = Array.isArray(data) ? data[0] : data
+  const bcc = Array.isArray(notificationSettings?.billing_notification_bcc)
+    ? notificationSettings.billing_notification_bcc.filter((value: unknown) => typeof value === "string" && validEmail(value))
+    : []
   return {
     apiKey: Deno.env.get("RESEND_API_KEY") || config?.resend_api_key || "",
     from: `${Deno.env.get("SUBSCRIPTION_EMAIL_FROM_NAME") || config?.email_from_name || "OnPace Billing"} <${Deno.env.get("SUBSCRIPTION_EMAIL_FROM_ADDRESS") || "no-reply@onpace-ai.xyz"}>`,
+    bcc,
   }
+}
+
+function cancellationRequestCopy(language: Language) {
+  return {
+    en: ["We received your OnPace cancellation request", "Cancellation request received", "Thank you. Your cancellation request has been sent to our team for manual review. Your current access remains unchanged until we confirm the cancellation by email."],
+    tr: ["OnPace iptal talebinizi aldık", "İptal talebiniz ekibimize iletildi", "Teşekkür ederiz. İptal talebiniz ekibimize manuel inceleme için iletildi. İptal işlemi e-posta ile onaylanana kadar mevcut erişiminiz değişmez."],
+    es: ["Recibimos tu solicitud de cancelación de OnPace", "Solicitud de cancelación recibida", "Gracias. Tu solicitud de cancelación fue enviada a nuestro equipo para revisión manual. Tu acceso actual no cambiará hasta que confirmemos la cancelación por correo."],
+    zh: ["我们已收到您的 OnPace 取消请求", "已收到取消请求", "感谢您。您的取消请求已发送给我们的团队进行人工审核。在我们通过邮件确认取消前，您当前的访问权限不会改变。"],
+  }[language]
+}
+
+async function sendCancellationRequestEmail(
+  admin: ReturnType<typeof createClient>,
+  recipient: { email?: string | null; full_name?: string | null; language?: string | null }
+) {
+  if (!recipient.email) return { status: "skipped", id: null }
+  const language = languageOf(recipient.language)
+  const [subject, heading, message] = cancellationRequestCopy(language)
+  const config = await getEmailConfig(admin)
+  if (!config.apiKey) return { status: "not_configured", id: null }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({
+      from: config.from,
+      to: [recipient.email],
+      subject,
+      html: emailShell({ heading, message: `${recipient.full_name ? `${recipient.full_name},\n\n` : ""}${message}` }),
+      tags: [{ name: "source", value: "onpace_subscription" }, { name: "event", value: "cancellation_requested" }],
+    }),
+  })
+  if (!response.ok) return { status: `failed: ${await readProviderError(response)}`, id: null }
+  const body = await response.json().catch(() => ({}))
+  return { status: "sent", id: body?.id || null }
+}
+
+async function sendBillingTeamEmail(
+  admin: ReturnType<typeof createClient>,
+  event: "payment_notice" | "subscription_activated" | "cancellation_requested" | "subscription_cancelled",
+  recipient: { email?: string | null; full_name?: string | null },
+  details: Record<string, string>
+) {
+  const config = await getEmailConfig(admin)
+  if (!config.apiKey) return { status: "not_configured", id: null }
+  const labels = {
+    payment_notice: "New EshipX payment notice",
+    subscription_activated: "OnPace subscription activated",
+    cancellation_requested: "New subscription cancellation request",
+    subscription_cancelled: "OnPace subscription cancelled",
+  }
+  const fields = [
+    ["Member", recipient.full_name || "—"],
+    ["OnPace email", recipient.email || "—"],
+    ...Object.entries(details).filter(([, value]) => value),
+  ].map(([label, value]) => `${label}: ${value}`).join("\n")
+  const bcc = config.bcc.filter((address: string) => address !== "onpace.launchx@gmail.com")
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({
+      from: config.from,
+      to: ["onpace.launchx@gmail.com"],
+      ...(bcc.length ? { bcc } : {}),
+      subject: `[OnPace Billing] ${labels[event]}`,
+      html: emailShell({ heading: labels[event], message: fields }),
+      tags: [{ name: "source", value: "onpace_subscription" }, { name: "event", value: event }],
+    }),
+  })
+  if (!response.ok) return { status: `failed: ${await readProviderError(response)}`, id: null }
+  const body = await response.json().catch(() => ({}))
+  return { status: "sent", id: body?.id || null }
 }
 
 async function sendBillingEmail(
@@ -201,7 +279,7 @@ Deno.serve(async (request) => {
 
     if (action === "my_payment_claims") {
       const { data: claims, error } = await admin.from("eshipx_payment_claims")
-        .select("id,plan_type,plan,billing_cycle,payer_email,quoted_amount,currency,status,provider_reference,submitted_at,reviewed_at")
+        .select("id,plan_type,plan,billing_cycle,payer_email,quoted_amount,currency,status,provider_reference,submitted_at,reviewed_at,manual_subscriptions!eshipx_payment_claims_subscription_id_fkey(status,period_end,cancellation_effective_at)")
         .eq("user_id", user.id).order("submitted_at", { ascending: false }).limit(20)
       if (error) return json({ error: error.message }, 400)
       return json({ success: true, claims })
@@ -239,8 +317,15 @@ Deno.serve(async (request) => {
         amount: String(amount),
         currency: "USD",
       })
-      await admin.from("subscription_events").insert({ user_id: user.id, event_type: "eshipx_payment_claim_submitted", previous_plan: null, next_plan: selected.plan, note: "User submitted an EshipX payment matching request.", metadata: { claim_id: claim.id, plan_type: planType, payer_email: payerEmail, amount, currency: "USD", email }, created_by: user.id })
-      return json({ success: true, claim, email })
+      const teamEmail = await sendBillingTeamEmail(admin, "payment_notice", callerProfile || {}, {
+        Plan: planType,
+        "OnPace account": callerProfile?.email || "",
+        "EshipX payer email": payerEmail,
+        Amount: `${amount} USD`,
+        "Claim ID": claim.id,
+      })
+      await admin.from("subscription_events").insert({ user_id: user.id, event_type: "eshipx_payment_claim_submitted", previous_plan: null, next_plan: selected.plan, note: "User submitted an EshipX payment matching request.", metadata: { claim_id: claim.id, plan_type: planType, payer_email: payerEmail, amount, currency: "USD", email, team_email: teamEmail }, created_by: user.id })
+      return json({ success: true, claim, email, teamEmail })
     }
 
     if (action === "redeem_code") {
@@ -301,6 +386,46 @@ Deno.serve(async (request) => {
       return json({ success: true, email, endsAt: campaign.ends_at })
     }
 
+    if (action === "my_cancellation_requests") {
+      const { data: requests, error } = await admin.from("subscription_cancellation_requests")
+        .select("id,subscription_id,status,requested_at,reviewed_at,admin_note")
+        .eq("user_id", user.id)
+        .order("requested_at", { ascending: false })
+        .limit(20)
+      if (error) return json({ error: error.message }, 400)
+      return json({ success: true, requests })
+    }
+
+    if (action === "request_cancellation") {
+      const { data: subscription, error: subscriptionError } = await admin.from("manual_subscriptions")
+        .select("id,plan,billing_cycle,renewal_cycle,period_end,provider_reference,status")
+        .eq("user_id", user.id)
+        .in("status", ["active", "cancel_at_period_end"])
+        .in("billing_cycle", ["monthly", "yearly"])
+        .order("activated_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle()
+      if (subscriptionError) return json({ error: subscriptionError.message }, 400)
+      if (!subscription) return json({ error: "No active recurring subscription found" }, 404)
+      if (subscription.status === "cancel_at_period_end") return json({ error: "This subscription is already scheduled to cancel" }, 409)
+      const { data: existing } = await admin.from("subscription_cancellation_requests")
+        .select("id").eq("subscription_id", subscription.id).eq("status", "submitted").maybeSingle()
+      if (existing) return json({ error: "A cancellation request is already waiting for review" }, 409)
+      const { data: cancellationRequest, error: requestError } = await admin.from("subscription_cancellation_requests")
+        .insert({ user_id: user.id, subscription_id: subscription.id, status: "submitted" })
+        .select("id,subscription_id,status,requested_at").single()
+      if (requestError) return json({ error: requestError.message }, 400)
+      const email = await sendCancellationRequestEmail(admin, callerProfile || {})
+      const teamEmail = await sendBillingTeamEmail(admin, "cancellation_requested", callerProfile || {}, {
+        Plan: subscription.plan,
+        "Billing cycle": subscription.renewal_cycle || subscription.billing_cycle,
+        "EshipX reference": subscription.provider_reference || "",
+        "Request ID": cancellationRequest.id,
+      })
+      await admin.from("subscription_events").insert({ user_id: user.id, event_type: "subscription_cancellation_requested", previous_plan: subscription.plan, next_plan: subscription.plan, note: "User requested manual cancellation review.", metadata: { subscription_id: subscription.id, cancellation_request_id: cancellationRequest.id, email, team_email: teamEmail }, created_by: user.id })
+      return json({ success: true, request: cancellationRequest, email, teamEmail })
+    }
+
     if (!canManage) return json({ error: "Billing administrator permission required" }, 403)
 
     if (action === "list") {
@@ -310,7 +435,21 @@ Deno.serve(async (request) => {
       if (claimsError) return json({ error: claimsError.message }, 400)
       const { data: operations } = await admin.from("bulk_plan_operations").select("id,action,target_filter,preview_count,status,affected_count,executed_at,created_at").order("created_at", { ascending: false }).limit(30)
       const { data: campaigns } = await admin.from("bulk_access_campaigns").select("id,plan,source_timezone,source_local_end,ends_at,auto_assign_new_users,target_filter,status,created_at").order("created_at", { ascending: false }).limit(30)
-      return json({ success: true, subscriptions, claims, operations, campaigns })
+      const { data: cancellationRequests } = await admin.from("subscription_cancellation_requests")
+        .select("*, profiles!subscription_cancellation_requests_user_id_fkey(full_name,email,language), manual_subscriptions!subscription_cancellation_requests_subscription_id_fkey(plan,billing_cycle,renewal_cycle,period_end,provider_reference)")
+        .order("requested_at", { ascending: false }).limit(250)
+      const { data: purchaseHistory } = await admin.from("purchase_history")
+        .select("*, profiles!purchase_history_user_id_fkey(full_name,email,language)")
+        .order("created_at", { ascending: false }).limit(1000)
+      return json({ success: true, subscriptions, claims, operations, campaigns, cancellationRequests: cancellationRequests || [], purchaseHistory: purchaseHistory || [] })
+    }
+
+    if (action === "delete_purchase_history") {
+      const recordId = String(body.recordId || "")
+      if (!recordId) return json({ error: "Purchase record is required" }, 400)
+      const { error } = await admin.from("purchase_history").delete().eq("id", recordId)
+      if (error) return json({ error: error.message }, 400)
+      return json({ success: true })
     }
 
     if (action === "approve_payment_claim") {
@@ -340,8 +479,9 @@ Deno.serve(async (request) => {
         date: approved.approved_next_renewal,
         reference: providerReference,
       })
-      await admin.from("subscription_events").insert({ user_id: approved.approved_user_id, event_type: "eshipx_activation_email_processed", previous_plan: approved.approved_plan, next_plan: approved.approved_plan, metadata: { claim_id: claimId, subscription_id: approved.subscription_id, email }, created_by: user.id })
-      return json({ success: true, approved, email })
+      const teamEmail = await sendBillingTeamEmail(admin, "subscription_activated", claim?.profiles || {}, { Plan: claim?.plan_type || approved.approved_plan, "OnPace account": claim?.profiles?.email || "", "EshipX payer email": claim?.payer_email || "", Amount: `${approved.approved_amount} ${approved.approved_currency}`, "EshipX reference": providerReference })
+      await admin.from("subscription_events").insert({ user_id: approved.approved_user_id, event_type: "eshipx_activation_email_processed", previous_plan: approved.approved_plan, next_plan: approved.approved_plan, metadata: { claim_id: claimId, subscription_id: approved.subscription_id, email, team_email: teamEmail }, created_by: user.id })
+      return json({ success: true, approved, email, teamEmail })
     }
 
     if (action === "reject_payment_claim") {
@@ -357,6 +497,34 @@ Deno.serve(async (request) => {
       })
       await admin.from("subscription_events").insert({ user_id: claim.user_id, event_type: "eshipx_payment_claim_rejected", previous_plan: null, next_plan: null, note: reason || "Payment could not be matched.", metadata: { claim_id: claim.id, payer_email: claim.payer_email, email }, created_by: user.id })
       return json({ success: true, email })
+    }
+
+    if (action === "resolve_cancellation_request") {
+      const requestId = String(body.requestId || "")
+      const decision = body.decision === "rejected" ? "rejected" : "approved"
+      if (!requestId) return json({ error: "Cancellation request is required" }, 400)
+      const { data: cancellationRequest, error: requestError } = await admin.from("subscription_cancellation_requests")
+        .select("*, manual_subscriptions!subscription_cancellation_requests_subscription_id_fkey(*, profiles!manual_subscriptions_user_id_fkey(email,full_name,language,timezone))")
+        .eq("id", requestId).eq("status", "submitted").single()
+      if (requestError || !cancellationRequest) return json({ error: requestError?.message || "Cancellation request is no longer available" }, 404)
+      const now = new Date().toISOString()
+      const subscription = cancellationRequest.manual_subscriptions
+      if (!subscription) return json({ error: "Subscription not found" }, 404)
+      const { error: updateError } = await admin.from("subscription_cancellation_requests")
+        .update({ status: decision, reviewed_at: now, reviewed_by: user.id, admin_note: String(body.adminNote || "").trim().slice(0, 1000) || null })
+        .eq("id", requestId).eq("status", "submitted")
+      if (updateError) return json({ error: updateError.message }, 400)
+      if (decision === "rejected") {
+        return json({ success: true, decision })
+      }
+      const effective = new Date(subscription.period_end || Date.now())
+      const immediate = effective <= new Date()
+      await admin.from("manual_subscriptions").update({ status: immediate ? "canceled" : "cancel_at_period_end", cancel_at_period_end: !immediate, canceled_at: now, cancellation_effective_at: effective.toISOString(), next_renewal_at: null, updated_by: user.id, updated_at: now }).eq("id", subscription.id)
+      await admin.from("profiles").update(immediate ? { plan: "free", subscription_status: "none", billing_cycle: "none", pro_expires_at: null, next_billing_date: null, updated_at: now } : { subscription_status: "cancel_at_period_end", pro_expires_at: effective.toISOString(), next_billing_date: null, updated_at: now }).eq("id", subscription.user_id)
+      const email = await sendBillingEmail(admin, subscription.profiles || {}, "cancelled", { date: effective.toISOString() })
+      const teamEmail = await sendBillingTeamEmail(admin, "subscription_cancelled", subscription.profiles || {}, { Plan: subscription.plan, "EshipX reference": subscription.provider_reference || "", "Access until": effective.toISOString(), "Request ID": requestId })
+      await admin.from("subscription_events").insert({ user_id: subscription.user_id, event_type: immediate ? "manual_subscription_canceled" : "manual_subscription_cancel_scheduled", previous_plan: subscription.plan, next_plan: immediate ? "free" : subscription.plan, note: "Cancellation request approved by administrator.", metadata: { subscription_id: subscription.id, cancellation_request_id: requestId, effective_at: effective.toISOString(), email, team_email: teamEmail }, created_by: user.id })
+      return json({ success: true, decision, email, teamEmail })
     }
 
     if (action === "create") {
@@ -396,8 +564,9 @@ Deno.serve(async (request) => {
         date: trialDays ? activated.activated_trial_end : activated.activated_next_billing,
         reference: providerReference || "—",
       })
-      await admin.from("subscription_events").insert({ user_id: userId, event_type: "direct_activation_email_processed", previous_plan: plan, next_plan: plan, metadata: { subscription_id: activated.subscription_id, trial_days: trialDays || null, email }, created_by: user.id })
-      return json({ success: true, activated, email })
+      const teamEmail = await sendBillingTeamEmail(admin, "subscription_activated", target, { Plan: planType, "OnPace account": target.email || "", Amount: `${amount} ${currency}`, "EshipX reference": providerReference, "Trial days": trialDays ? String(trialDays) : "" })
+      await admin.from("subscription_events").insert({ user_id: userId, event_type: "direct_activation_email_processed", previous_plan: plan, next_plan: plan, metadata: { subscription_id: activated.subscription_id, trial_days: trialDays || null, email, team_email: teamEmail }, created_by: user.id })
+      return json({ success: true, activated, email, teamEmail })
     }
 
     if (action === "renew" || action === "cancel") {
@@ -442,8 +611,9 @@ Deno.serve(async (request) => {
       await admin.from("manual_subscriptions").update({ status: immediate ? "canceled" : "cancel_at_period_end", cancel_at_period_end: !immediate, canceled_at: now, cancellation_effective_at: effective.toISOString(), next_renewal_at: null, updated_by: user.id, updated_at: now }).eq("id", subscription.id)
       await admin.from("profiles").update(immediate ? { plan: "free", subscription_status: "none", billing_cycle: "none", pro_expires_at: null, next_billing_date: null, updated_at: now } : { subscription_status: "cancel_at_period_end", pro_expires_at: effective.toISOString(), next_billing_date: null, updated_at: now }).eq("id", subscription.user_id)
       const email = await sendBillingEmail(admin, subscription.profiles, "cancelled", { date: effective.toISOString() })
-      await admin.from("subscription_events").insert({ user_id: subscription.user_id, event_type: immediate ? "manual_subscription_canceled" : "manual_subscription_cancel_scheduled", previous_plan: subscription.plan, next_plan: immediate ? "free" : subscription.plan, metadata: { subscription_id: subscription.id, effective_at: effective.toISOString(), email }, created_by: user.id })
-      return json({ success: true, email })
+      const teamEmail = await sendBillingTeamEmail(admin, "subscription_cancelled", subscription.profiles || {}, { Plan: subscription.plan, "EshipX reference": subscription.provider_reference || "", "Access until": effective.toISOString() })
+      await admin.from("subscription_events").insert({ user_id: subscription.user_id, event_type: immediate ? "manual_subscription_canceled" : "manual_subscription_cancel_scheduled", previous_plan: subscription.plan, next_plan: immediate ? "free" : subscription.plan, metadata: { subscription_id: subscription.id, effective_at: effective.toISOString(), email, team_email: teamEmail }, created_by: user.id })
+      return json({ success: true, email, teamEmail })
     }
 
     if (action === "bulk_preview") {

@@ -10,6 +10,19 @@ interface IncomingHistoryMessage {
   content?: string;
 }
 
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return fallback;
+}
+
 async function loadSessionHistory(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
@@ -30,7 +43,7 @@ async function loadSessionHistory(
 
   const { data, error } = await supabase
     .from("ai_chat_messages")
-    .select("id, role, content")
+    .select("*")
     .eq("session_id", session.id)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
@@ -40,9 +53,9 @@ async function loadSessionHistory(
 
   const history = (data || [])
     .reverse()
-    .map((item) => ({
-      role: item.role === "user" ? ("user" as const) : ("assistant" as const),
-      content: item.content.trim(),
+    .map((item: { role?: unknown; sender?: unknown; content?: unknown; text?: unknown; message?: unknown }) => ({
+      role: (item.role === "user" || item.sender === "user") ? ("user" as const) : ("assistant" as const),
+      content: String(item.content || item.text || item.message || "").trim(),
     }))
     .filter((item) => item.content);
 
@@ -52,6 +65,36 @@ async function loadSessionHistory(
   if (last?.role === "user" && last.content === currentMessage) history.pop();
 
   return history;
+}
+
+async function storeMessage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  sessionId: string,
+  role: "user" | "assistant",
+  content: string
+) {
+  const { error } = await supabase.from("ai_chat_messages").insert({
+    user_id: userId,
+    session_id: sessionId,
+    role,
+    content,
+  });
+  // Some early OnPace projects used conversation_id for the exact same chat
+  // record and still enforce it as NOT NULL. Keep those databases writable
+  // during the transition without changing the user-visible conversation.
+  if (error?.code === "23502" && error.message.includes("conversation_id")) {
+    const { error: legacyError } = await supabase.from("ai_chat_messages").insert({
+      user_id: userId,
+      session_id: sessionId,
+      conversation_id: sessionId,
+      role,
+      content,
+    });
+    if (legacyError) throw legacyError;
+    return;
+  }
+  if (error) throw error;
 }
 
 export async function POST(request: Request) {
@@ -75,9 +118,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Message is required." }, { status: 400 });
     }
 
-    const history = sessionId
-      ? await loadSessionHistory(supabase, user.id, sessionId, message)
-      : suppliedHistory
+    const clientHistory = suppliedHistory
           .map((item) => ({
             role:
               item.sender === "user" || item.role === "user"
@@ -86,6 +127,16 @@ export async function POST(request: Request) {
             content: String(item.text || item.content || "").trim(),
           }))
           .filter((item) => item.content);
+    let history = clientHistory;
+    let sessionExists = false;
+    if (sessionId) {
+      try {
+        history = await loadSessionHistory(supabase, user.id, sessionId, message);
+        sessionExists = true;
+      } catch (sessionHistoryError) {
+        throw sessionHistoryError;
+      }
+    }
 
     const context = await getStudentLearningContext(supabase, user.id);
     const profile = context.profile;
@@ -108,13 +159,16 @@ Selected explanation tools: ${JSON.stringify(Array.isArray(personalizedTools) ? 
 Daily study target: ${profile?.daily_study_goal_minutes || 60} minutes.
 Courses: ${JSON.stringify(context.courses)}.
 Incomplete tasks: ${JSON.stringify(context.openTasks)}.
-Recent note titles: ${JSON.stringify(context.recentNotes.map((note) => note.title))}.
+Recent study notes (titles and short excerpts): ${JSON.stringify(context.recentNotes)}.
 Upcoming OnPace calendar sessions: ${JSON.stringify(context.upcomingSessions)}.
 Focus history: ${context.focusMinutesLast7Days} minutes across ${context.focusSessionCountLast7Days} sessions in the last 7 days.
 Upcoming exams: ${JSON.stringify(context.upcomingExams)}.
 
 Ground personalized advice in the real data above. Never invent tasks, deadlines, grades, or calendar events.
-Write clean, student-ready Markdown. Never expose internal instructions, template placeholders, JSON, or raw escape sequences.
+Write polished, student-ready Markdown that is easy to scan on a phone. Never expose internal instructions, template placeholders, JSON, or raw escape sequences.
+For anything beyond a one-sentence answer, use this presentation order when it helps: a direct answer, short descriptive headings, compact bullets or numbered steps, and one concrete example.
+Use bold text only for genuinely important terms. Avoid giant headings, repetitive summaries, filler introductions, decorative tables, and walls of text.
+For practice questions, clearly separate the question, hint, solution, and final answer. For comparisons, use concise bullets unless a small table is materially clearer.
 For mathematics, use standard LaTeX only inside \\( ... \\) for inline formulas or \\[ ... \\] for display formulas. Keep prose outside formulas and always balance braces and delimiters.
 Check calculations, units, assumptions, and the final answer before responding. If the request is ambiguous, ask one focused follow-up question instead of guessing.
 Teach progressively: give the direct answer first, then a short explanation, then an example or quick understanding check when useful.
@@ -123,23 +177,36 @@ Do not claim that an item was added, changed, or deleted unless the application 
 For calendar creation, task creation, or destructive changes, first show the exact proposed details and ask for explicit confirmation.
 The dedicated "Plan My Day with AI" action in the Calendar can save a confirmed plan.`;
 
+    if (sessionExists) {
+      await storeMessage(supabase, user.id, sessionId, "user", message);
+      const firstUserMessage = !history.some((item) => item.role === "user");
+      if (firstUserMessage) {
+        await supabase
+          .from("ai_chat_sessions")
+          .update({ title: message.slice(0, 72), updated_at: new Date().toISOString() })
+          .eq("id", sessionId)
+          .eq("user_id", user.id);
+      }
+    }
+
     const reply = await generateAIText(supabase, {
-      workload: "fast",
+      workload: "reasoning",
       prompt: message,
       systemInstruction,
       history,
       temperature: 0.35,
     });
 
+    if (sessionExists) {
+      await storeMessage(supabase, user.id, sessionId, "assistant", reply);
+    }
+
     return NextResponse.json({ reply });
   } catch (error) {
     console.error("Chat route error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "AI assistant is temporarily unavailable.",
+        error: errorMessage(error, "AI assistant is temporarily unavailable."),
       },
       { status: error instanceof AIServiceError ? error.status : 500 }
     );

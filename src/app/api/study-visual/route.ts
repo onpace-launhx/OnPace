@@ -24,6 +24,16 @@ export async function POST(request: Request) {
     const languageCode = normalizeLanguage(body?.language || profile?.language);
     const outputLanguage = languageName(languageCode);
     const requestedTitle = typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
+    const meaningfulWords = source.split(/\s+/).filter((word: string) => word.replace(/[^\p{L}\p{N}]/gu, "").length > 1);
+    if (source.length < 80 || meaningfulWords.length < 10) {
+      const message = {
+        en: "Add a little more study material first — for example the topic, key concepts, and one example — then I can create a useful visual summary.",
+        tr: "Önce biraz daha çalışma materyali ekleyin: konu, temel kavramlar ve bir örnek yazarsanız yararlı bir görsel özet oluşturabilirim.",
+        es: "Añade un poco más de material: el tema, los conceptos clave y un ejemplo. Así podré crear un resumen visual útil.",
+        zh: "请先补充更多学习材料，例如主题、关键概念和一个例子；这样我才能生成有用的可视化总结。",
+      }[languageCode];
+      return NextResponse.json({ error: message }, { status: 422 });
+    }
 
     const prompt = `Turn the study material below into a compact visual learning aid rendered by the OnPace interface.
 Choose exactly one kind: flow, timeline, comparison, concept_map, or checklist.

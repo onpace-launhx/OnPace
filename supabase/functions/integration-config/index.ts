@@ -16,7 +16,13 @@ function normalizeEshipxUrls(value: unknown) {
     }
     try {
       const parsed = new URL(raw)
-      const validHost = parsed.hostname === "eshipx.com" || parsed.hostname.endsWith(".eshipx.com")
+      // EshipX can issue its hosted checkout through Stripe Payment Links.
+      // Keep the allow-list narrow: only EshipX and Stripe's official payment
+      // link host are valid destinations, and HTTPS remains mandatory.
+      const validHost =
+        parsed.hostname === "eshipx.com" ||
+        parsed.hostname.endsWith(".eshipx.com") ||
+        parsed.hostname === "buy.stripe.com"
       if (parsed.protocol !== "https:" || !validHost || raw.length > 1000) return null
       result[key] = parsed.toString()
     } catch {
@@ -41,6 +47,21 @@ function normalizePlanNames(value: unknown) {
     }
   }
   return result
+}
+
+function normalizeBillingBcc(value: unknown) {
+  if (value === undefined) return null
+  const raw = Array.isArray(value)
+    ? value.map((item) => String(item || ""))
+    : typeof value === "string"
+      ? value.split(/[;,\n]/)
+      : null
+  if (!raw) return null
+  const addresses = [...new Set(raw.map((item) => item.trim().toLowerCase()).filter(Boolean))]
+  if (addresses.length > 20 || addresses.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    return false
+  }
+  return addresses
 }
 
 Deno.serve(async (request) => {
@@ -72,7 +93,8 @@ Deno.serve(async (request) => {
     const allowed =
       profile?.role === "super_admin" ||
       (profile?.role === "admin" &&
-        (profile?.permissions || []).includes("manage_settings"))
+        ((profile?.permissions || []).includes("manage_settings") ||
+          (profile?.permissions || []).includes("manage_billing")))
     if (!allowed) return json({ error: "Forbidden" }, 403)
 
     const admin = createClient(url, serviceKey, {
@@ -80,19 +102,21 @@ Deno.serve(async (request) => {
     })
 
     if (request.method === "GET") {
-      const [statusResult, modelResult] = await Promise.all([
+      const [statusResult, modelResult, settingsResult] = await Promise.all([
         admin.rpc("get_edge_integration_status"),
         admin.rpc("get_ai_model_settings"),
+        admin.from("system_settings").select("billing_notification_bcc").limit(1).maybeSingle(),
       ])
       if (statusResult.error) return json({ error: statusResult.error.message }, 500)
       if (modelResult.error) return json({ error: modelResult.error.message }, 500)
+      if (settingsResult.error) return json({ error: settingsResult.error.message }, 500)
       const status = Array.isArray(statusResult.data)
         ? statusResult.data[0] || {}
         : statusResult.data || {}
       const models = Array.isArray(modelResult.data)
         ? modelResult.data[0] || {}
         : modelResult.data || {}
-      return json({ ...status, ...models })
+      return json({ ...status, ...models, billing_notification_bcc: settingsResult.data?.billing_notification_bcc || [] })
     }
 
     const body = await request.json()
@@ -156,7 +180,7 @@ Deno.serve(async (request) => {
       ? null
       : normalizeEshipxUrls(body.paymentCheckoutUrls)
     if (body.paymentCheckoutUrls !== undefined && !checkoutUrls) {
-      return json({ error: "Payment links must be valid HTTPS EshipX URLs." }, 400)
+      return json({ error: "Payment links must be secure HTTPS EshipX or Stripe Checkout URLs." }, 400)
     }
     if (checkoutUrls) updates.payment_checkout_urls = checkoutUrls
 
@@ -165,6 +189,12 @@ Deno.serve(async (request) => {
       return json({ error: "Every package name is required in all four languages." }, 400)
     }
     if (planNames) updates.plan_names = planNames
+
+    const billingBcc = normalizeBillingBcc(body.billingNotificationBcc)
+    if (body.billingNotificationBcc !== undefined && billingBcc === false) {
+      return json({ error: "Billing BCC recipients must be valid email addresses." }, 400)
+    }
+    if (billingBcc) updates.billing_notification_bcc = billingBcc
 
     if (typeof body.paymentGatewayEnabled === "boolean") {
       const { data: currentSettings } = await admin
@@ -175,7 +205,7 @@ Deno.serve(async (request) => {
       const effectiveUrls = checkoutUrls || normalizeEshipxUrls(currentSettings?.payment_checkout_urls) || {}
       const providerReady = Object.values(effectiveUrls).some(Boolean)
       if (body.paymentGatewayEnabled && !providerReady) {
-        return json({ error: "Add at least one valid EshipX payment link before enabling payments." }, 400)
+        return json({ error: "Add at least one valid EshipX or Stripe Checkout payment link before enabling payments." }, 400)
       }
       updates.payment_gateway_enabled = body.paymentGatewayEnabled
       updates.payment_provider = "eshipx"

@@ -170,13 +170,76 @@ function isLegacyResponsesHistoryError(message: string) {
   return /invalid value:\s*['"]?input_text|supported values are:\s*['"]?output_text/i.test(message)
 }
 
+function isRecoverableGatewayContractError(message: string, status?: number) {
+  // Older deployed gateway revisions can reject an otherwise valid request
+  // because their request/Responses-API contract differs from this release.
+  // Retry directly from the authenticated server with the current contract.
+  return status === 400 || isLegacyResponsesHistoryError(message)
+}
+
+async function readGatewayFailure(
+  error: unknown,
+  response?: Response
+): Promise<{ message: string; status?: number }> {
+  // `functions.invoke` exposes a non-2xx response on the error context in
+  // recent supabase-js releases. Earlier releases expose it separately as
+  // `response`. Read both forms so the detailed gateway error is never lost.
+  const contextResponse =
+    error && typeof error === "object" && "context" in error &&
+    (error as { context?: unknown }).context instanceof Response
+      ? (error as { context: Response }).context
+      : undefined
+  const failureResponse = response || contextResponse
+  const fallback = error instanceof Error ? error.message : "AI Edge Function request failed."
+
+  if (!failureResponse) return { message: fallback }
+
+  try {
+    const payload = await failureResponse.clone().json()
+    const message =
+      payload && typeof payload === "object" && typeof payload.error === "string"
+        ? payload.error
+        : fallback
+    return { message, status: failureResponse.status }
+  } catch {
+    return { message: fallback, status: failureResponse.status }
+  }
+}
+
+function buildGatewayPrompt(options: GenerateAIOptions) {
+  const history = (options.history || [])
+    .filter((message) => message.content.trim())
+    .slice(-20)
+
+  if (history.length === 0) return options.prompt
+
+  const transcript = history
+    .map((message) =>
+      `${message.role === "assistant" ? "OnPace coach" : "Student"}: ${message.content.trim()}`
+    )
+    .join("\n\n")
+
+  // Some already-deployed gateway revisions encoded every historical item as
+  // `input_text`, including assistant turns. The Responses API correctly
+  // rejects that shape. Sending the transcript as one user input keeps the
+  // conversation context while remaining compatible with both old and new
+  // gateway revisions. Direct provider fallback below still receives the
+  // original structured history.
+  return `Conversation so far:\n${transcript}\n\nCurrent student message:\n${options.prompt}`
+}
+
 export async function generateAIText(
   supabase: SupabaseLike,
   options: GenerateAIOptions
 ): Promise<string> {
   if (supabase.functions) {
+    const gatewayOptions: GenerateAIOptions = {
+      ...options,
+      prompt: buildGatewayPrompt(options),
+      history: [],
+    }
     const { data, error, response } = await supabase.functions.invoke("ai-gateway", {
-      body: options,
+      body: gatewayOptions,
     })
     const result =
       data && typeof data === "object"
@@ -188,15 +251,9 @@ export async function generateAIText(
     }
 
     if (error) {
-      let message = error.message || "AI Edge Function request failed."
-      try {
-        const payload = await response?.clone().json()
-        if (typeof payload?.error === "string") message = payload.error
-      } catch {
-        // Keep the invocation error when the response is not JSON.
-      }
-      if (!isUnavailableGateway(message, response?.status) && !isLegacyResponsesHistoryError(message)) {
-        throw new AIServiceError(message, response?.status || 502)
+      const failure = await readGatewayFailure(error, response)
+      if (!isUnavailableGateway(failure.message, failure.status) && !isRecoverableGatewayContractError(failure.message, failure.status)) {
+        throw new AIServiceError(failure.message, failure.status || 502)
       }
     }
     if (!error && typeof result?.error === "string") {

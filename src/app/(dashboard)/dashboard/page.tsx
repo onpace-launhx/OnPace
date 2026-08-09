@@ -43,6 +43,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [activeManualSubscription, setActiveManualSubscription] = useState<any>(null);
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
@@ -515,6 +516,18 @@ export default function DashboardPage() {
           .eq("id", user.id)
           .single();
         const effectiveProfile = refreshedProfile || profileData;
+        const { data: manualSubscriptions } = await supabase
+          .from("manual_subscriptions")
+          .select("id,plan,billing_cycle,period_end,status,activated_at,created_at")
+          .eq("user_id", user.id)
+          .in("status", ["active", "cancel_at_period_end"])
+          .order("activated_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(5);
+        const activeManual = (manualSubscriptions || []).find((subscription: any) =>
+          subscription.billing_cycle === "one_time" || !subscription.period_end || new Date(subscription.period_end) > new Date()
+        );
+        setActiveManualSubscription(activeManual || null);
         const trialWasExpired = profileData.subscription_status === "trialing"
           && profileData.trial_ends_at
           && new Date(profileData.trial_ends_at) <= new Date();
@@ -772,8 +785,9 @@ export default function DashboardPage() {
 
   const now = new Date();
   const trialEnds = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
-  const isTrialActive = trialEnds && trialEnds > now;
-  const isPro = profile?.plan === "pro" || profile?.plan === "founding" || isTrialActive;
+  const manualHasAccess = Boolean(activeManualSubscription && (activeManualSubscription.billing_cycle === "one_time" || !activeManualSubscription.period_end || new Date(activeManualSubscription.period_end) > now));
+  const isTrialActive = !manualHasAccess && Boolean(trialEnds && trialEnds > now);
+  const isPro = manualHasAccess || profile?.plan === "pro" || profile?.plan === "founding" || isTrialActive;
 
   let trialDaysRemaining = 0;
   if (trialEnds && isTrialActive) {

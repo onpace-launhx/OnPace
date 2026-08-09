@@ -88,10 +88,10 @@ const DEFAULT_LOCALIZED_PLAN_NAMES: LocalizedPlanNames = {
 };
 
 const PAYMENT_SETTINGS_COPY = {
-  en: { accept: "Accept EshipX payments", acceptHelp: "Open or close package purchases instantly.", catalog: "EshipX package catalog", catalogHelp: "Set the destination link for each package. Only secure EshipX links are accepted.", links: "Payment links", names: "Localized package names", monthly: "Monthly", yearly: "Yearly", lifetime: "Lifetime / Founding", enabled: "Payments are open", disabled: "Payments are closed", saveHint: "Link and name changes take effect after saving system settings." },
-  tr: { accept: "eShipX ödemelerini kabul et", acceptHelp: "Paket satın alımlarını anında açın veya kapatın.", catalog: "eShipX paket kataloğu", catalogHelp: "Her paketin yönleneceği ödeme bağlantısını belirleyin. Yalnızca güvenli eShipX bağlantıları kabul edilir.", links: "Ödeme bağlantıları", names: "Dile özel paket adları", monthly: "Aylık", yearly: "Yıllık", lifetime: "Ömür boyu / Kurucu", enabled: "Ödemeler açık", disabled: "Ödemeler kapalı", saveHint: "Bağlantı ve ad değişiklikleri sistem ayarlarını kaydettikten sonra geçerli olur." },
-  es: { accept: "Aceptar pagos de EshipX", acceptHelp: "Activa o desactiva las compras de planes al instante.", catalog: "Catálogo de planes de EshipX", catalogHelp: "Define el enlace de pago de cada plan. Solo se aceptan enlaces seguros de EshipX.", links: "Enlaces de pago", names: "Nombres localizados de los planes", monthly: "Mensual", yearly: "Anual", lifetime: "De por vida / Fundador", enabled: "Pagos activados", disabled: "Pagos desactivados", saveHint: "Los cambios de enlaces y nombres se aplican al guardar los ajustes del sistema." },
-  zh: { accept: "接受 EshipX 付款", acceptHelp: "即时开启或关闭套餐购买。", catalog: "EshipX 套餐目录", catalogHelp: "为每个套餐设置付款目标链接，仅接受安全的 EshipX 链接。", links: "付款链接", names: "多语言套餐名称", monthly: "月度", yearly: "年度", lifetime: "终身 / 创始会员", enabled: "付款已开启", disabled: "付款已关闭", saveHint: "链接和名称将在保存系统设置后生效。" },
+  en: { accept: "Accept EshipX payments", acceptHelp: "Open or close package purchases instantly.", catalog: "EshipX package catalog", catalogHelp: "Set the destination for each package. Secure EshipX links and EshipX-issued Stripe Checkout links are accepted.", links: "Payment links", names: "Localized package names", monthly: "Monthly", yearly: "Yearly", lifetime: "Lifetime / Founding", enabled: "Payments are open", disabled: "Payments are closed", saveHint: "Link and name changes take effect after saving system settings." },
+  tr: { accept: "eShipX ödemelerini kabul et", acceptHelp: "Paket satın alımlarını anında açın veya kapatın.", catalog: "eShipX paket kataloğu", catalogHelp: "Her paketin yönleneceği bağlantıyı belirleyin. Güvenli eShipX ve eShipX tarafından verilen Stripe Checkout bağlantıları kabul edilir.", links: "Ödeme bağlantıları", names: "Dile özel paket adları", monthly: "Aylık", yearly: "Yıllık", lifetime: "Ömür boyu / Kurucu", enabled: "Ödemeler açık", disabled: "Ödemeler kapalı", saveHint: "Bağlantı ve ad değişiklikleri sistem ayarlarını kaydettikten sonra geçerli olur." },
+  es: { accept: "Aceptar pagos de EshipX", acceptHelp: "Activa o desactiva las compras de planes al instante.", catalog: "Catálogo de planes de EshipX", catalogHelp: "Define el destino de cada plan. Se aceptan enlaces seguros de EshipX y enlaces de Stripe Checkout emitidos por EshipX.", links: "Enlaces de pago", names: "Nombres localizados de los planes", monthly: "Mensual", yearly: "Anual", lifetime: "De por vida / Fundador", enabled: "Pagos activados", disabled: "Pagos desactivados", saveHint: "Los cambios de enlaces y nombres se aplican al guardar los ajustes del sistema." },
+  zh: { accept: "接受 EshipX 付款", acceptHelp: "即时开启或关闭套餐购买。", catalog: "EshipX 套餐目录", catalogHelp: "为每个套餐设置付款目标。接受安全的 EshipX 链接以及由 EshipX 提供的 Stripe Checkout 链接。", links: "付款链接", names: "多语言套餐名称", monthly: "月度", yearly: "年度", lifetime: "终身 / 创始会员", enabled: "付款已开启", disabled: "付款已关闭", saveHint: "链接和名称将在保存系统设置后生效。" },
 } as const;
 
 function normalizePaymentCheckoutUrls(value: unknown): PaymentCheckoutUrls {
@@ -689,23 +689,8 @@ export default function AdminPage() {
       }
 
       const data = await requestIntegrationConfig({
-        paymentGatewayEnabled,
-        paymentProvider: "eshipx",
-        paymentCheckoutUrls,
-        planNames: localizedPlanNames,
         maintenanceMode,
         maintenanceContent,
-        planPrices: {
-          pro_monthly: Number(proMonthlyPrice),
-          pro_yearly: Number(proYearlyPrice),
-          founding_member: Number(foundingPrice),
-        },
-        paymentDisabledMessage: {
-          tr: disabledMsgTR.trim(),
-          en: disabledMsgEN.trim(),
-          es: disabledMsgES.trim(),
-          zh: disabledMsgZH.trim(),
-        },
         resendApiKey: resendApiKey.trim() || undefined,
         emailFromAddress: emailFromAddress.trim(),
         emailFromName: emailFromName.trim(),
@@ -1645,11 +1630,11 @@ export default function AdminPage() {
           {canManageBilling && (
             <button
               onClick={() => setActiveTab("billing_operations")}
-              className={`pb-4 text-xs sm:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 pb-4 text-xs sm:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === "billing_operations" ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              {adminText.paymentsTab}
+              <CreditCard size={15} /> {adminText.paymentsTab}
             </button>
           )}
           {(isSuperAdmin || perms.includes("manage_settings")) && (
@@ -1969,8 +1954,8 @@ export default function AdminPage() {
 
               <form onSubmit={(e) => { e.preventDefault(); handleSaveSystemSettings(); }} className="space-y-6">
                 {/* Payment Gateway Toggle & Maintenance Mode Toggle */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-150">
-                  <div className="flex items-center justify-between">
+                <div className="grid grid-cols-1 gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-150">
+                  <div className="hidden">
                     <div>
                       <p className="text-xs font-bold text-surface-dark">💳 {paymentSettingsCopy.accept}</p>
                       <p className="text-[10px] text-gray-500">{paymentSettingsCopy.acceptHelp}</p>
@@ -2204,7 +2189,7 @@ export default function AdminPage() {
                   </p>
                 </div>
 
-                <div className="rounded-3xl border border-indigo-100 bg-indigo-50/35 p-4 sm:p-5">
+                <div className="hidden rounded-3xl border border-indigo-100 bg-indigo-50/35 p-4 sm:p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h3 className="text-sm font-extrabold text-surface-dark">{paymentSettingsCopy.catalog}</h3>
@@ -2270,8 +2255,8 @@ export default function AdminPage() {
                   <p className="mt-3 text-[10px] leading-4 text-gray-500">{paymentSettingsCopy.saveHint}</p>
                 </div>
 
-                {/* Plan Pricing Editors */}
-                <div>
+                {/* Plan pricing is managed in Payment & Plans > EshipX settings. */}
+                <div className="hidden">
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
                     Dynamic Plan Pricing (USD)
                   </label>

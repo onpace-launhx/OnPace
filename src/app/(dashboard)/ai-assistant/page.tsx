@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -14,17 +14,15 @@ import {
   Lock,
   Plus,
   Trash2,
-  X
+  X,
+  CalendarPlus,
+  Check
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import { PersonalizedLearningStudio } from "@/components/dashboard/PersonalizedLearningStudio";
 import { StudyVisual } from "@/components/ai/StudyVisual";
 import type { StudyVisualSpec } from "@/lib/study-visual";
-import { MarkdownRenderer } from "@/components/content/MarkdownRenderer";
-
-function lastChatStorageKey(userId: string) {
-  return "onpace-ai-last-chat:" + userId;
-}
+import { AIResponseCard } from "@/components/ai/AIResponseCard";
 
 type Profile = {
   id: string;
@@ -50,11 +48,25 @@ type ChatSession = {
   created_at: string;
   updated_at: string;
 };
+type PendingAction = {
+  type: "calendar" | "task";
+  title: string;
+  priority?: "low" | "medium" | "high";
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  conflict?: {
+    events: Array<{ title: string; startTime: string; endTime: string }>;
+    alternativeStart: string | null;
+    alternativeEnd: string | null;
+  } | null;
+};
 
 export default function AiAssistantPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const initialChatSetupStarted = useRef(false);
   
   const [profile, setProfile] = useState<Profile | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -67,6 +79,8 @@ export default function AiAssistantPage() {
   const [selectedCourse, setSelectedCourse] = useState("");
   const [studyVisual, setStudyVisual] = useState<StudyVisualSpec | null>(null);
   const [generatingVisual, setGeneratingVisual] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [savingAction, setSavingAction] = useState(false);
 
   // Premium modal popup & Custom alerts
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
@@ -74,6 +88,8 @@ export default function AiAssistantPage() {
 
   const lang = profile?.language || "en";
   const t = getTranslations(lang);
+  const localized = <T,>(values: { en: T; tr: T; es: T; zh: T }): T =>
+    values[( ["en", "tr", "es", "zh"].includes(lang) ? lang : "en") as keyof typeof values];
   const chatCopy = {
     en: {
       newChat: "New chat",
@@ -90,6 +106,7 @@ export default function AiAssistantPage() {
       thinking: "Study Coach is thinking...",
       coursePrompt: "Ask the study coach about {course}...",
       closeHistory: "Close chat history",
+      answerLabel: "OnPace Study Coach",
       serviceError: "The study coach could not answer right now. Please try again in a moment.",
     },
     tr: {
@@ -107,6 +124,7 @@ export default function AiAssistantPage() {
       thinking: "Çalışma koçu düşünüyor...",
       coursePrompt: "{course} hakkında çalışma koçuna sor...",
       closeHistory: "Sohbet geçmişini kapat",
+      answerLabel: "OnPace Çalışma Koçu",
       serviceError: "Çalışma koçu şu anda yanıt veremedi. Lütfen biraz sonra tekrar deneyin.",
     },
     es: {
@@ -124,6 +142,7 @@ export default function AiAssistantPage() {
       thinking: "El asesor de estudio está pensando...",
       coursePrompt: "Pregunta al asesor de estudio sobre {course}...",
       closeHistory: "Cerrar historial de chats",
+      answerLabel: "Coach de Estudio OnPace",
       serviceError: "El asesor no pudo responder ahora. Inténtalo de nuevo en un momento.",
     },
     zh: {
@@ -141,6 +160,7 @@ export default function AiAssistantPage() {
       thinking: "学习教练正在思考...",
       coursePrompt: "向学习教练询问 {course}...",
       closeHistory: "关闭对话历史",
+      answerLabel: "OnPace AI 学习教练",
       serviceError: "学习教练暂时无法回答，请稍后重试。",
     },
   }[lang as "en" | "tr" | "es" | "zh"] || {
@@ -165,6 +185,8 @@ export default function AiAssistantPage() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [chatHydrated, setChatHydrated] = useState(false);
   const [showChatHistory, setShowChatHistory] = useState(false);
+  const [openingSessionId, setOpeningSessionId] = useState<string | null>(null);
+  const [emptyDraftSessionId, setEmptyDraftSessionId] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<"chat" | "personalized">("chat");
 
   useEffect(() => {
@@ -173,6 +195,9 @@ export default function AiAssistantPage() {
   }, []);
 
   useEffect(() => {
+    if (initialChatSetupStarted.current) return;
+    initialChatSetupStarted.current = true;
+
     async function loadProfileAndChat() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -194,72 +219,27 @@ export default function AiAssistantPage() {
         .eq("user_id", user.id);
       if (coursesData) setCourses(coursesData as Course[]);
 
-      // Restore the last selected chat first. If there is no stored choice,
-      // open the latest conversation that actually has messages instead of an
-      // empty background/widget session.
       try {
-        const { data: sessions, error: sessionsError } = await supabase
-          .from("ai_chat_sessions")
-          .select("id, title, created_at, updated_at")
-          .eq("user_id", user.id)
-          .order("updated_at", { ascending: false })
-          .order("id", { ascending: false })
-          .limit(30);
-        if (sessionsError) throw sessionsError;
-
-        let sessId = "";
-        if (sessions && sessions.length > 0) {
-          setChatSessions(sessions);
-          const storedSessionId = window.localStorage.getItem(lastChatStorageKey(user.id));
-          const storedSession = sessions.find((session) => session.id === storedSessionId);
-          if (storedSession) {
-            sessId = storedSession.id;
-          } else {
-            const { data: latestMessage, error: latestMessageError } = await supabase
-              .from("ai_chat_messages")
-              .select("session_id")
-              .in("session_id", sessions.map((session) => session.id))
-              .order("created_at", { ascending: false })
-              .order("id", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (latestMessageError) throw latestMessageError;
-            sessId = latestMessage?.session_id || sessions[0].id;
-          }
-        } else {
-          const { data: newSess, error: newSessionError } = await supabase
-            .from("ai_chat_sessions")
-            .insert([{ user_id: user.id, title: "Study Assistant Chat" }])
-            .select("id, title, created_at, updated_at")
-            .single();
-          if (newSessionError) throw newSessionError;
-          if (newSess) {
-            sessId = newSess.id;
-            setChatSessions([newSess]);
-          }
+        const sessionsResponse = await fetch("/api/chat/sessions");
+        const sessionsData = await sessionsResponse.json().catch(() => ({}));
+        if (!sessionsResponse.ok) throw new Error(sessionsData.error || "Unable to load chat history.");
+        const previousSessions = (sessionsData.sessions || []) as ChatSession[];
+        // Opening the assistant always starts a blank, durable conversation.
+        // Older conversations remain available from the history panel.
+        const createResponse = await fetch("/api/chat/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "New study chat" }),
+        });
+        const createData = await createResponse.json().catch(() => ({}));
+        if (!createResponse.ok || !createData.session) {
+          throw new Error(createData.error || "Unable to create a new chat.");
         }
-
-        if (sessId) {
-          setActiveSessionId(sessId);
-          const { data: dbMsgs, error: messagesError } = await supabase
-            .from("ai_chat_messages")
-            .select("id, role, content")
-            .eq("session_id", sessId)
-            .order("created_at", { ascending: true })
-            .order("id", { ascending: true });
-          if (messagesError) throw messagesError;
-
-          if (dbMsgs && dbMsgs.length > 0) {
-            setMessages(
-              dbMsgs.map((m: { id: string; role: string; content: string }) => ({
-                id: m.id,
-                sender: m.role === "user" ? "user" : "ai",
-                text: m.content,
-              }))
-            );
-          }
-          window.localStorage.setItem(lastChatStorageKey(user.id), sessId);
-        }
+        const newSession = createData.session as ChatSession;
+        setChatSessions([newSession, ...previousSessions]);
+        setActiveSessionId(newSession.id);
+        setEmptyDraftSessionId(newSession.id);
+        setMessages([]);
       } catch (err) {
         console.error("Error loading chat history:", err);
         setCustomAlert(err instanceof Error ? err.message : "Unable to load chat history.");
@@ -273,45 +253,48 @@ export default function AiAssistantPage() {
   }, [router, supabase]);
 
   const openChatSession = async (session: ChatSession) => {
-    if (!session?.id || session.id === activeSessionId) return;
-    const { data: dbMsgs, error } = await supabase
-      .from("ai_chat_messages")
-      .select("id, role, content")
-      .eq("session_id", session.id)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true });
-    if (error) {
-      setCustomAlert(error.message);
+    if (!session?.id || openingSessionId) return;
+    setOpeningSessionId(session.id);
+    setShowChatHistory(false);
+    setPendingAction(null);
+    setStudyVisual(null);
+
+    // The blank chat created on entry is only a draft. Do not retain it when
+    // the student chooses a previous conversation before sending a message.
+    if (activeSessionId === emptyDraftSessionId && activeSessionId !== session.id) {
+      const draftId = activeSessionId;
+      const deleteResponse = await fetch(`/api/chat/sessions?sessionId=${encodeURIComponent(draftId)}`, { method: "DELETE" });
+      if (deleteResponse.ok) {
+        setChatSessions((current) => current.filter((item) => item.id !== draftId));
+        setEmptyDraftSessionId(null);
+      }
+    }
+
+    const response = await fetch(`/api/chat/sessions?sessionId=${encodeURIComponent(session.id)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setCustomAlert(data.error || "Unable to load this chat.");
+      setOpeningSessionId(null);
       return;
     }
     setActiveSessionId(session.id);
-    if (profile?.id) window.localStorage.setItem(lastChatStorageKey(profile.id), session.id);
-    setShowChatHistory(false);
-    setMessages(
-      (dbMsgs || []).map((message: { id: string; role: string; content: string }) => ({
-        id: message.id,
-        sender: message.role === "user" ? "user" : "ai",
-        text: message.content,
-      }))
-    );
+    setMessages((data.messages || []) as ChatMessage[]);
+    setOpeningSessionId(null);
   };
 
   const createChatSession = async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-    const { data, error } = await supabase
-      .from("ai_chat_sessions")
-      .insert([{ user_id: userData.user.id, title: "New study chat" }])
-      .select("id, title, created_at, updated_at")
-      .single();
-    if (error || !data) {
-      setCustomAlert(error?.message || "Unable to create a new chat.");
+    const response = await fetch("/api/chat/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "New study chat" }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.session) {
+      setCustomAlert(result.error || "Unable to create a new chat.");
       return;
     }
+    const data = result.session as ChatSession;
     setChatSessions((current) => [data, ...current]);
     setActiveSessionId(data.id);
-    window.localStorage.setItem(lastChatStorageKey(userData.user.id), data.id);
+    setEmptyDraftSessionId(data.id);
     setMessages([]);
+    setStudyVisual(null);
     setInputMsg("");
     setSelectedCourse("");
     setShowChatHistory(false);
@@ -320,13 +303,15 @@ export default function AiAssistantPage() {
   const deleteChatSession = async (session: ChatSession) => {
     const confirmed = window.confirm(chatCopy.deleteConfirm);
     if (!confirmed) return;
-    const { error } = await supabase.from("ai_chat_sessions").delete().eq("id", session.id);
-    if (error) {
-      setCustomAlert(error.message);
+    const response = await fetch(`/api/chat/sessions?sessionId=${encodeURIComponent(session.id)}`, { method: "DELETE" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setCustomAlert(result.error || "Unable to delete chat.");
       return;
     }
     const remaining = chatSessions.filter((item) => item.id !== session.id);
     setChatSessions(remaining);
+    if (session.id === emptyDraftSessionId) setEmptyDraftSessionId(null);
     if (session.id === activeSessionId) {
       if (remaining[0]) {
         await openChatSession(remaining[0]);
@@ -369,32 +354,17 @@ export default function AiAssistantPage() {
   const isTrialActive = trialEnds && trialEnds > now;
   const isPro = profile?.plan === "pro" || profile?.plan === "founding" || isTrialActive;
 
-  const touchChatSession = async (sessionId: string, title?: string) => {
-    const changes: { updated_at: string; title?: string } = {
-      updated_at: new Date().toISOString(),
-    };
-    if (title) changes.title = title;
-
-    const { data, error } = await supabase
-      .from("ai_chat_sessions")
-      .update(changes)
-      .eq("id", sessionId)
-      .select("id, title, created_at, updated_at")
-      .single();
-    if (error) throw error;
-    if (data) {
-      setChatSessions((current) => [
-        data,
-        ...current.filter((session) => session.id !== data.id),
-      ]);
-    }
-  };
-
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMsg.trim() || sending || loading || !activeSessionId) return;
 
     const userText = inputMsg.trim();
+    setEmptyDraftSessionId(null);
+    if (pendingAction && /^(onay|onayla|evet|yes|confirm|ok|tamam)$/i.test(userText)) {
+      setInputMsg("");
+      await confirmPendingAction("original");
+      return;
+    }
     const contextPrefix = selectedCourse ? `[Context: ${selectedCourse}] ` : "";
     const fullMessageText = `${contextPrefix}${userText}`;
 
@@ -405,18 +375,26 @@ export default function AiAssistantPage() {
     setSending(true);
 
     try {
-      if (activeSessionId) {
+      if (false && activeSessionId) {
         const { error: userMessageError } = await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "user", content: fullMessageText }
         ]);
-        if (userMessageError) throw userMessageError;
+        if (userMessageError) {
+          // A legacy chat table must not block the actual coach response.
+          console.warn("Could not persist user chat message", userMessageError);
+        }
         const sessionTitle = !messages.some((message) => message.sender === "user")
           ? userText.length > 42 ? `${userText.slice(0, 42)}…` : userText
           : undefined;
-        await touchChatSession(activeSessionId, sessionTitle);
+        await Promise.resolve(sessionTitle);
       }
 
-      const response = await fetch("/api/chat", {
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const dateParts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+      const datePart = (type: Intl.DateTimeFormatPartTypes) => dateParts.find((part) => part.type === type)?.value || "";
+      const today = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
+      const actionKeywords = /\b(calendar|schedule|add|create|task|takvim|planla|ekle|oluştur|görev|tomorrow|today|yarın|bugün|mañana|hoy)\b|\bsaat\s*\d{1,2}\b|\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s*(am|pm)\b/i.test(userText);
+      const chatRequest = fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -426,16 +404,37 @@ export default function AiAssistantPage() {
           sessionId: activeSessionId,
         }),
       });
+      const proposalRequest = actionKeywords
+        ? fetch("/api/assistant/propose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: userText, today, timeZone, language: lang }) }).then((proposalResponse) => proposalResponse.json().catch(() => null)).catch(() => null)
+        : Promise.resolve(null);
+      const [response, proposalResult] = await Promise.all([chatRequest, proposalRequest]);
 
-      const data = await response.json();
+      const responseBody = await response.text();
+      let data: { reply?: unknown; text?: unknown; error?: unknown; message?: unknown } = {};
+      try {
+        data = responseBody ? JSON.parse(responseBody) : {};
+      } catch {
+        // A proxy or an older Edge Function can return a non-JSON error page.
+        // Keep its safe text so the failure is actionable rather than generic.
+      }
       if (!response.ok) {
         if (response.status === 429) {
-          setCustomAlert(t.ai.limitError || data.error);
+          setCustomAlert(t.ai.limitError || (typeof data.error === "string" ? data.error : ""));
           setPremiumModalOpen(true);
         }
-        throw new Error(chatCopy.serviceError);
+        // Preserve the server's actionable message. Previously every failed
+        // request was turned into the same generic sentence, which hid
+        // provider/configuration failures and made the coach impossible to
+        // diagnose for both the student and support.
+        throw new Error(
+          typeof data.error === "string" && data.error.trim()
+            ? data.error
+            : typeof data.message === "string" && data.message.trim()
+              ? data.message
+              : responseBody.trim().slice(0, 300) || `${chatCopy.serviceError} (HTTP ${response.status})`
+        );
       }
-      const reply = data.reply || data.text;
+      const reply = typeof data.reply === "string" ? data.reply : typeof data.text === "string" ? data.text : "";
       if (!reply) {
         throw new Error("AI returned an empty response.");
       }
@@ -444,14 +443,26 @@ export default function AiAssistantPage() {
         ...prev,
         { id: crypto.randomUUID(), sender: "ai", text: reply }
       ]);
+      if (proposalResult?.proposal) {
+        setPendingAction(proposalResult.proposal as PendingAction);
+      } else if (typeof proposalResult?.followUp === "string") {
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), sender: "ai", text: proposalResult.followUp }]);
+      }
 
-      if (activeSessionId) {
+      if (false && activeSessionId) {
         const { error: assistantMessageError } = await supabase.from("ai_chat_messages").insert([
           { session_id: activeSessionId, role: "assistant", content: reply }
         ]);
-        if (assistantMessageError) throw assistantMessageError;
-        await touchChatSession(activeSessionId);
+        if (assistantMessageError) {
+          console.warn("Could not persist assistant chat message", assistantMessageError);
+        } else {
+          await Promise.resolve();
+        }
       }
+
+      const sessionsResponse = await fetch("/api/chat/sessions");
+      const sessionsData = await sessionsResponse.json().catch(() => ({}));
+      if (sessionsResponse.ok) setChatSessions((sessionsData.sessions || []) as ChatSession[]);
 
       const requestsVisual = /\b(diagram|visual|flowchart|flow chart|timeline|concept map|schema|scheme|diagrama|mapa visual|línea de tiempo)\b|şema|akış|zaman çizelgesi|kavram haritası|图示|流程图|时间线|概念图/i.test(userText);
       if (requestsVisual) {
@@ -571,10 +582,36 @@ export default function AiAssistantPage() {
     }
   };
 
+  const confirmPendingAction = async (choice: "original" | "alternative") => {
+    if (!pendingAction || savingAction) return;
+    setSavingAction(true);
+    try {
+      const response = await fetch("/api/assistant/commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proposal: pendingAction, choice }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || "Could not save this action.");
+      let syncWarning = false;
+      if (result.type === "calendar") {
+        window.dispatchEvent(new CustomEvent("onpace-calendar-updated"));
+        if (result.shouldSync) {
+          const syncResponse = await fetch("/api/calendar/sync", { method: "POST" });
+          syncWarning = !syncResponse.ok;
+        }
+      } else {
+        window.dispatchEvent(new CustomEvent("onpace-tasks-updated"));
+      }
+      setMessages((current) => [...current, { id: crypto.randomUUID(), sender: "ai", text: result.type === "calendar" ? syncWarning ? localized({ en: "✅ Added to your OnPace calendar. Google Calendar sync will retry automatically.", tr: "✅ OnPace takvimine eklendi. Google Takvim eşitlemesi otomatik olarak yeniden denenecek.", es: "✅ Añadido a tu calendario de OnPace. La sincronización con Google Calendar se reintentará automáticamente.", zh: "✅ 已添加到您的 OnPace 日历。Google 日历同步将自动重试。" }) : result.shouldSync ? localized({ en: "✅ Added to your OnPace calendar and synchronized with Google Calendar.", tr: "✅ OnPace takvimine eklendi ve Google Takvim ile eşitlendi.", es: "✅ Añadido a tu calendario de OnPace y sincronizado con Google Calendar.", zh: "✅ 已添加到您的 OnPace 日历并同步到 Google 日历。" }) : localized({ en: "✅ Added to your OnPace calendar.", tr: "✅ OnPace takvimine eklendi.", es: "✅ Añadido a tu calendario de OnPace.", zh: "✅ 已添加到您的 OnPace 日历。" }) : localized({ en: "✅ Added to your tasks.", tr: "✅ Görevlerine eklendi.", es: "✅ Añadido a tus tareas.", zh: "✅ 已添加到您的任务。" }) }]);
+      setPendingAction(null);
+    } catch (error) {
+      setCustomAlert(error instanceof Error ? error.message : chatCopy.serviceError);
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
   const chatLabels = chatCopy;
 
   return (
-    <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-6xl flex-1 flex-col overflow-hidden p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-6 lg:min-h-full lg:p-8">
+    <main className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-hidden p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 lg:px-8 lg:py-6">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
@@ -657,26 +694,28 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Chat Messages Body */}
-      <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain border border-gray-150 rounded-3xl bg-white p-4 sm:p-6 my-4 space-y-4 shadow-sm">
+      <div ref={chatScrollRef} className="my-4 min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain rounded-[2rem] border border-gray-150 bg-gradient-to-b from-white to-slate-50/35 p-4 shadow-sm sm:p-6 lg:p-7">
         {messages.map((msg) => {
           const isAi = msg.sender === "ai";
           return (
             <div
               key={msg.id}
-              className={`flex gap-3 max-w-[85%] ${
-                isAi ? "" : "ml-auto flex-row-reverse"
+              className={`flex gap-3 ${
+                isAi ? "w-full max-w-5xl" : "ml-auto max-w-[88%] flex-row-reverse sm:max-w-[72%]"
               }`}
             >
-              <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
-                isAi ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-600"
-              }`}>
-                {isAi ? <Sparkles size={14} /> : "ME"}
-              </div>
-              <div className={`p-4 rounded-3xl text-sm leading-relaxed ${
-                isAi ? "bg-brand-light/30 text-surface-dark rounded-tl-sm" : "bg-brand text-white rounded-tr-sm"
-              }`}>
-                {isAi ? <MarkdownRenderer content={msg.text} /> : <p className="content-break-anywhere whitespace-pre-line">{msg.text}</p>}
-              </div>
+              {isAi ? (
+                <div className="min-w-0 w-full">
+                  <AIResponseCard content={msg.text} label={chatCopy.answerLabel} />
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-3xl rounded-tr-md bg-brand px-5 py-3.5 text-sm leading-6 text-white shadow-sm">
+                    <p className="content-break-anywhere whitespace-pre-line">{msg.text}</p>
+                  </div>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-extrabold text-gray-600 ring-1 ring-gray-200">ME</div>
+                </>
+              )}
             </div>
           );
         })}
@@ -684,6 +723,13 @@ export default function AiAssistantPage() {
           <div className="mx-auto w-full max-w-3xl py-2">
             <StudyVisual visual={studyVisual} />
           </div>
+        )}
+        {pendingAction && (
+          <article className="mx-auto w-full max-w-3xl rounded-3xl border border-brand/20 bg-brand/5 p-4 shadow-sm sm:p-5">
+            <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-brand">{pendingAction.type === "calendar" ? <CalendarPlus size={19} /> : <Check size={19} />}</span><div className="min-w-0"><p className="text-sm font-extrabold text-surface-dark">{pendingAction.title}</p><p className="mt-1 text-xs leading-5 text-gray-600">{pendingAction.type === "calendar" && pendingAction.startTime ? new Intl.DateTimeFormat(lang === "tr" ? "tr-TR" : lang === "es" ? "es-ES" : lang === "zh" ? "zh-CN" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(pendingAction.startTime)) : localized({ en: "This will be added to your task list.", tr: "Bu görev listene eklenecek.", es: "Se añadirá a tu lista de tareas.", zh: "这将添加到您的任务列表。" })}</p></div></div>
+            {pendingAction.conflict && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">{localized({ en: "This time conflicts with your calendar. Choose a free alternative or add it anyway.", tr: "Bu saat takviminle çakışıyor. Boş öneriyi kullanabilir veya yine de ekleyebilirsin.", es: "Esta hora coincide con tu calendario. Elige una alternativa libre o añádelo de todos modos.", zh: "此时间与您的日历冲突。您可以选择空闲时间或仍然添加。" })}</p>}
+            <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={savingAction} onClick={() => void confirmPendingAction("original")} className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-extrabold text-white hover:bg-brand-hover disabled:opacity-60">{savingAction && <Loader2 size={14} className="animate-spin" />}{pendingAction.conflict ? localized({ en: "Add anyway", tr: "Yine de ekle", es: "Añadir de todos modos", zh: "仍然添加" }) : localized({ en: "Confirm and add", tr: "Onayla ve ekle", es: "Confirmar y añadir", zh: "确认并添加" })}</button>{pendingAction.conflict?.alternativeStart && <button type="button" disabled={savingAction} onClick={() => void confirmPendingAction("alternative")} className="rounded-xl border border-brand/25 bg-white px-4 py-2.5 text-xs font-extrabold text-brand hover:bg-brand/5">{localized({ en: "Use free time", tr: "Boş saati kullan", es: "Usar hora libre", zh: "使用空闲时间" })}</button>}<button type="button" disabled={savingAction} onClick={() => setPendingAction(null)} className="rounded-xl px-3 py-2.5 text-xs font-bold text-gray-500 hover:bg-white">{localized({ en: "Not now", tr: "Şimdi değil", es: "Ahora no", zh: "暂不" })}</button></div>
+          </article>
         )}
         {messages.length <= 1 && !sending && (
           <div className="mx-auto max-w-2xl pt-2 pb-6 text-center space-y-4">
@@ -703,11 +749,11 @@ export default function AiAssistantPage() {
           </div>
         )}
         {sending && (
-          <div className="flex gap-3 max-w-[85%]">
-            <div className="h-8 w-8 rounded-full bg-brand/10 flex items-center justify-center text-brand shrink-0">
+          <div className="flex max-w-3xl gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-brand">
               <Loader2 size={14} className="animate-spin" />
             </div>
-            <div className="p-4 bg-brand-light/30 text-gray-400 rounded-3xl rounded-tl-sm text-sm flex items-center gap-1.5 font-medium">
+            <div className="flex items-center gap-1.5 rounded-3xl rounded-tl-sm border border-brand/10 bg-brand-light/30 px-5 py-3.5 text-sm font-medium text-gray-500">
                 {chatCopy.thinking}
             </div>
           </div>
@@ -716,13 +762,19 @@ export default function AiAssistantPage() {
       </div>
 
       {/* Input Message Form */}
-      <form onSubmit={handleSend} className="sticky bottom-0 z-20 flex shrink-0 gap-2 bg-white p-2 border border-gray-150 rounded-3xl shadow-sm">
-        <input
-          type="text"
+      <form onSubmit={handleSend} className="sticky bottom-0 z-20 flex shrink-0 items-end gap-2 rounded-[1.75rem] border border-gray-150 bg-white p-2.5 shadow-[0_14px_38px_rgba(15,23,42,0.10)] sm:p-3">
+        <textarea
+          rows={1}
           value={inputMsg}
           onChange={(e) => setInputMsg(e.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
           placeholder={selectedCourse ? chatCopy.coursePrompt.replace("{course}", selectedCourse) : (t.ai.placeholderChat || "Ask study coach...")}
-          className="min-w-0 flex-1 px-4 py-3 bg-transparent text-sm outline-none text-surface-dark placeholder-gray-400"
+          className="max-h-36 min-h-12 min-w-0 flex-1 resize-none bg-transparent px-4 py-3 text-sm leading-6 text-surface-dark outline-none placeholder-gray-400"
         />
         <button
           type="button"

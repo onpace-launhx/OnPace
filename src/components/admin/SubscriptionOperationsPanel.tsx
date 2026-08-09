@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, CreditCard, Gift, Loader2, MailCheck, RefreshCw, Search, ShieldCheck, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, CreditCard, Gift, Loader2, MailCheck, ReceiptText, RefreshCw, Search, Settings2, ShieldCheck, UserPlus, UsersRound, XCircle } from "lucide-react";
+import { PaymentCatalogSettings } from "@/components/admin/PaymentCatalogSettings";
 
 type Language = "en" | "tr" | "es" | "zh";
 type Profile = { id: string; full_name?: string | null; email?: string | null; language?: string | null; plan?: string | null };
@@ -19,8 +20,18 @@ type PaymentClaim = {
   profiles?: { full_name?: string | null; email?: string | null; language?: string | null; plan?: string | null } | null;
 };
 type Campaign = { id: string; ends_at: string; source_local_end: string; auto_assign_new_users: boolean; target_filter?: { plan?: string }; status: string; created_at: string };
+type CancellationRequest = { id: string; status: string; requested_at: string; profiles?: { full_name?: string | null; email?: string | null } | null; manual_subscriptions?: { plan?: string; billing_cycle?: string; provider_reference?: string | null } | null };
+type PurchaseRecord = { id: string; created_at: string; plan_type: string; billing_cycle: string; amount: number; currency: string; provider_reference?: string | null; profiles?: { full_name?: string | null; email?: string | null } | null };
 type ReviewDraft = { reference: string; amount: string; currency: string; note: string };
 type BulkPreview = { operationId: string; previewCount: number; previewToken: string; confirmationText: string; endsAtUtc?: string | null };
+type PanelTab = "payments" | "activate" | "subscriptions" | "campaigns" | "catalog";
+
+const NAV_COPY = {
+  en: { payments: "Payment requests", activate: "Activate membership", subscriptions: "Subscriptions", campaigns: "Bulk access", catalog: "EshipX settings", pending: "Pending matches", active: "Active records", protected: "Learning data protected" },
+  tr: { payments: "Ödeme bildirimleri", activate: "Üyelik başlat", subscriptions: "Abonelikler", campaigns: "Toplu erişim", catalog: "eShipX ayarları", pending: "Bekleyen eşleşme", active: "Aktif kayıt", protected: "Öğrenme verileri korunur" },
+  es: { payments: "Avisos de pago", activate: "Activar membresía", subscriptions: "Suscripciones", campaigns: "Acceso masivo", catalog: "Ajustes EshipX", pending: "Vinculaciones pendientes", active: "Registros activos", protected: "Datos de estudio protegidos" },
+  zh: { payments: "付款通知", activate: "开通会员", subscriptions: "订阅记录", campaigns: "批量访问", catalog: "EshipX 设置", pending: "待匹配", active: "有效记录", protected: "学习数据受保护" },
+} as const;
 
 const COPY = {
   en: {
@@ -70,10 +81,14 @@ async function request(body: Record<string, unknown>) {
 
 export function SubscriptionOperationsPanel({ language, profiles }: { language: Language; profiles: Profile[] }) {
   const t = COPY[language] || COPY.en;
+  const navCopy = NAV_COPY[language] || NAV_COPY.en;
   const locale = { en: "en-US", tr: "tr-TR", es: "es-ES", zh: "zh-CN" }[language];
+  const [panelTab, setPanelTab] = useState<PanelTab>("payments");
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [claims, setClaims] = useState<PaymentClaim[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
+  const [purchaseHistory, setPurchaseHistory] = useState<PurchaseRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -105,17 +120,21 @@ export function SubscriptionOperationsPanel({ language, profiles }: { language: 
     return statusMatches && (!search.trim() || haystack.includes(search.trim().toLocaleLowerCase(locale)));
   }), [claims, claimStatus, search, locale]);
   const visibleSubscriptions = subscriptions.filter((item) => item.status !== "pending_activation");
+  const filteredPurchaseHistory = useMemo(() => purchaseHistory.filter((record) => {
+    const haystack = `${record.profiles?.full_name || ""} ${record.profiles?.email || ""} ${record.provider_reference || ""} ${record.plan_type} ${record.billing_cycle}`.toLocaleLowerCase(locale);
+    return !search.trim() || haystack.includes(search.trim().toLocaleLowerCase(locale));
+  }), [purchaseHistory, search, locale]);
   const statusLabel = (status: string) => ({ submitted: t.submitted, reviewing: t.reviewing, approved: t.approved, rejected: t.rejected, canceled: t.canceled }[status] || status);
   const draftFor = (claim: PaymentClaim): ReviewDraft => reviewDrafts[claim.id] || { reference: claim.provider_reference || "", amount: String(claim.quoted_amount || ""), currency: claim.currency || "USD", note: claim.admin_note || "" };
   const updateDraft = (claim: PaymentClaim, field: keyof ReviewDraft, value: string) => setReviewDrafts((current) => ({ ...current, [claim.id]: { ...draftFor(claim), [field]: value } }));
-  const friendlyError = (caught: unknown) => {
+  const friendlyError = useCallback((caught: unknown) => {
     const message = caught instanceof Error ? caught.message : t.error;
     return /waiting for the final release|requested function|function.*not found/i.test(message) ? t.publishPending : message;
-  };
+  }, [t]);
 
   async function load() {
     setLoading(true); setError("");
-    try { const data = await request({ action: "list" }); setSubscriptions(data.subscriptions || []); setClaims(data.claims || []); setCampaigns(data.campaigns || []); }
+    try { const data = await request({ action: "list" }); setSubscriptions(data.subscriptions || []); setClaims(data.claims || []); setCampaigns(data.campaigns || []); setCancellationRequests(data.cancellationRequests || []); setPurchaseHistory(data.purchaseHistory || []); }
     catch (caught) { setError(friendlyError(caught)); }
     finally { setLoading(false); }
   }
@@ -127,11 +146,13 @@ export function SubscriptionOperationsPanel({ language, profiles }: { language: 
         setSubscriptions(data.subscriptions || []);
         setClaims(data.claims || []);
         setCampaigns(data.campaigns || []);
+        setCancellationRequests(data.cancellationRequests || []);
+        setPurchaseHistory(data.purchaseHistory || []);
       })
       .catch((caught) => { if (active) setError(friendlyError(caught)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [language]);
+  }, [friendlyError]);
 
   async function createSubscription(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setOperationSuccess("");
@@ -175,6 +196,28 @@ export function SubscriptionOperationsPanel({ language, profiles }: { language: 
     finally { setBusy(false); }
   }
 
+  async function resolveCancellationRequest(item: CancellationRequest, decision: "approved" | "rejected") {
+    if (!window.confirm(t.confirmCancel)) return;
+    setBusy(true); setError(""); setOperationSuccess("");
+    try {
+      const result = await request({ action: "resolve_cancellation_request", requestId: item.id, decision });
+      setOperationSuccess(result.email?.status === "sent" ? t.cancelledSuccess : `${t.cancelledSuccess} ${t.emailDeliveryWarning}`);
+      await load();
+    } catch (caught) { setError(friendlyError(caught)); }
+    finally { setBusy(false); }
+  }
+
+  async function deletePurchaseRecord(record: PurchaseRecord) {
+    const confirmText = language === "tr"
+      ? "Bu satın alma kaydını silmek istiyor musunuz? Bu işlem üyelik erişimini değiştirmez."
+      : "Delete this purchase record? This does not change membership access.";
+    if (!window.confirm(confirmText)) return;
+    setBusy(true); setError("");
+    try { await request({ action: "delete_purchase_history", recordId: record.id }); await load(); }
+    catch (caught) { setError(friendlyError(caught)); }
+    finally { setBusy(false); }
+  }
+
   function clearPreview() { setPreview(null); setConfirmation(""); setBulkSuccess(""); }
   async function createPreview() {
     setBusy(true); setError(""); clearPreview();
@@ -192,21 +235,49 @@ export function SubscriptionOperationsPanel({ language, profiles }: { language: 
     finally { setBusy(false); }
   }
 
+  const navigation: Array<{ id: PanelTab; label: string; icon: typeof CreditCard }> = [
+    { id: "payments", label: navCopy.payments, icon: MailCheck },
+    { id: "activate", label: navCopy.activate, icon: UserPlus },
+    { id: "subscriptions", label: navCopy.subscriptions, icon: ReceiptText },
+    { id: "campaigns", label: navCopy.campaigns, icon: UsersRound },
+    { id: "catalog", label: navCopy.catalog, icon: Settings2 },
+  ];
+  const pendingClaims = claims.filter((claim) => ["submitted", "reviewing"].includes(claim.status)).length;
+  const activeSubscriptions = visibleSubscriptions.filter((subscription) => ["active", "cancel_at_period_end"].includes(subscription.status)).length;
+
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-gray-150 bg-white p-4 shadow-sm sm:p-6">
-        <div className="flex items-start gap-3"><span className="rounded-2xl bg-brand/10 p-2.5 text-brand"><CreditCard size={20} /></span><div><h2 className="text-base font-extrabold text-surface-dark sm:text-lg">{t.title}</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-gray-500">{t.subtitle}</p></div></div>
+      <section className="overflow-hidden rounded-[2rem] border border-gray-150 bg-white shadow-sm">
+        <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-brand-dark p-5 text-white sm:p-7">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-start gap-4"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-indigo-200 ring-1 ring-white/15"><CreditCard size={23} /></span><div><h2 className="text-xl font-black sm:text-2xl">{t.title}</h2><p className="mt-1.5 max-w-3xl text-xs leading-5 text-indigo-100/75 sm:text-sm">{t.subtitle}</p></div></div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:min-w-[470px]">
+              <div className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10"><p className="text-[9px] font-bold uppercase tracking-wider text-indigo-200">{navCopy.pending}</p><p className="mt-1 text-xl font-black">{pendingClaims}</p></div>
+              <div className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10"><p className="text-[9px] font-bold uppercase tracking-wider text-indigo-200">{navCopy.active}</p><p className="mt-1 text-xl font-black">{activeSubscriptions}</p></div>
+              <div className="col-span-2 rounded-2xl bg-emerald-400/10 p-3 text-emerald-100 ring-1 ring-emerald-300/15 sm:col-span-1"><p className="text-[9px] font-bold uppercase tracking-wider">{navCopy.protected}</p><ShieldCheck className="mt-1" size={20} /></div>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 sm:p-6">
         <div className="mt-4 flex items-start gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-800"><ShieldCheck className="mt-0.5 shrink-0" size={15} /><span>{t.emailNotice}</span></div>
         {error && <div role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">{error}</div>}
         {operationSuccess && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{operationSuccess}</div>}
 
-        <div className="mt-6 rounded-3xl border border-indigo-100 bg-indigo-50/35 p-4 sm:p-5">
+        <nav className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5" aria-label={t.title}>
+          {navigation.map(({ id, label, icon: Icon }) => (
+            <button key={id} type="button" onClick={() => setPanelTab(id)} className={`flex items-center gap-2 rounded-2xl border px-3.5 py-3 text-left text-xs font-extrabold transition ${panelTab === id ? "border-brand bg-brand text-white shadow-sm" : "border-gray-200 bg-white text-gray-600 hover:border-brand/30 hover:text-brand"}`}>
+              <Icon size={16} className="shrink-0" /><span className="truncate">{label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className={`${panelTab === "payments" ? "mt-6" : "hidden"} rounded-3xl border border-indigo-100 bg-indigo-50/35 p-4 sm:p-5`}>
           <div className="flex items-start gap-3"><span className="rounded-2xl bg-white p-2.5 text-brand shadow-sm"><MailCheck size={19} /></span><div><h3 className="text-sm font-extrabold text-surface-dark sm:text-base">{t.queue}</h3><p className="mt-1 text-xs leading-5 text-gray-500">{t.queueHelp}</p></div></div>
           <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]"><label className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.search} className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-xs" /></label><select value={claimStatus} onChange={(event) => setClaimStatus(event.target.value)} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-bold"><option value="open">{t.submitted} + {t.reviewing}</option><option value="all">{t.allStatuses}</option><option value="approved">{t.approved}</option><option value="rejected">{t.rejected}</option></select></div>
           <div className="mt-4 space-y-3">{filteredClaims.length === 0 ? <p className="rounded-2xl border border-dashed border-indigo-200 bg-white/70 py-8 text-center text-xs text-gray-400">{t.noClaims}</p> : filteredClaims.map((claim) => { const draft = draftFor(claim); const open = ["submitted", "reviewing"].includes(claim.status); return <article key={claim.id} className="rounded-2xl border border-gray-150 bg-white p-4 shadow-sm"><div className="grid gap-3 lg:grid-cols-3"><div><p className="text-[10px] font-bold uppercase text-gray-400">{t.onpaceAccount}</p><p className="mt-1 truncate text-sm font-extrabold">{claim.profiles?.full_name || claim.profiles?.email}</p><p className="truncate text-xs text-gray-500">{claim.profiles?.email}</p></div><div><p className="text-[10px] font-bold uppercase text-gray-400">{t.payerAccount}</p><p className="mt-1 break-all text-sm font-bold text-indigo-700">{claim.payer_email}</p><p className="text-xs text-gray-500">{claim.plan_type} · {claim.quoted_amount} {claim.currency}</p></div><div className="lg:text-right"><span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase text-amber-800">{statusLabel(claim.status)}</span><p className="mt-2 text-[10px] text-gray-400">{t.submittedAt}: {new Date(claim.submitted_at).toLocaleString(locale)}</p></div></div>{open && <div className="mt-4 grid gap-2 border-t border-gray-100 pt-4 sm:grid-cols-2 lg:grid-cols-4"><label className="text-[10px] font-bold uppercase text-gray-500">{t.reference}<input value={draft.reference} onChange={(e) => updateDraft(claim, "reference", e.target.value)} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-xs normal-case" /></label><label className="text-[10px] font-bold uppercase text-gray-500">{t.amount}<input type="number" min="0.01" step="0.01" value={draft.amount} onChange={(e) => updateDraft(claim, "amount", e.target.value)} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-xs normal-case" /></label><label className="text-[10px] font-bold uppercase text-gray-500">{t.currency}<select value={draft.currency} onChange={(e) => updateDraft(claim, "currency", e.target.value)} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs normal-case"><option>USD</option><option>EUR</option><option>TRY</option><option>GBP</option></select></label><label className="text-[10px] font-bold uppercase text-gray-500">{t.reviewNote}<input value={draft.note} onChange={(e) => updateDraft(claim, "note", e.target.value)} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-xs normal-case" /></label><div className="flex gap-2 sm:col-span-2 lg:col-span-4 lg:justify-end"><button type="button" disabled={busy} onClick={() => void reviewClaim(claim, "reject")} className="rounded-xl border border-red-200 px-4 py-2.5 text-xs font-bold text-red-700"><XCircle className="mr-1 inline" size={14} />{t.reject}</button><button type="button" disabled={busy || !draft.reference || !draft.amount} onClick={() => void reviewClaim(claim, "approve")} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white"><CheckCircle2 className="mr-1 inline" size={14} />{t.approve}</button></div></div>}</article>; })}</div>
         </div>
 
-        <form onSubmit={createSubscription} className="mt-6 border-t border-gray-100 pt-6">
+        <form onSubmit={createSubscription} className={`${panelTab === "activate" ? "mt-6" : "hidden"} rounded-3xl border border-gray-150 bg-slate-50/40 p-4 sm:p-6`}>
           <h3 className="text-sm font-extrabold text-surface-dark">{t.direct}</h3>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs font-bold text-gray-600 lg:col-span-2">{t.user}<select required value={userId} onChange={(e) => setUserId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm"><option value="">{t.choose}</option>{sortedProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.full_name || profile.email || profile.id} · {profile.email}</option>)}</select></label>
@@ -220,14 +291,17 @@ export function SubscriptionOperationsPanel({ language, profiles }: { language: 
           </div>
           <button disabled={busy} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white disabled:opacity-50 sm:w-auto">{busy && <Loader2 size={16} className="animate-spin" />}{busy ? t.creating : t.create}</button>
         </form>
+        </div>
       </section>
 
-      <section className="rounded-3xl border border-gray-150 bg-white p-4 shadow-sm sm:p-6">
+      <section className={`${panelTab === "subscriptions" ? "block" : "hidden"} rounded-3xl border border-gray-150 bg-white p-4 shadow-sm sm:p-6`}>
         <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-extrabold text-surface-dark">{t.records}</h3><button type="button" onClick={() => void load()} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-bold text-gray-600"><RefreshCw size={13} className={loading ? "animate-spin" : ""} />{t.refresh}</button></div>
+        <div className="mt-5 rounded-2xl border border-brand/15 bg-brand/5 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-extrabold text-surface-dark">{language === "tr" ? "Satın alma geçmişi" : language === "es" ? "Historial de compras" : language === "zh" ? "购买记录" : "Purchase history"}</p><p className="mt-1 text-xs text-gray-500">{language === "tr" ? "Kullanıcı, referans veya pakete göre ara. Kayıt silmek erişimi değiştirmez." : "Search by user, reference, or plan. Deleting a record does not change access."}</p></div><label className="relative min-w-0 sm:w-80"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t.search} className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-xs" /></label></div><div className="mt-3 max-h-72 overflow-auto rounded-xl border border-white bg-white">{filteredPurchaseHistory.length === 0 ? <p className="p-4 text-xs text-gray-400">{language === "tr" ? "Satın alma kaydı bulunamadı." : "No purchase records found."}</p> : filteredPurchaseHistory.map((record) => <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-3 last:border-0"><div className="min-w-0"><p className="truncate text-xs font-extrabold text-surface-dark">{record.profiles?.full_name || record.profiles?.email || "—"}</p><p className="mt-0.5 text-[11px] text-gray-500">{record.plan_type} · {record.billing_cycle} · {record.amount} {record.currency} · {record.provider_reference || "—"}</p></div><div className="flex items-center gap-2"><span className="text-[10px] text-gray-400">{new Date(record.created_at).toLocaleDateString(locale)}</span><button type="button" disabled={busy} onClick={() => void deletePurchaseRecord(record)} className="rounded-lg border border-red-200 px-2.5 py-1.5 text-[10px] font-bold text-red-600 hover:bg-red-50 disabled:opacity-50">{language === "tr" ? "Sil" : language === "es" ? "Eliminar" : language === "zh" ? "删除" : "Delete"}</button></div></div>)}</div></div>
+        {cancellationRequests.filter((item) => item.status === "submitted").length > 0 && <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-extrabold text-amber-900">{language === "tr" ? "Bekleyen iptal talepleri" : language === "es" ? "Solicitudes de cancelación pendientes" : language === "zh" ? "待处理的取消请求" : "Pending cancellation requests"}</p><div className="mt-3 grid gap-2 lg:grid-cols-2">{cancellationRequests.filter((item) => item.status === "submitted").map((item) => <article key={item.id} className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-xs font-extrabold text-surface-dark">{item.profiles?.full_name || item.profiles?.email}</p><p className="mt-1 text-[11px] text-gray-500">{item.manual_subscriptions?.plan} · {item.manual_subscriptions?.billing_cycle} · {item.manual_subscriptions?.provider_reference || "—"}</p><div className="mt-3 flex gap-2"><button type="button" disabled={busy} onClick={() => void resolveCancellationRequest(item, "approved")} className="rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white">{language === "tr" ? "İptali onayla" : language === "es" ? "Aprobar cancelación" : language === "zh" ? "批准取消" : "Approve cancellation"}</button><button type="button" disabled={busy} onClick={() => void resolveCancellationRequest(item, "rejected")} className="rounded-lg border border-gray-200 px-3 py-2 text-[11px] font-bold text-gray-700">{language === "tr" ? "Reddet" : language === "es" ? "Rechazar" : language === "zh" ? "拒绝" : "Reject"}</button></div></article>)}</div></div>}
         {loading ? <div className="flex justify-center py-10"><Loader2 className="animate-spin text-brand" /></div> : visibleSubscriptions.length === 0 ? <p className="py-8 text-center text-xs text-gray-400">{t.empty}</p> : <div className="mt-4 grid gap-3 lg:grid-cols-2">{visibleSubscriptions.map((subscription) => { const canRenew = ["active", "cancel_at_period_end", "expired"].includes(subscription.status) && ["monthly", "yearly"].includes(subscription.billing_cycle); return <article key={subscription.id} className="rounded-2xl border border-gray-150 p-4"><div className="flex justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-extrabold">{subscription.profiles?.full_name || subscription.profiles?.email}</p><p className="truncate text-xs text-gray-400">{subscription.profiles?.email}</p></div><span className="h-fit rounded-full bg-brand/10 px-2 py-1 text-[10px] font-black uppercase text-brand">{subscription.status}</span></div><dl className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><dt className="text-gray-400">{t.amount}</dt><dd className="font-bold">{subscription.amount} {subscription.currency}</dd></div><div><dt className="text-gray-400">{t.cycle}</dt><dd className="font-bold">{subscription.billing_cycle}{subscription.trial_days ? ` + ${subscription.trial_days} ${t.trialDays}` : ""}</dd></div><div><dt className="text-gray-400">{t.reference}</dt><dd className="break-all font-semibold">{subscription.provider_reference || "—"}</dd></div><div><dt className="text-gray-400">{t.next}</dt><dd className="font-semibold">{subscription.next_renewal_at ? new Date(subscription.next_renewal_at).toLocaleDateString(locale) : "—"}</dd></div></dl>{canRenew && <input value={renewalReferences[subscription.id] || ""} onChange={(e) => setRenewalReferences((current) => ({ ...current, [subscription.id]: e.target.value }))} placeholder={t.reference} className="mt-4 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-xs" />}<div className="mt-3 grid gap-2 sm:grid-cols-3"><button disabled={busy || !canRenew || !(renewalReferences[subscription.id] || "").trim()} onClick={() => void mutateSubscription("renew", subscription)} className="rounded-lg bg-brand/10 px-2 py-2 text-[11px] font-bold text-brand disabled:opacity-40">{t.renew}</button><button disabled={busy || ["canceled", "expired", "refunded"].includes(subscription.status)} onClick={() => void mutateSubscription("cancel", subscription)} className="rounded-lg bg-amber-50 px-2 py-2 text-[11px] font-bold text-amber-700 disabled:opacity-40">{t.cancelEnd}</button><button disabled={busy || ["canceled", "expired", "refunded"].includes(subscription.status)} onClick={() => void mutateSubscription("cancel", subscription, true)} className="rounded-lg bg-red-50 px-2 py-2 text-[11px] font-bold text-red-700 disabled:opacity-40">{t.cancelNow}</button></div></article>; })}</div>}
       </section>
 
-      <section className={`rounded-3xl border bg-white p-4 shadow-sm sm:p-6 ${bulkMode === "grant" ? "border-emerald-200" : "border-red-200"}`}>
+      <section className={`${panelTab === "campaigns" ? "block" : "hidden"} rounded-3xl border bg-white p-4 shadow-sm sm:p-6 ${bulkMode === "grant" ? "border-emerald-200" : "border-red-200"}`}>
         <div className="flex items-start gap-3"><span className={`rounded-2xl p-2.5 ${bulkMode === "grant" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}>{bulkMode === "grant" ? <Gift size={20} /> : <AlertTriangle size={20} />}</span><div><h3 className="text-sm font-extrabold text-surface-dark sm:text-base">{t.bulk}</h3><p className="mt-1 text-xs leading-5 text-gray-500">{t.bulkHelp}</p></div></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="text-xs font-bold text-gray-600">{t.operation}<select value={bulkMode} onChange={(e) => { setBulkMode(e.target.value as "reset" | "grant"); clearPreview(); }} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm"><option value="reset">{t.reset}</option><option value="grant">{t.grant}</option></select></label><label className="text-xs font-bold text-gray-600">{t.target}<select value={targetPlan} onChange={(e) => { setTargetPlan(e.target.value); clearPreview(); }} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm"><option value="all">{t.allStudents}</option><option value="free">Free</option><option value="pro">Pro</option><option value="founding">Founding</option></select></label>{bulkMode === "grant" && <><label className="text-xs font-bold text-gray-600 sm:col-span-2">{t.easternEnd}<input required type="datetime-local" value={endsAtEastern} onChange={(e) => { setEndsAtEastern(e.target.value); clearPreview(); }} className="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" /><span className="mt-1 block text-[10px] font-normal leading-4 text-gray-400">{t.easternHelp}</span></label><label className="flex items-start gap-2 rounded-xl border border-gray-200 p-3 text-xs font-semibold text-gray-700 sm:col-span-2 lg:col-span-4"><input type="checkbox" checked={autoAssignNewUsers} onChange={(e) => { setAutoAssignNewUsers(e.target.checked); clearPreview(); }} className="mt-0.5 h-4 w-4 accent-brand" /><span>{t.autoAssign}</span></label></>}</div>
         <div className={`mt-4 rounded-xl p-3 text-xs font-semibold leading-5 ${bulkMode === "grant" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>{bulkMode === "grant" ? t.grantWarning : t.resetWarning}</div>
@@ -236,6 +310,7 @@ export function SubscriptionOperationsPanel({ language, profiles }: { language: 
         {bulkSuccess && <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{bulkSuccess}</p>}
         {campaigns.length > 0 && <div className="mt-6 border-t border-gray-100 pt-5"><h4 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">{t.activeCampaigns}</h4><div className="mt-3 grid gap-2 sm:grid-cols-2">{campaigns.slice(0, 6).map((campaign) => <div key={campaign.id} className="rounded-xl border border-gray-150 p-3 text-xs"><div className="flex items-center justify-between gap-2"><span className="font-bold text-surface-dark">Pro · {campaign.target_filter?.plan || "all"}</span><span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-bold uppercase text-gray-500">{campaign.status}</span></div><p className="mt-2 text-gray-600">{new Date(campaign.ends_at).toLocaleString(locale, { timeZoneName: "short" })}</p><p className="mt-1 text-[10px] font-semibold text-gray-400">{campaign.auto_assign_new_users ? t.campaignAuto : t.campaignManual}</p></div>)}</div></div>}
       </section>
+      {panelTab === "catalog" && <PaymentCatalogSettings language={language} />}
     </div>
   );
 }

@@ -71,7 +71,12 @@ Deno.serve(async (request) => {
     const config = Array.isArray(data) ? data[0] : data
     const { data: modelData } = await admin.rpc("get_ai_model_settings")
     const modelSettings = Array.isArray(modelData) ? modelData[0] : modelData
-    const provider = config?.active_provider === "openai" ? "openai" : "gemini"
+    const requestedProvider = config?.active_provider === "openai" ? "openai" : "gemini"
+    const provider = requestedProvider === "openai" && !config?.openai_api_key && config?.gemini_api_key
+      ? "gemini"
+      : requestedProvider === "gemini" && !config?.gemini_api_key && config?.openai_api_key
+        ? "openai"
+        : requestedProvider
     const { data: quotaData, error: quotaError } = await caller.rpc(
       "consume_ai_quota"
     )
@@ -104,11 +109,6 @@ Deno.serve(async (request) => {
       const model = routingMode === "smart"
         ? workload === "fast" ? OPENAI_FAST_MODEL : OPENAI_REASONING_MODEL
         : configuredModel
-      const useResponses = model.startsWith("gpt-5.6") || Boolean(body.document?.base64)
-      const endpoint = useResponses
-        ? "https://api.openai.com/v1/responses"
-        : "https://api.openai.com/v1/chat/completions"
-
       const userContent: unknown[] = [{ type: "input_text", text: body.prompt }]
       if (body.image?.base64) {
         userContent.push({
@@ -126,69 +126,92 @@ Deno.serve(async (request) => {
       }
       const hasRichUserContent = Boolean(body.image?.base64 || body.document?.base64)
 
-      const requestBody = useResponses
-        ? {
-            model,
-            ...(body.systemInstruction
-              ? { instructions: body.systemInstruction }
-              : {}),
-            input: [
-              ...history.map((message) => ({
-                role: message.role,
-                content: [{
-                  type: message.role === "assistant" ? "output_text" : "input_text",
-                  text: message.content,
-                }],
-              })),
-              { role: "user", content: hasRichUserContent ? userContent : body.prompt },
-            ],
-            ...(model.startsWith("gpt-5.6")
-              ? { reasoning: { effort: workload === "reasoning" ? "low" : "none" } }
-              : { temperature: Number(body.temperature ?? 0.3) }),
-            safety_identifier: user.id,
-          }
-        : {
-            model,
-            messages: [
-              ...(body.systemInstruction
-                ? [{ role: "system", content: body.systemInstruction }]
-                : []),
-              ...history,
-              {
-                role: "user",
-                content: body.image?.base64
-                  ? [
-                      { type: "text", text: body.prompt },
-                      {
-                        type: "image_url",
-                        image_url: {
-                          url: `data:${body.image.mimeType || "image/png"};base64,${cleanBase64(body.image.base64)}`,
-                        },
-                      },
-                    ]
-                  : body.prompt,
-              },
-            ],
-            temperature: Number(body.temperature ?? 0.3),
-          }
+      const modelCandidates = model === OPENAI_REASONING_MODEL
+        ? [OPENAI_REASONING_MODEL, OPENAI_FAST_MODEL]
+        : [OPENAI_FAST_MODEL, OPENAI_REASONING_MODEL]
+      let lastOpenAIError = "OpenAI request failed"
+      let lastOpenAIStatus = 502
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.openai_api_key}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      })
-      if (!response.ok) {
-        return json({ error: await readProviderError(response) }, response.status)
+      for (const candidateModel of modelCandidates) {
+        const useResponses = candidateModel.startsWith("gpt-5.6") || Boolean(body.document?.base64)
+        const endpoint = useResponses
+          ? "https://api.openai.com/v1/responses"
+          : "https://api.openai.com/v1/chat/completions"
+        const requestBody = useResponses
+          ? {
+              model: candidateModel,
+              ...(body.systemInstruction
+                ? { instructions: body.systemInstruction }
+                : {}),
+              input: [
+                ...history.map((message) => ({
+                  role: message.role,
+                  content: [{
+                    type: message.role === "assistant" ? "output_text" : "input_text",
+                    text: message.content,
+                  }],
+                })),
+                { role: "user", content: hasRichUserContent ? userContent : body.prompt },
+              ],
+              ...(candidateModel.startsWith("gpt-5.6")
+                ? { reasoning: { effort: workload === "reasoning" ? "low" : "none" } }
+                : { temperature: Number(body.temperature ?? 0.3) }),
+              safety_identifier: user.id,
+            }
+          : {
+              model: candidateModel,
+              messages: [
+                ...(body.systemInstruction
+                  ? [{ role: "system", content: body.systemInstruction }]
+                  : []),
+                ...history,
+                {
+                  role: "user",
+                  content: body.image?.base64
+                    ? [
+                        { type: "text", text: body.prompt },
+                        {
+                          type: "image_url",
+                          image_url: {
+                            url: `data:${body.image.mimeType || "image/png"};base64,${cleanBase64(body.image.base64)}`,
+                          },
+                        },
+                      ]
+                    : body.prompt,
+                },
+              ],
+              temperature: Number(body.temperature ?? 0.3),
+            }
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${config.openai_api_key}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        })
+        if (!response.ok) {
+          lastOpenAIStatus = response.status
+          lastOpenAIError = await readProviderError(response)
+          console.warn("OpenAI model attempt failed", { candidateModel, status: response.status })
+          continue
+        }
+        const result = await response.json()
+        const text = useResponses
+          ? readResponsesText(result)
+          : result?.choices?.[0]?.message?.content
+        if (text) return json({ text, provider, model: result.model || candidateModel })
+        lastOpenAIError = "OpenAI returned an empty response"
+        lastOpenAIStatus = 502
       }
-      const result = await response.json()
-      const text = useResponses
-        ? readResponsesText(result)
-        : result?.choices?.[0]?.message?.content
-      if (!text) return json({ error: "OpenAI returned an empty response" }, 502)
-      return json({ text, provider, model: result.model || model })
+
+      if (!config?.gemini_api_key) {
+        return json({ error: lastOpenAIError }, lastOpenAIStatus)
+      }
+      console.warn("OpenAI attempts failed; using the configured Gemini backup provider", {
+        status: lastOpenAIStatus,
+      })
     }
 
     if (!config?.gemini_api_key) return json({ error: "Gemini is not configured" }, 503)
@@ -244,7 +267,7 @@ Deno.serve(async (request) => {
       ?.map((part: { text?: string }) => part.text || "")
       .join("")
     if (!text) return json({ error: "Gemini returned an empty response" }, 502)
-    return json({ text, provider, model: result.modelVersion || model })
+    return json({ text, provider: "gemini", model: result.modelVersion || model })
   } catch (error) {
     console.error("AI gateway error", error)
     return json(

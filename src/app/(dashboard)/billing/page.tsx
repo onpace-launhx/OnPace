@@ -15,6 +15,8 @@ import {
   Mail,
   Clock3,
   CheckCircle2,
+  ArrowRight,
+  ReceiptText,
 } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 
@@ -29,6 +31,11 @@ type PaymentClaim = {
   provider_reference?: string | null;
   submitted_at: string;
   reviewed_at?: string | null;
+  manual_subscriptions?: {
+    status?: string | null;
+    period_end?: string | null;
+    cancellation_effective_at?: string | null;
+  } | null;
 };
 type BillingProfile = {
   id: string;
@@ -38,8 +45,30 @@ type BillingProfile = {
   billing_cycle?: string | null;
   subscription_status?: string | null;
   trial_ends_at?: string | null;
+  pro_expires_at?: string | null;
+  next_billing_date?: string | null;
+  complimentary_campaign_id?: string | null;
   timezone?: string | null;
   discount_percent?: number | null;
+};
+type ManualSubscription = {
+  id: string;
+  plan: "pro" | "founding";
+  billing_cycle: "monthly" | "yearly" | "one_time" | "trial";
+  renewal_cycle?: "monthly" | "yearly" | null;
+  trial_days?: number | null;
+  status: string;
+  period_start: string;
+  period_end?: string | null;
+  next_renewal_at?: string | null;
+  activated_at?: string | null;
+};
+type CancellationRequest = {
+  id: string;
+  subscription_id: string;
+  status: "submitted" | "approved" | "rejected";
+  requested_at: string;
+  reviewed_at?: string | null;
 };
 type Invoice = {
   id: string; created_at: string; plan_type: string; billing_cycle: string;
@@ -62,6 +91,7 @@ export default function BillingPage() {
   const router = useRouter();
   const supabase = createClient();
   const [profile, setProfile] = useState<BillingProfile | null>(null);
+  const [manualSubscription, setManualSubscription] = useState<ManualSubscription | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -69,6 +99,9 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = useState<BillingPlan | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
   const [paymentClaims, setPaymentClaims] = useState<PaymentClaim[]>([]);
+  const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
+  const [requestingCancellation, setRequestingCancellation] = useState(false);
+  const [cancellationConfirmOpen, setCancellationConfirmOpen] = useState(false);
   const [payerEmail, setPayerEmail] = useState("");
   const [checkoutOpened, setCheckoutOpened] = useState(false);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
@@ -131,6 +164,10 @@ export default function BillingPage() {
         return;
       }
 
+      // Refresh time-based access before showing the current plan. This keeps
+      // complimentary campaigns and trials accurate without touching study data.
+      await supabase.rpc("refresh_my_subscription_access");
+
       // Fetch profile
       const { data: profileData } = await supabase
         .from("profiles")
@@ -138,6 +175,21 @@ export default function BillingPage() {
         .eq("id", user.id)
         .single();
       setProfile(profileData);
+
+      const { data: manualRows } = await supabase
+        .from("manual_subscriptions")
+        .select("id, plan, billing_cycle, renewal_cycle, trial_days, status, period_start, period_end, next_renewal_at, activated_at")
+        .eq("user_id", user.id)
+        .in("status", ["active", "cancel_at_period_end"])
+        .order("activated_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(5);
+      const activeManual = (manualRows || []).find((subscription) =>
+        subscription.billing_cycle === "one_time" ||
+        !subscription.period_end ||
+        new Date(subscription.period_end) > new Date()
+      );
+      setManualSubscription((activeManual as ManualSubscription | undefined) || null);
 
       // Fetch system settings for payment toggle & pricing
       const { data: settingsRows } = await supabase.rpc(
@@ -161,13 +213,16 @@ export default function BillingPage() {
       }
 
       try {
-        const claimsResponse = await fetch("/api/billing/manage", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "my_payment_claims" }),
-        });
-        const claimsData = await claimsResponse.json().catch(() => ({}));
+        const [claimsResponse, cancellationResponse] = await Promise.all([
+          fetch("/api/billing/manage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "my_payment_claims" }) }),
+          fetch("/api/billing/manage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "my_cancellation_requests" }) }),
+        ]);
+        const [claimsData, cancellationData] = await Promise.all([
+          claimsResponse.json().catch(() => ({})),
+          cancellationResponse.json().catch(() => ({})),
+        ]);
         if (claimsResponse.ok) setPaymentClaims(claimsData.claims || []);
+        if (cancellationResponse.ok) setCancellationRequests(cancellationData.requests || []);
       } catch {
         // Billing history remains usable if claim status is temporarily unavailable.
       }
@@ -258,6 +313,28 @@ export default function BillingPage() {
     }
   };
 
+  const handleRequestCancellation = async () => {
+    const copy = {
+      en: { success: "Your cancellation request was received. We will confirm the outcome by email as soon as possible.", error: "We could not send your cancellation request. Please try again." },
+      tr: { success: "İptal talebiniz alındı. Sonucu en kısa sürede e-posta ile bildireceğiz.", error: "İptal talebiniz gönderilemedi. Lütfen tekrar deneyin." },
+      es: { success: "Recibimos tu solicitud de cancelación. Confirmaremos el resultado por correo lo antes posible.", error: "No pudimos enviar tu solicitud de cancelación. Inténtalo de nuevo." },
+      zh: { success: "我们已收到您的取消请求。我们会尽快通过电子邮件确认处理结果。", error: "无法发送取消请求，请重试。" },
+    }[(profile?.language || "en") as "en" | "tr" | "es" | "zh"] || { success: "Request sent.", error: "Request failed." };
+    setCancellationConfirmOpen(false);
+    setRequestingCancellation(true);
+    try {
+      const response = await fetch("/api/billing/manage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "request_cancellation" }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.error) throw new Error(data?.error || copy.error);
+      setCancellationRequests((current) => [data.request, ...current]);
+      setCustomAlert(copy.success);
+    } catch (error) {
+      setCustomAlert(error instanceof Error ? error.message : copy.error);
+    } finally {
+      setRequestingCancellation(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-surface-secondary">
@@ -269,17 +346,56 @@ export default function BillingPage() {
     );
   }
 
-  // Calculate remaining trial days
+  // Resolve the user's real access from both the profile cache and the latest
+  // active administrator-managed subscription. The latter wins when a bulk
+  // operation left the profile's display fields temporarily stale.
   const now = new Date();
   const trialEnds = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
-  const isTrialActive = trialEnds && trialEnds > now;
+  const profileTrialActive = Boolean(trialEnds && trialEnds > now);
+  const profileAccessEnds = profile?.pro_expires_at
+    ? new Date(profile.pro_expires_at)
+    : trialEnds;
+  const profileHasPaidAccess =
+    (profile?.plan === "pro" || profile?.plan === "founding") &&
+    profile?.subscription_status !== "expired" &&
+    (!profileAccessEnds || profileAccessEnds > now);
+  const manualAccessEnds = manualSubscription?.period_end
+    ? new Date(manualSubscription.period_end)
+    : null;
+  const manualHasAccess = Boolean(
+    manualSubscription &&
+    (manualSubscription.billing_cycle === "one_time" || !manualAccessEnds || manualAccessEnds > now)
+  );
+  // A manually verified payment always takes priority over an older trial or
+  // complimentary campaign that may still be present on the cached profile.
+  const isTrialActive = !manualHasAccess && profileTrialActive;
+  const hasProAccess = manualHasAccess || profileHasPaidAccess || Boolean(isTrialActive);
+  const effectivePlan = manualHasAccess
+    ? manualSubscription?.plan || "pro"
+    : hasProAccess
+      ? profile?.plan || "pro"
+      : "free";
+  const effectiveBillingCycle = manualHasAccess
+    ? manualSubscription?.billing_cycle === "one_time"
+      ? "lifetime"
+      : manualSubscription?.renewal_cycle || manualSubscription?.billing_cycle || "none"
+    : profile?.billing_cycle || "none";
+  const effectiveAccessEnds = manualHasAccess && manualAccessEnds
+    ? manualAccessEnds
+    : profileAccessEnds;
+  const isComplimentaryAccess =
+    hasProAccess && !manualHasAccess &&
+    (Boolean(profile?.complimentary_campaign_id) || effectiveBillingCycle === "none");
+  const effectivePlanType = !hasProAccess
+    ? "free"
+    : effectivePlan === "founding" || effectiveBillingCycle === "lifetime"
+      ? "founding_member"
+      : effectiveBillingCycle === "yearly"
+        ? "pro_yearly"
+        : effectiveBillingCycle === "monthly"
+          ? "pro_monthly"
+          : "complimentary_pro";
   const discountPercent = Math.max(0, Math.min(100, Number(profile?.discount_percent) || 0));
-  let trialDaysRemaining = 0;
-  if (trialEnds && isTrialActive) {
-    const diffTime = Math.abs(trialEnds.getTime() - now.getTime());
-    trialDaysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }
-
   const localized = <T,>(values: { en: T; tr: T; es: T; zh: T }): T =>
     values[(["en", "tr", "es", "zh"].includes(lang) ? lang : "en") as keyof typeof values];
   const dateLocale = localized({
@@ -288,38 +404,70 @@ export default function BillingPage() {
     es: "es-ES",
     zh: "zh-CN",
   });
-  const paymentCopy = localized({
+  const accessCopy = localized({
     en: {
-      title: "Secure credit and debit card payments",
-      description: "Checkout is completed on the configured payment provider’s PCI-compliant page. Available card networks and debit-card support are confirmed there before payment.",
-      networks: "Credit cards · Debit cards · Supported networks shown at checkout",
-      expires: "Expires",
-      trialRecurring: "Full Pro access is active for {days} more days. Your selected recurring plan begins when the free period ends unless it is canceled.",
-      trialComplimentary: "You have {days} more days of complimentary Pro access. No payment will be collected for this access period.",
+      eyebrow: "Your current access",
+      active: "Active",
+      cancelsAtPeriodEnd: "Cancels at period end",
+      canceled: "Canceled",
+      complimentary: "Complimentary Pro",
+      lifetime: "Lifetime access",
+      renews: "Renews",
+      ends: "Access ends",
+      trial: "Free period ends",
+      freeDetail: "You currently have access to the Free plan features.",
+      complimentaryDetail: "Pro was assigned to your account at no charge. No payment will be collected for this access period.",
+      lifetimeDetail: "Your Pro access does not expire.",
+      recurringDetail: "Your active subscription and its next important date are shown here.",
+      cancelScheduledDetail: "Your renewal has been canceled. You can continue using your plan until the access end date shown here.",
     },
     tr: {
-      title: "Güvenli kredi ve banka kartı ödemeleri",
-      description: "Ödeme, yapılandırılmış ödeme sağlayıcısının PCI uyumlu sayfasında tamamlanır. Desteklenen kart ağları ve banka kartları ödeme öncesinde orada gösterilir.",
-      networks: "Kredi kartları · Banka kartları · Desteklenen ağlar ödeme ekranında",
-      expires: "Bitiş",
-      trialRecurring: "Tam Pro erişiminiz {days} gün daha aktif. İptal edilmezse seçtiğiniz yinelenen paket ücretsiz süre bittiğinde başlar.",
-      trialComplimentary: "Ücretsiz Pro erişiminizin bitmesine {days} gün kaldı. Bu erişim süresi için ödeme alınmaz.",
+      eyebrow: "Mevcut erişiminiz",
+      active: "Aktif",
+      cancelsAtPeriodEnd: "Dönem sonunda iptal edilecek",
+      canceled: "İptal edildi",
+      complimentary: "Ücretsiz Pro",
+      lifetime: "Ömür boyu erişim",
+      renews: "Yenilenme",
+      ends: "Erişim bitişi",
+      trial: "Ücretsiz dönem bitişi",
+      freeDetail: "Şu anda Ücretsiz plan özelliklerine erişiminiz var.",
+      complimentaryDetail: "Pro erişimi hesabınıza ücretsiz tanımlandı. Bu erişim dönemi için ödeme alınmaz.",
+      lifetimeDetail: "Pro erişiminizin bitiş tarihi yoktur.",
+      recurringDetail: "Aktif aboneliğiniz ve bir sonraki önemli tarihi burada gösterilir.",
+      cancelScheduledDetail: "Yenilemeniz iptal edildi. Aşağıdaki erişim bitiş tarihine kadar paketinizi kullanmaya devam edebilirsiniz.",
     },
     es: {
-      title: "Pagos seguros con tarjeta de crédito y débito",
-      description: "El pago se completa en la página PCI del proveedor configurado. Allí se muestran las redes y tarjetas de débito compatibles antes de pagar.",
-      networks: "Crédito · Débito · Redes compatibles visibles al pagar",
-      expires: "Caduca",
-      trialRecurring: "Tu acceso Pro completo seguirá activo {days} días. El plan recurrente elegido comenzará al terminar el periodo gratuito, salvo que se cancele.",
-      trialComplimentary: "Te quedan {days} días de acceso Pro gratuito. No se realizará ningún cobro por este periodo.",
+      eyebrow: "Tu acceso actual",
+      active: "Activo",
+      cancelsAtPeriodEnd: "Se cancelará al final del periodo",
+      canceled: "Cancelado",
+      complimentary: "Pro gratuito",
+      lifetime: "Acceso de por vida",
+      renews: "Renovación",
+      ends: "Fin del acceso",
+      trial: "Fin del periodo gratuito",
+      freeDetail: "Actualmente tienes acceso a las funciones del plan Gratis.",
+      complimentaryDetail: "Se asignó Pro a tu cuenta sin coste. No se cobrará este periodo de acceso.",
+      lifetimeDetail: "Tu acceso Pro no caduca.",
+      recurringDetail: "Aquí se muestran tu suscripción activa y su próxima fecha importante.",
+      cancelScheduledDetail: "Tu renovación fue cancelada. Puedes seguir usando tu plan hasta la fecha de finalización mostrada.",
     },
     zh: {
-      title: "安全的信用卡与借记卡支付",
-      description: "付款将在已配置服务商的 PCI 合规页面完成，支持的卡组织和借记卡会在付款前显示。",
-      networks: "信用卡 · 借记卡 · 支持的卡组织将在结账页显示",
-      expires: "到期",
-      trialRecurring: "完整 Pro 权限还剩 {days} 天。若未取消，所选周期套餐将在免费期结束后开始。",
-      trialComplimentary: "免费 Pro 权限还剩 {days} 天，此期间不会收取费用。",
+      eyebrow: "您当前的访问权限",
+      active: "已激活",
+      cancelsAtPeriodEnd: "将在本期结束时取消",
+      canceled: "已取消",
+      complimentary: "免费 Pro",
+      lifetime: "终身访问",
+      renews: "续费时间",
+      ends: "访问截止",
+      trial: "免费期截止",
+      freeDetail: "您当前可使用免费方案功能。",
+      complimentaryDetail: "您的账户已免费获得 Pro，此访问期间不会收费。",
+      lifetimeDetail: "您的 Pro 访问权限永不到期。",
+      recurringDetail: "此处显示当前订阅及下一个重要日期。",
+      cancelScheduledDetail: "续订已取消。您可以继续使用当前方案，直到下方显示的访问截止时间。",
     },
   });
   const claimCopy = localized({
@@ -337,7 +485,7 @@ export default function BillingPage() {
       submit: "I completed the payment",
       submitting: "Sending for review…",
       successTitle: "Payment notice received",
-      successText: "Your access will remain unchanged until an administrator matches the payment reference. We will email you when the plan is activated.",
+      successText: "Your payment notice has been sent to our team. Thank you — we will activate your subscription as soon as your EshipX payment is verified, and email you immediately once activation is complete.",
       close: "Done",
       pendingTitle: "Payment review status",
       pendingText: "These notices are matched manually with EshipX transactions.",
@@ -370,7 +518,7 @@ export default function BillingPage() {
       submit: "Ödemeyi tamamladım",
       submitting: "Kontrole gönderiliyor…",
       successTitle: "Ödeme bildirimin alındı",
-      successText: "Yönetici ödeme referansını eşleştirene kadar erişimin değişmez. Paket açıldığında sana e-posta göndereceğiz.",
+      successText: "Ödeme bildirimin ekibimize iletildi. Teşekkür ederiz; eShipX ödemen doğrulanır doğrulanmaz aboneliğin aktifleştirilecek. Aktivasyon tamamlandığında sana hemen e-posta da göndereceğiz.",
       close: "Tamam",
       pendingTitle: "Ödeme kontrol durumu",
       pendingText: "Bu bildirimler eShipX işlemleriyle manuel olarak eşleştirilir.",
@@ -403,7 +551,7 @@ export default function BillingPage() {
       submit: "He completado el pago",
       submitting: "Enviando para revisión…",
       successTitle: "Aviso de pago recibido",
-      successText: "Tu acceso no cambiará hasta que un administrador vincule la referencia. Te enviaremos un correo cuando se active.",
+      successText: "Tu aviso de pago se ha enviado a nuestro equipo. Gracias; activaremos tu suscripción en cuanto verifiquemos el pago de EshipX y te enviaremos un correo inmediatamente al completarse la activación.",
       close: "Listo",
       pendingTitle: "Estado de revisión del pago",
       pendingText: "Estos avisos se vinculan manualmente con las transacciones de EshipX.",
@@ -436,7 +584,7 @@ export default function BillingPage() {
       submit: "我已完成付款",
       submitting: "正在提交审核…",
       successTitle: "已收到付款通知",
-      successText: "管理员匹配付款参考号前，您的访问权限不会改变。套餐开通后我们会发送邮件。",
+      successText: "您的付款通知已转交给我们的团队。感谢您；EshipX 付款验证完成后，我们会尽快为您开通会员，并在开通后立即发送邮件。",
       close: "完成",
       pendingTitle: "付款审核状态",
       pendingText: "这些通知将与 EshipX 交易进行人工匹配。",
@@ -454,6 +602,25 @@ export default function BillingPage() {
       noticeError: "付款通知提交失败，请重试。",
       alreadyPending: "您已有一条等待审核的付款通知。",
       networkError: "无法连接付款服务，请检查网络后重试。",
+    },
+  });
+
+  const paymentFlowCopy = localized({
+    en: {
+      eyebrow: "EshipX payment process", title: "A clear, manually verified activation flow", description: "Choose your package, complete payment on EshipX, then return with the email used for payment. Your current access stays unchanged until the transaction is matched.",
+      choose: "Choose a package", chooseDetail: "Review the billing period and exact plan price.", pay: "Pay on EshipX", payDetail: "Card and bank details remain on EshipX.", notify: "Send payment notice", notifyDetail: "Enter the payer email so the administrator can match it.", verified: "Manually verified", email: "Activation email in your language", open: "Payments available", closed: "Payments currently closed",
+    },
+    tr: {
+      eyebrow: "eShipX ödeme süreci", title: "Açık, kontrollü ve manuel doğrulanan aktivasyon", description: "Paketini seç, ödemeyi eShipX'te tamamla ve ödeme sırasında kullandığın e-postayla bu sayfaya dön. İşlem eşleştirilene kadar mevcut erişimin değişmez.",
+      choose: "Paketini seç", chooseDetail: "Ödeme dönemini ve paket tutarını kontrol et.", pay: "eShipX'te öde", payDetail: "Kart ve banka bilgilerin eShipX'te kalır.", notify: "Ödeme bildirimi gönder", notifyDetail: "Yöneticinin eşleştirmesi için ödeme e-postanı gir.", verified: "Manuel doğrulama", email: "Kendi dilinde aktivasyon e-postası", open: "Ödemeler açık", closed: "Ödemeler şu anda kapalı",
+    },
+    es: {
+      eyebrow: "Proceso de pago EshipX", title: "Activación clara y verificada manualmente", description: "Elige un plan, completa el pago en EshipX y vuelve con el correo utilizado. Tu acceso actual no cambia hasta que se vincule la transacción.",
+      choose: "Elige un plan", chooseDetail: "Comprueba el periodo y el importe.", pay: "Paga en EshipX", payDetail: "Los datos bancarios permanecen en EshipX.", notify: "Envía el aviso", notifyDetail: "Introduce el correo del pagador para vincularlo.", verified: "Verificación manual", email: "Correo de activación en tu idioma", open: "Pagos disponibles", closed: "Pagos cerrados temporalmente",
+    },
+    zh: {
+      eyebrow: "EshipX 付款流程", title: "清晰且人工核验的开通流程", description: "选择套餐，在 EshipX 完成付款，然后使用付款邮箱返回此页面。在交易匹配完成前，您当前的访问权限不会改变。",
+      choose: "选择套餐", chooseDetail: "确认计费周期和套餐金额。", pay: "在 EshipX 付款", payDetail: "银行卡信息始终保留在 EshipX。", notify: "提交付款通知", notifyDetail: "填写付款邮箱，供管理员匹配。", verified: "人工核验", email: "按您的语言发送开通邮件", open: "付款已开放", closed: "付款暂时关闭",
     },
   });
 
@@ -507,7 +674,7 @@ export default function BillingPage() {
       badge: localized({ en: "Popular", tr: "Popüler", es: "Popular", zh: "最受欢迎" }),
       badgeStyle: "bg-brand/10 text-brand border border-brand/20",
       cta: configuredPlanName("pro_monthly", localized({ en: "Upgrade to Pro Monthly", tr: "Pro Aylık'a Geç", es: "Mejorar a Pro Mensual", zh: "升级至 Pro 月度版" })),
-      disabled: profile?.plan === "pro" && profile?.billing_cycle === "monthly",
+      disabled: effectivePlanType === "pro_monthly",
     },
     {
       title: configuredPlanName("pro_yearly", localized({ en: "Pro Yearly", tr: "Pro Yıllık", es: "Pro Anual", zh: "Pro 年订阅" })),
@@ -530,7 +697,7 @@ export default function BillingPage() {
       badge: localized({ en: "Best Value", tr: "En Avantajlı", es: "Mejor valor", zh: "最佳性价比" }),
       badgeStyle: "bg-accent/15 text-accent border border-accent/20",
       cta: configuredPlanName("pro_yearly", localized({ en: "Upgrade to Pro Yearly", tr: "Pro Yıllık'a Geç", es: "Mejorar a Pro Anual", zh: "升级至 Pro 年度版" })),
-      disabled: profile?.plan === "pro" && profile?.billing_cycle === "yearly",
+      disabled: effectivePlanType === "pro_yearly",
       highlight: true,
     },
     {
@@ -554,46 +721,136 @@ export default function BillingPage() {
       badge: localized({ en: "Limited Time", tr: "Sınırlı Süre", es: "Tiempo limitado", zh: "限时优惠" }),
       badgeStyle: "bg-purple-50 text-purple-600 border border-purple-100",
       cta: configuredPlanName("founding_member", localized({ en: "Become a Founding Member", tr: "Kurucu Üye Ol", es: "Ser Miembro Fundador", zh: "加入创始会员" })),
-      disabled: profile?.plan === "founding",
+      disabled: effectivePlanType === "founding_member",
     },
   ];
 
+  const currentAccessTitle = effectivePlanType === "free"
+    ? plans[0].title
+    : effectivePlanType === "pro_monthly"
+      ? plans[1].title
+      : effectivePlanType === "pro_yearly"
+        ? plans[2].title
+        : effectivePlanType === "founding_member"
+          ? plans[3].title
+          : accessCopy.complimentary;
+  const cancellationScheduled = Boolean(
+    manualSubscription?.status === "cancel_at_period_end" ||
+    profile?.subscription_status === "cancel_at_period_end"
+  );
+  const currentAccessDetail = effectivePlanType === "free"
+    ? accessCopy.freeDetail
+    : effectivePlanType === "founding_member"
+      ? accessCopy.lifetimeDetail
+      : isComplimentaryAccess
+        ? accessCopy.complimentaryDetail
+        : cancellationScheduled
+          ? accessCopy.cancelScheduledDetail
+        : accessCopy.recurringDetail;
+  const currentAccessDateLabel = isTrialActive && !isComplimentaryAccess
+    ? accessCopy.trial
+    : isComplimentaryAccess || cancellationScheduled
+      ? accessCopy.ends
+      : accessCopy.renews;
+  const currentAccessDate = isTrialActive && !isComplimentaryAccess
+    ? trialEnds
+    : effectiveAccessEnds || (profile?.next_billing_date ? new Date(profile.next_billing_date) : null);
+  const pendingCancellation = cancellationRequests.find((request) => request.status === "submitted" && request.subscription_id === manualSubscription?.id);
+  const cancellationCopy = localized({
+    en: { title: "Manage your subscription", detail: "To cancel a recurring plan, send a request to our team. We will review it manually and email you the confirmation.", request: "Request cancellation", waiting: "Your cancellation request is with our team. Your access remains active until the request is reviewed." },
+    tr: { title: "Aboneliğini yönet", detail: "Yinelenen paketin için iptal talebi gönderebilirsin. Talebin sonucu e-posta ile iletilir.", request: "İptal talebi gönder", waiting: "İptal talebin alındı. Sonuç bildirilene kadar erişimin devam eder." },
+    es: { title: "Gestiona tu suscripción", detail: "Para cancelar un plan recurrente, envía una solicitud a nuestro equipo. La revisaremos manualmente y confirmaremos por correo.", request: "Solicitar cancelación", waiting: "Tu solicitud está con nuestro equipo. Tu acceso sigue activo hasta que se revise." },
+    zh: { title: "管理您的订阅", detail: "如需取消续订套餐，请向我们的团队提交请求。我们会人工审核并通过电子邮件确认。", request: "提交取消请求", waiting: "您的取消请求已交给我们的团队。在审核前，您的访问权限仍然有效。" },
+  });
+
   return (
-    <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto space-y-8 max-w-6xl mx-auto w-full">
+    <main className="mx-auto w-full max-w-[1450px] flex-1 space-y-8 overflow-y-auto p-4 sm:p-6 lg:p-9">
       
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-surface-dark flex items-center gap-2">
-          <CreditCard className="text-brand" /> {t.billing.title}
+      <div className="flex items-start gap-3">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-brand ring-1 ring-brand/10"><CreditCard size={23} /></span>
+        <div>
+        <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-surface-dark sm:text-3xl">
+          {t.billing.title}
         </h1>
         <p className="text-sm text-gray-500 mt-1">{t.billing.subtitle}</p>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 sm:flex-row sm:items-center">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm">
-          <ShieldCheck size={21} />
-        </div>
-        <div>
-          <h2 className="text-sm font-extrabold text-emerald-900">{paymentCopy.title}</h2>
-          <p className="mt-1 text-xs leading-relaxed text-emerald-800">{paymentCopy.description}</p>
-          <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">{paymentCopy.networks}</p>
         </div>
       </div>
 
-      {/* Trial and Subscription Banner */}
-      {isTrialActive && (
-        <div className="bg-gradient-to-r from-brand to-brand-dark p-6 rounded-3xl text-white shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <h3 className="font-extrabold text-lg">{t.billing.trialActive || "You are on Pro Free Trial!"}</h3>
-            <p className="text-sm opacity-90 mt-1">
-              {(profile?.billing_cycle === "monthly" || profile?.billing_cycle === "yearly" ? paymentCopy.trialRecurring : paymentCopy.trialComplimentary).replace("{days}", String(trialDaysRemaining))}
-            </p>
+      <section className="overflow-hidden rounded-3xl border border-brand/20 bg-gradient-to-br from-brand/10 via-white to-accent/10 shadow-sm">
+        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand/15 text-brand ring-1 ring-brand/15">
+              <ShieldCheck size={23} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-brand">{accessCopy.eyebrow}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-black tracking-tight text-surface-dark sm:text-2xl">{currentAccessTitle}</h2>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ring-1 ${cancellationScheduled ? "bg-amber-100 text-amber-800 ring-amber-200" : "bg-emerald-100 text-emerald-700 ring-emerald-200"}`}>
+                  {cancellationScheduled ? accessCopy.cancelsAtPeriodEnd : accessCopy.active}
+                </span>
+              </div>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-gray-600 sm:text-sm">{currentAccessDetail}</p>
+            </div>
           </div>
-          <span className="px-4 py-2 bg-white/20 backdrop-blur-md rounded-xl text-xs font-bold shrink-0">
-            {paymentCopy.expires}: {trialEnds?.toLocaleString(dateLocale, { timeZone: profile?.timezone || undefined, timeZoneName: "short", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+          {effectivePlanType === "founding_member" ? (
+            <span className="shrink-0 rounded-2xl bg-white/80 px-4 py-3 text-xs font-extrabold text-brand ring-1 ring-brand/15">{accessCopy.lifetime}</span>
+          ) : currentAccessDate ? (
+            <div className="shrink-0 rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-brand/15 sm:text-right">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-brand">{currentAccessDateLabel}</p>
+              <p className="mt-1 text-xs font-extrabold text-surface-dark">
+                {currentAccessDate.toLocaleString(dateLocale, { timeZone: profile?.timezone || undefined, timeZoneName: "short", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {manualHasAccess && manualSubscription?.billing_cycle !== "one_time" && (
+        <section className="flex flex-col gap-4 rounded-3xl border border-brand/15 bg-brand/5 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="min-w-0">
+            <h2 className="text-base font-extrabold text-surface-dark">{cancellationCopy.title}</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-gray-600">{pendingCancellation ? cancellationCopy.waiting : cancellationCopy.detail}</p>
+          </div>
+          {pendingCancellation ? (
+            <span className="shrink-0 rounded-xl bg-amber-100 px-4 py-2.5 text-xs font-bold text-amber-800">{cancellationCopy.waiting}</span>
+          ) : (
+            <button type="button" onClick={() => setCancellationConfirmOpen(true)} disabled={requestingCancellation} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-brand/25 bg-white px-4 py-3 text-xs font-extrabold text-brand shadow-sm transition hover:bg-brand/10 disabled:cursor-not-allowed disabled:opacity-60">
+              {requestingCancellation && <Loader2 size={15} className="animate-spin" />}{cancellationCopy.request}
+            </button>
+          )}
+        </section>
+      )}
+
+      <section className="rounded-[2rem] border border-gray-150 bg-white p-4 shadow-sm sm:p-6 lg:p-7">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand">{paymentFlowCopy.eyebrow}</p>
+            <h2 className="mt-2 text-xl font-black tracking-tight text-surface-dark sm:text-2xl">{paymentFlowCopy.title}</h2>
+            <p className="mt-2 text-xs leading-5 text-gray-500 sm:text-sm sm:leading-6">{paymentFlowCopy.description}</p>
+          </div>
+          <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-2 text-[10px] font-extrabold ring-1 ${systemSettings?.payment_gateway_enabled ? "bg-indigo-50 text-indigo-700 ring-indigo-100" : "bg-gray-100 text-gray-600 ring-gray-200"}`}>
+            <span className={`h-2 w-2 rounded-full ${systemSettings?.payment_gateway_enabled ? "bg-emerald-500" : "bg-gray-400"}`} />
+            {systemSettings?.payment_gateway_enabled ? paymentFlowCopy.open : paymentFlowCopy.closed}
           </span>
         </div>
-      )}
+        <div className="mt-6 grid gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">
+          {[
+            { icon: CreditCard, title: paymentFlowCopy.choose, detail: paymentFlowCopy.chooseDetail },
+            { icon: ExternalLink, title: paymentFlowCopy.pay, detail: paymentFlowCopy.payDetail },
+            { icon: ReceiptText, title: paymentFlowCopy.notify, detail: paymentFlowCopy.notifyDetail },
+          ].map(({ icon: Icon, title, detail }, index) => (
+            <div key={title} className="contents">
+              <article className="flex min-h-28 items-start gap-3 rounded-2xl border border-gray-150 bg-slate-50/60 p-4">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand shadow-sm ring-1 ring-gray-100"><Icon size={17} /></span>
+                <div><p className="text-[10px] font-black uppercase tracking-wider text-gray-400">0{index + 1}</p><h3 className="mt-1 text-sm font-extrabold text-surface-dark">{title}</h3><p className="mt-1 text-xs leading-5 text-gray-500">{detail}</p></div>
+              </article>
+              {index < 2 && <ArrowRight className="mx-auto hidden text-gray-300 lg:block" size={18} />}
+            </div>
+          ))}
+        </div>
+      </section>
 
       {paymentClaims.length > 0 && (
         <section className="rounded-3xl border border-amber-150 bg-white p-4 shadow-sm sm:p-6">
@@ -606,8 +863,19 @@ export default function BillingPage() {
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {paymentClaims.slice(0, 4).map((claim) => {
-              const statusText = claimCopy[claim.status as keyof typeof claimCopy] || claim.status;
-              const statusClass = claim.status === "approved" ? "bg-emerald-50 text-emerald-700" : claim.status === "rejected" || claim.status === "canceled" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700";
+              const subscriptionStatus = claim.manual_subscriptions?.status;
+              const statusText = subscriptionStatus === "cancel_at_period_end"
+                ? accessCopy.cancelsAtPeriodEnd
+                : subscriptionStatus === "canceled"
+                  ? accessCopy.canceled
+                  : claimCopy[claim.status as keyof typeof claimCopy] || claim.status;
+              const statusClass = subscriptionStatus === "cancel_at_period_end"
+                ? "bg-amber-50 text-amber-800"
+                : subscriptionStatus === "canceled" || claim.status === "rejected" || claim.status === "canceled"
+                  ? "bg-red-50 text-red-700"
+                  : claim.status === "approved"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-amber-50 text-amber-700";
               return (
                 <article key={claim.id} className="rounded-2xl border border-gray-150 bg-slate-50/60 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -622,6 +890,9 @@ export default function BillingPage() {
                     <span className="text-gray-400">{new Date(claim.submitted_at).toLocaleDateString(dateLocale)}</span>
                   </div>
                   {claim.provider_reference && <p className="mt-2 break-all text-[10px] text-gray-500">{claimCopy.paymentReference}: <span className="font-mono font-bold">{claim.provider_reference}</span></p>}
+                  {subscriptionStatus === "cancel_at_period_end" && claim.manual_subscriptions?.cancellation_effective_at && (
+                    <p className="mt-2 text-[10px] font-semibold text-amber-800">{accessCopy.ends}: {new Date(claim.manual_subscriptions.cancellation_effective_at).toLocaleDateString(dateLocale)}</p>
+                  )}
                 </article>
               );
             })}
@@ -640,12 +911,9 @@ export default function BillingPage() {
       )}
 
       {/* Pricing Matrix Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+      <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-4">
         {plans.map((p, idx) => {
-          const isCurrent = (p.type === "free" && profile?.plan === "free" && !isTrialActive) ||
-                            (p.type === "pro_monthly" && profile?.plan === "pro" && profile?.billing_cycle === "monthly") ||
-                            (p.type === "pro_yearly" && profile?.plan === "pro" && profile?.billing_cycle === "yearly") ||
-                            (p.type === "founding_member" && profile?.plan === "founding");
+          const isCurrent = p.type === effectivePlanType;
 
           return (
             <div
@@ -853,6 +1121,17 @@ export default function BillingPage() {
             >
               {t.billing.dismiss}
             </button>
+          </div>
+        </div>
+      )}
+
+      {cancellationConfirmOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-brand/15 bg-white p-6 shadow-2xl sm:p-7">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand/10 text-brand"><HelpCircle size={21} /></span>
+            <h3 className="mt-4 text-lg font-extrabold text-surface-dark">{localized({ en: "Confirm cancellation request", tr: "İptal talebini onayla", es: "Confirmar solicitud de cancelación", zh: "确认取消请求" })}</h3>
+            <p className="mt-2 text-sm leading-6 text-gray-600">{localized({ en: "Do you want to send your cancellation request? Your current access will remain available until the result is confirmed.", tr: "İptal talebini göndermek istiyor musun? Sonuç bildirilene kadar mevcut erişimin devam eder.", es: "¿Deseas enviar la solicitud de cancelación? Tu acceso actual seguirá disponible hasta que se confirme el resultado.", zh: "确定要发送取消请求吗？在确认结果前，您当前的访问权限将继续有效。" })}</p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setCancellationConfirmOpen(false)} className="rounded-xl px-4 py-3 text-sm font-bold text-gray-600 hover:bg-gray-100">{localized({ en: "Keep subscription", tr: "Vazgeç", es: "Mantener suscripción", zh: "保留订阅" })}</button><button type="button" onClick={handleRequestCancellation} disabled={requestingCancellation} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-extrabold text-white hover:bg-brand-hover disabled:opacity-60">{requestingCancellation && <Loader2 size={15} className="animate-spin" />}{localized({ en: "Send request", tr: "Talebi gönder", es: "Enviar solicitud", zh: "发送请求" })}</button></div>
           </div>
         </div>
       )}

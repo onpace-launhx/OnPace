@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 
 function localizeIntegrationError(message: string) {
   const knownErrors: Record<string, string> = {
+    "Payment links must be secure HTTPS EshipX or Stripe Checkout URLs.":
+      "Ödeme bağlantıları geçerli HTTPS eShipX veya Stripe Checkout adresleri olmalıdır.",
+    "Add at least one valid EshipX or Stripe Checkout payment link before enabling payments.":
+      "Ödemeleri açmadan önce en az bir geçerli eShipX veya Stripe Checkout ödeme bağlantısı girin.",
     "Configure and verify a payment provider before enabling real payments.":
       "Gerçek ödemeleri açmadan önce bir ödeme sağlayıcısı yapılandırılmalı ve doğrulanmalıdır.",
     "Payment links must be valid HTTPS EshipX URLs.":
